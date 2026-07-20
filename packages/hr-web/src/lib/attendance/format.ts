@@ -1,18 +1,17 @@
 // Pure attendance-module helpers — no React, no I/O. Shared by the attendance
 // composites and the server pages (role gating). Mirrors apps/web/src/lib/leave/format.ts.
 
-import type { UserRole } from '@crm/auth-constants';
 import type { ApiRequestError } from '@platform/ui-kit';
 import type { AttendanceStatusName, RegularizationStatus } from './types';
 
-/** Managers (rank ≥ 60), hr_admin and org_admin can see the team attendance view. */
-export function canViewAttendanceTeam(rank: number): boolean {
-  return rank >= 60;
-}
-
-/** hr_admin (rank 75) or org_admin+ (rank ≥ 80) can manage attendance configuration. */
-export function canManageAttendanceAdmin(role: UserRole, rank: number): boolean {
-  return role === 'hr_admin' || rank >= 80;
+/**
+ * HR admin (rank ≥ 80) can manage attendance configuration. `rank` must be
+ * the caller's resolved HR product rank (hr.member_roles, via getHrRank/GET
+ * /hr/me) — never SessionUser.rank, which is the platform/session rank, a
+ * different scale that only coincidentally overlaps for org/tenant admins.
+ */
+export function canManageAttendanceAdmin(rank: number): boolean {
+  return rank >= 80;
 }
 
 /** Only an org admin (rank ≥ 80) can set the org's geofence-centre coordinates

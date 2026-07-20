@@ -9,7 +9,6 @@ import { logActivity } from '@crm/audit-log';
 import {
   canManageLeave,
   canOverrideLeaveApproval,
-  canViewTeamLeave,
   isTenantLeaveAdmin,
 } from '@hr/authz';
 import { ForbiddenError } from '../../../lib/errors.js';
@@ -63,9 +62,16 @@ export async function listOwnRequests(ctx: LeaveCtx, filters: ListLeaveRequestsI
 }
 
 export async function listTeamRequests(ctx: LeaveCtx, filters: ListLeaveRequestsInput) {
-  if (!canViewTeamLeave(ctx.role, ctx.rank)) {
-    throw new ForbiddenError('Insufficient rank to view the team leave queue');
-  }
+  // No blanket rank gate here: the repository query already self-scopes to
+  // rows where the acting user is the resolved (reporting-line) approver or a
+  // direct manager, so a caller with no HR product rank at all still only ever
+  // sees their own relevant items — never the wider org. HR admin/manager rank
+  // (canManageLeave) only widens the view to the full org queue. Gating the
+  // call itself on canViewTeamLeave (HR rank >= manager) previously blocked a
+  // reporting-line-resolved approver from ever seeing (or reaching, via the
+  // /leave/approvals UI) a request assigned to them when they hadn't also been
+  // separately granted an hr.member_roles row — see approveLeave, which
+  // already allows the assigned approver through regardless of rank.
   const seeAllOrg = canManageLeave(ctx.role, ctx.rank);
   return repo.listTeamRequests(ctx, filters, seeAllOrg);
 }

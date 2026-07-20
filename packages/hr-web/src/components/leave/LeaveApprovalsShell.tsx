@@ -5,15 +5,17 @@ import type { SessionUser } from '@crm/types';
 import { leave as leaveApi } from '../../lib/api/client';
 import type { LeaveRequestView } from '../../lib/leave/types';
 import { formatDateRange, formatDays, formatDateTime } from '../../lib/leave/format';
+import type { HrRank } from '../../lib/hr-rank';
 import LeaveTabs from './LeaveTabs';
 import TeamLeaveCalendar from './TeamLeaveCalendar';
 import ApprovalDecisionModal from './ApprovalDecisionModal';
 
 interface Props {
   actor: SessionUser;
+  hrRank: HrRank;
 }
 
-export default function LeaveApprovalsShell({ actor }: Props) {
+export default function LeaveApprovalsShell({ hrRank }: Props) {
   const [pending, setPending] = useState<LeaveRequestView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +40,7 @@ export default function LeaveApprovalsShell({ actor }: Props) {
 
   return (
     <div className="w-full space-y-6 px-3 py-4 sm:px-4">
-      <LeaveTabs actor={actor} />
+      <LeaveTabs hrRank={hrRank} />
 
       <div>
         <h1 className="text-2xl font-bold text-[#0F172A]">Leave Approvals</h1>

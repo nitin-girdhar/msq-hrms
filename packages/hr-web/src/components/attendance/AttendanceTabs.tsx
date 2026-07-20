@@ -2,11 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import type { SessionUser } from '@crm/types';
-import { canViewAttendanceTeam, canManageAttendanceAdmin } from '../../lib/attendance/format';
+import type { HrRank } from '../../lib/hr-rank';
+import { canManageAttendanceAdmin } from '../../lib/attendance/format';
 
 interface Props {
-  actor: SessionUser;
+  // The caller's resolved HR product rank (hr.member_roles) — never
+  // SessionUser.rank, which is the platform/session rank. See lib/hr-rank.ts.
+  hrRank: HrRank;
 }
 
 interface Tab {
@@ -16,13 +18,17 @@ interface Tab {
 }
 
 // In-page sub-navigation for the Attendance module. Mirrors apps/web/components/leave/LeaveTabs.tsx.
-export default function AttendanceTabs({ actor }: Props) {
+export default function AttendanceTabs({ hrRank }: Props) {
   const pathname = usePathname();
 
   const tabs: Tab[] = [
     { href: '/attendance', label: 'Dashboard', show: true },
-    { href: '/attendance/team', label: 'Team', show: canViewAttendanceTeam(actor.rank) },
-    { href: '/attendance/admin', label: 'Admin', show: canManageAttendanceAdmin(actor.role, actor.rank) },
+    // Always shown: the backend's getTeam/listRegularizations queries already
+    // scope results to the acting user's own reports or (with HR manager+/
+    // admin rank) the full org — see attendance.service.ts. A user with
+    // neither just sees an empty team view, same as any other empty state.
+    { href: '/attendance/team', label: 'Team', show: true },
+    { href: '/attendance/admin', label: 'Admin', show: canManageAttendanceAdmin(hrRank.rank) },
   ];
 
   return (

@@ -5,6 +5,7 @@ import type { SessionUser } from '@crm/types';
 import { leave as leaveApi } from '../../lib/api/client';
 import type { LeaveBalance, LeavePolicyView, LeaveRequestView } from '../../lib/leave/types';
 import { LEAVE_STATUS_FILTERS } from '../../lib/leave/format';
+import type { HrRank } from '../../lib/hr-rank';
 import LeaveTabs from './LeaveTabs';
 import BalanceCards from './BalanceCards';
 import MyRequestsTable from './MyRequestsTable';
@@ -12,9 +13,10 @@ import ApplyLeaveModal from './ApplyLeaveModal';
 
 interface Props {
   actor: SessionUser;
+  hrRank: HrRank;
 }
 
-export default function LeaveDashboardShell({ actor }: Props) {
+export default function LeaveDashboardShell({ actor, hrRank }: Props) {
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
   const [policies, setPolicies] = useState<LeavePolicyView[]>([]);
   const [requests, setRequests] = useState<LeaveRequestView[]>([]);
@@ -70,7 +72,7 @@ export default function LeaveDashboardShell({ actor }: Props) {
 
   return (
     <div className="w-full space-y-6 px-3 py-4 sm:px-4">
-      <LeaveTabs actor={actor} />
+      <LeaveTabs hrRank={hrRank} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>

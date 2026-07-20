@@ -5,6 +5,7 @@ import type { SessionUser } from '@crm/types';
 import { attendance as attendanceApi } from '../../lib/api/client';
 import type { RegularizationView, TeamDayRow } from '../../lib/attendance/types';
 import { todayIso } from '../../lib/attendance/format';
+import type { HrRank } from '../../lib/hr-rank';
 import AttendanceTabs from './AttendanceTabs';
 import TeamDayView from './TeamDayView';
 import RegularizationQueue from './RegularizationQueue';
@@ -12,9 +13,10 @@ import RegularizationDecisionModal from './RegularizationDecisionModal';
 
 interface Props {
   actor: SessionUser;
+  hrRank: HrRank;
 }
 
-export default function AttendanceTeamShell({ actor }: Props) {
+export default function AttendanceTeamShell({ hrRank }: Props) {
   const [date, setDate] = useState(todayIso());
   const [rows, setRows] = useState<TeamDayRow[]>([]);
   const [rowsLoading, setRowsLoading] = useState(true);
@@ -52,7 +54,7 @@ export default function AttendanceTeamShell({ actor }: Props) {
 
   return (
     <div className="w-full space-y-6 px-3 py-4 sm:px-4">
-      <AttendanceTabs actor={actor} />
+      <AttendanceTabs hrRank={hrRank} />
 
       <div>
         <h1 className="text-2xl font-bold text-[#0F172A]">Team Attendance</h1>

@@ -46,14 +46,6 @@ export function canOverrideLeaveApproval(_role: string, rank: number): boolean {
 }
 
 /**
- * Whether the acting user may see a team/subtree leave queue at all:
- * HR manager+ (rank >= 70).
- */
-export function canViewTeamLeave(_role: string, rank: number): boolean {
-  return rank >= HR_RANKS.MANAGER;
-}
-
-/**
  * Tenant-wide leave policy/settings authority. This is a PLATFORM capability
  * (managing HR config across every org in the tenant), so it is keyed on
  * platform_role, not the HR product rank (which tops out per-org at hr_admin).

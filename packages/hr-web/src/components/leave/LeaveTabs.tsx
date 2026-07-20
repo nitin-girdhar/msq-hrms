@@ -2,11 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import type { SessionUser } from '@crm/types';
-import { canViewLeaveApprovals, canManageLeaveAdmin } from '../../lib/leave/format';
+import type { HrRank } from '../../lib/hr-rank';
+import { canManageLeaveAdmin } from '../../lib/leave/format';
 
 interface Props {
-  actor: SessionUser;
+  // The caller's resolved HR product rank (hr.member_roles) — never
+  // SessionUser.rank, which is the platform/session rank. See lib/hr-rank.ts.
+  hrRank: HrRank;
 }
 
 interface Tab {
@@ -18,13 +20,18 @@ interface Tab {
 // In-page sub-navigation for the Leave module. The shared DashboardSidebar chrome
 // (rendered by ModuleShell) stays untouched; visibility of each tab mirrors the
 // same rank/role gating the CRM UI uses (see src/config/navigation.ts).
-export default function LeaveTabs({ actor }: Props) {
+export default function LeaveTabs({ hrRank }: Props) {
   const pathname = usePathname();
 
   const tabs: Tab[] = [
     { href: '/leave', label: 'Dashboard', show: true },
-    { href: '/leave/approvals', label: 'Approvals', show: canViewLeaveApprovals(actor.rank) },
-    { href: '/leave/admin', label: 'Admin', show: canManageLeaveAdmin(actor.role, actor.rank) },
+    // Always shown: visibility of pending items is enforced by the backend's
+    // own query scoping (you only ever see requests you're the resolved
+    // approver for, your direct reports, or — with HR manager+/admin rank —
+    // the full org queue), not by a platform-rank gate here. See
+    // hr-service's leave.service.ts#listTeamRequests.
+    { href: '/leave/approvals', label: 'Approvals', show: true },
+    { href: '/leave/admin', label: 'Admin', show: canManageLeaveAdmin(hrRank.rank) },
   ];
 
   return (

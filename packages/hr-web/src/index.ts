@@ -10,7 +10,8 @@ export { default as AttendanceDashboardShell } from './components/attendance/Att
 export { default as AttendanceTeamShell } from './components/attendance/AttendanceTeamShell';
 export { default as AttendanceAdminShell } from './components/attendance/AttendanceAdminShell';
 
-export { canManageLeaveAdmin, canViewLeaveApprovals } from './lib/leave/format';
-export { canViewAttendanceTeam, canManageAttendanceAdmin } from './lib/attendance/format';
+export { canManageLeaveAdmin } from './lib/leave/format';
+export { canManageAttendanceAdmin } from './lib/attendance/format';
+export { getHrRank, type HrRank } from './lib/hr-rank';
 
 export { leave, hrEmployees, holidays, holidayCalendars, shifts, shiftAssignments, attendance } from './lib/api/client';

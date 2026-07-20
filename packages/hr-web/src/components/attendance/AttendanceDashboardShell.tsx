@@ -5,6 +5,7 @@ import type { SessionUser } from '@crm/types';
 import { attendance as attendanceApi, shiftAssignments as shiftAssignmentsApi } from '../../lib/api/client';
 import type { AttendanceDayRow, AttendanceRules, PunchResult, RegularizationView, ShiftAssignmentView } from '../../lib/attendance/types';
 import { todayIso } from '../../lib/attendance/format';
+import type { HrRank } from '../../lib/hr-rank';
 import AttendanceTabs from './AttendanceTabs';
 import TodayCard from './TodayCard';
 import PunchModal from './PunchModal';
@@ -15,9 +16,10 @@ import MyRegularizationsList from './MyRegularizationsList';
 
 interface Props {
   actor: SessionUser;
+  hrRank: HrRank;
 }
 
-export default function AttendanceDashboardShell({ actor }: Props) {
+export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
   const [rules, setRules] = useState<AttendanceRules | null>(null);
   const [todayRow, setTodayRow] = useState<AttendanceDayRow | undefined>(undefined);
   const [shift, setShift] = useState<ShiftAssignmentView | undefined>(undefined);
@@ -80,7 +82,7 @@ export default function AttendanceDashboardShell({ actor }: Props) {
 
   return (
     <div className="w-full space-y-6 px-3 py-4 sm:px-4">
-      <AttendanceTabs actor={actor} />
+      <AttendanceTabs hrRank={hrRank} />
 
       <div>
         <h1 className="text-2xl font-bold text-[#0F172A]">My Attendance</h1>

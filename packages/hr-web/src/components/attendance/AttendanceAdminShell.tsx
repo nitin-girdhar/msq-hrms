@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { SessionUser } from '@crm/types';
+import type { HrRank } from '../../lib/hr-rank';
 import AttendanceTabs from './AttendanceTabs';
 import RulesEditor from './admin/RulesEditor';
 import ShiftsManager from './admin/ShiftsManager';
@@ -10,6 +11,7 @@ import MonthlySummaryReport from './admin/MonthlySummaryReport';
 
 interface Props {
   actor: SessionUser;
+  hrRank: HrRank;
 }
 
 type Section = 'rules' | 'shifts' | 'assignments' | 'reports';
@@ -21,7 +23,7 @@ const SECTIONS: { id: Section; label: string }[] = [
   { id: 'reports', label: 'Reports' },
 ];
 
-export default function AttendanceAdminShell({ actor }: Props) {
+export default function AttendanceAdminShell({ actor, hrRank }: Props) {
   const [section, setSection] = useState<Section>('rules');
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -29,7 +31,7 @@ export default function AttendanceAdminShell({ actor }: Props) {
 
   return (
     <div className="w-full space-y-6 px-3 py-4 sm:px-4">
-      <AttendanceTabs actor={actor} />
+      <AttendanceTabs hrRank={hrRank} />
 
       <div>
         <h1 className="text-2xl font-bold text-[#0F172A]">Attendance Administration</h1>

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { SessionUser } from '@crm/types';
+import type { HrRank } from '../../lib/hr-rank';
 import LeaveTabs from './LeaveTabs';
 import PoliciesManager from './admin/PoliciesManager';
 import LeaveCycleSetting from './admin/LeaveCycleSetting';
@@ -11,6 +12,7 @@ import EmployeeProfilesManager from './admin/EmployeeProfilesManager';
 
 interface Props {
   actor: SessionUser;
+  hrRank: HrRank;
 }
 
 type Section = 'policies' | 'cycle' | 'holidays' | 'adjustment' | 'employees';
@@ -23,7 +25,7 @@ const SECTIONS: { id: Section; label: string }[] = [
   { id: 'employees', label: 'Employees' },
 ];
 
-export default function LeaveAdminShell({ actor }: Props) {
+export default function LeaveAdminShell({ actor, hrRank }: Props) {
   const [section, setSection] = useState<Section>('policies');
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -31,7 +33,7 @@ export default function LeaveAdminShell({ actor }: Props) {
 
   return (
     <div className="w-full space-y-6 px-3 py-4 sm:px-4">
-      <LeaveTabs actor={actor} />
+      <LeaveTabs hrRank={hrRank} />
 
       <div>
         <h1 className="text-2xl font-bold text-[#0F172A]">Leave Administration</h1>

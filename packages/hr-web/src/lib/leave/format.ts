@@ -1,7 +1,6 @@
 // Pure leave-module helpers — no React, no I/O. Shared by the leave composites
 // and the server pages (role gating).
 
-import type { UserRole } from '@crm/auth-constants';
 import type { HalfDay, LeaveStatusName } from './types';
 
 export const MONTHS = [
@@ -9,17 +8,19 @@ export const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ] as const;
 
-/** Managers (rank ≥ 60), hr_admin and org_admin can see the approver queue. */
-export function canViewLeaveApprovals(rank: number): boolean {
-  return rank >= 60;
+/**
+ * HR admin (rank ≥ 80) can manage leave configuration. `rank` must be the
+ * caller's resolved HR product rank (hr.member_roles, via getHrRank/GET
+ * /hr/me) — never SessionUser.rank, which is the platform/session rank, a
+ * different scale that only coincidentally overlaps for org/tenant admins.
+ */
+export function canManageLeaveAdmin(rank: number): boolean {
+  return rank >= 80;
 }
 
-/** hr_admin (rank 75) or org_admin+ (rank ≥ 80) can manage leave configuration. */
-export function canManageLeaveAdmin(role: UserRole, rank: number): boolean {
-  return role === 'hr_admin' || rank >= 80;
-}
-
-/** A tenant_admin (rank ≥ 90) may additionally write tenant-wide policies/settings. */
+/** A tenant_admin (rank ≥ 90) may additionally write tenant-wide policies/settings.
+ *  This one IS the platform/session rank — tenant_admin is a platform-tier
+ *  concept, not an HR product role, so SessionUser.rank is the correct input. */
 export function canManageTenantLeave(rank: number): boolean {
   return rank >= 90;
 }

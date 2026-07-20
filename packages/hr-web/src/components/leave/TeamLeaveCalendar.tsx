@@ -37,7 +37,8 @@ export default function TeamLeaveCalendar() {
     const from = `${year}-${String(month).padStart(2, '0')}-01`;
     const to = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
     Promise.all([
-      leaveApi.teamRequests({ status: 'approved', from, to, limit: 200 }),
+      // 100 is the backend's validated max (leave.schema.ts) for one org/month.
+      leaveApi.teamRequests({ status: 'approved', from, to, limit: 100 }),
       holidaysApi.list({ year }),
     ])
       .then(([req, hol]) => {
