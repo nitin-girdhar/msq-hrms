@@ -1,4 +1,4 @@
-.PHONY: dev dev-infra dev-services stop build install migrate migrate-leave migrate-attendance accrue-leave accrue-leave-cycle-end resolve-attendance seed-admin seed-data lint typecheck test clean clean-all help db-shell build-docker up down logs ship
+.PHONY: dev dev-services stop build install migrate migrate-leave migrate-attendance accrue-leave accrue-leave-cycle-end resolve-attendance seed-admin lint typecheck test clean clean-all help db-shell build-docker up down logs
 
 # ── Variables ──────────────────────────────────────────────────────────────────
 COMPOSE := docker compose
@@ -14,13 +14,12 @@ help: ## Show this help
 install: ## Install all workspace dependencies
 	$(PNPM) install
 
-dev: install dev-infra ## Start the full stack locally (Postgres + all services + web)
+# No dev-infra target here — this repo owns no Postgres container; start
+# msq-core's `make dev-infra` first.
+dev: install ## Start HR service + web locally (requires msq-core's infra running)
 	$(PNPM) turbo dev --concurrency 20
 
-dev-infra: ## Start Postgres in Docker and wait until healthy
-	$(COMPOSE) up -d --wait postgres
-
-dev-services: install ## Start all backend services and the API gateway (excludes web apps)
+dev-services: install ## Start HR backend service (excludes web apps)
 	$(PNPM) turbo dev --filter='!./apps/*' --concurrency 12
 
 # ── Database ───────────────────────────────────────────────────────────────────
@@ -35,16 +34,14 @@ define run_sql
 	docker exec $(DB_CONTAINER) psql -U $(POSTGRES_USER) -d $(DB_NAME) -f /tmp/$(notdir $(1))
 endef
 
+# migrate/seed-admin run db_scripts/01_init-db.sql & 02-seed-tenants-orgs-users.sql,
+# which are still schema-interleaved (shared iam/entity/geo alongside hr/task) —
+# this repo cannot bootstrap a database alone, see db_scripts/db_deploy.ps1.
 migrate: ## Run database schema (db_scripts/01_init-db.sql)
 	$(call run_sql,db_scripts/01_init-db.sql)
 
 seed-admin: ## Seed tenants, orgs, and users (db_scripts/02-seed-tenants-orgs-users.sql)
 	$(call run_sql,db_scripts/02-seed-tenants-orgs-users.sql)
-
-seed-data: ## Seed leads, interactions, and follow-ups (run after seed-admin)
-	$(call run_sql,db_scripts/03-seed-leads-bulk.sql)
-	$(call run_sql,db_scripts/04-seed-interactions-followups.sql)
-	$(call run_sql,db_scripts/05-cleanup-seed-helpers.sql)
 
 migrate-leave: ## Apply leave-management schema (db_scripts/11 + 12)
 	$(call run_sql,db_scripts/11_init-leave-management.sql)
@@ -65,18 +62,12 @@ resolve-attendance: ## Run the nightly attendance resolution job (idempotent, la
 db-shell: ## Open a psql shell in the Postgres container
 	docker exec -it $(DB_CONTAINER) psql -U $(POSTGRES_USER) -d $(DB_NAME)
 
-setup-env: ## Generate per-service .env files from root .env
-	node scripts/setup-env.js
-
 # ── Build ──────────────────────────────────────────────────────────────────────
 build: install ## Build all packages and services
 	$(PNPM) turbo build
 
 build-docker: ## Build all Docker images
 	$(COMPOSE) build
-
-ship: ## Build + package Docker images for offline shipping (see scripts/docker-load.md)
-	scripts/docker-ship.sh $(SERVICES)
 
 # ── Code Quality ───────────────────────────────────────────────────────────────
 lint: ## Lint all workspaces
@@ -102,8 +93,9 @@ logs: ## Stream Docker Compose logs
 	$(COMPOSE) logs -f
 
 # ── Cleanup ────────────────────────────────────────────────────────────────────
+# scripts/clean.js lives in msq-core only — this repo uses turbo's own clean.
 clean: ## Remove build artefacts (dist/.turbo/tsbuildinfo/.next in every workspace)
-	node scripts/clean.js build
+	$(PNPM) turbo clean
 
-clean-all: ## Remove build artefacts AND all node_modules (full reset — run make install after)
-	node scripts/clean.js all
+clean-all: clean ## Remove build artefacts AND all node_modules (full reset — run make install after)
+	$(PNPM) exec rimraf node_modules "packages/*/node_modules" "services/*/node_modules" "apps/*/node_modules"
