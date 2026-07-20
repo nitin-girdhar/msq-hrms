@@ -1,7 +1,7 @@
 import { asc, and, eq } from 'drizzle-orm';
-import { withTenantConfigTx } from '@crm/db';
-import type { RoleTxContext } from '@crm/db';
-import { leaveTypesTable } from '@crm/db/schema';
+import { withTenantConfigTx } from '@platform/db';
+import type { RoleTxContext } from '@platform/db';
+import { leaveTypesTable } from '@platform/db/schema';
 
 type LeaveTypeInsert = typeof leaveTypesTable.$inferInsert;
 type LeaveTypeUpdate = Partial<LeaveTypeInsert>;

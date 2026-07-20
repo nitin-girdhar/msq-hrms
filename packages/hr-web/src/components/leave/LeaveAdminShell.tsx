@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { SessionUser } from '@crm/types';
+import type { SessionUser } from '@platform/types';
 import type { HrRank } from '../../lib/hr-rank';
 import LeaveTabs from './LeaveTabs';
 import PoliciesManager from './admin/PoliciesManager';

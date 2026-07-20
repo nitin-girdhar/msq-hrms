@@ -1,5 +1,5 @@
-import type { RoleTxContext } from '@crm/db';
-import { logActivity } from '@crm/audit-log';
+import type { RoleTxContext } from '@platform/db';
+import { logActivity } from '@platform/audit-log';
 import { NotFoundError, ForbiddenError } from '../../../lib/errors.js';
 import * as repo from './employees.repository.js';
 import type {

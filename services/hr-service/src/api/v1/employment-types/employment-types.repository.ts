@@ -1,7 +1,7 @@
 import { asc, and, eq } from 'drizzle-orm';
-import { withTenantConfigTx } from '@crm/db';
-import type { RoleTxContext } from '@crm/db';
-import { employmentTypesTable } from '@crm/db/schema';
+import { withTenantConfigTx } from '@platform/db';
+import type { RoleTxContext } from '@platform/db';
+import { employmentTypesTable } from '@platform/db/schema';
 
 type EmploymentTypeInsert = typeof employmentTypesTable.$inferInsert;
 type EmploymentTypeUpdate = Partial<EmploymentTypeInsert>;

@@ -16,7 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { sql } from 'drizzle-orm';
-import { withRoleTx, withServiceTx, type RoleTxContext, type DrizzleTx } from '@crm/db';
+import { withRoleTx, withServiceTx, type RoleTxContext, type DrizzleTx } from '@platform/db';
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../../lib/errors.js';
 import { haversineMeters } from '../../../lib/geo/haversine.js';
 import {

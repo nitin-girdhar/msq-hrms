@@ -5,7 +5,7 @@
 // repository, matching the established employees module split.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { logActivity } from '@crm/audit-log';
+import { logActivity } from '@platform/audit-log';
 import {
   canManageLeave,
   canOverrideLeaveApproval,

@@ -1,5 +1,5 @@
 import type { FastifyRequest } from 'fastify';
-import { getActiveTenantModules } from '@crm/db';
+import { getActiveTenantModules } from '@platform/db';
 import { ForbiddenError } from '../lib/errors.js';
 
 export type HrModule = 'leave' | 'attendance' | 'tasks';

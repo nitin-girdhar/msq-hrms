@@ -19,7 +19,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { sql } from 'drizzle-orm';
-import type { DrizzleTx } from '@crm/db';
+import type { DrizzleTx } from '@platform/db';
 
 export interface EffectiveLeavePolicy {
   id: string;

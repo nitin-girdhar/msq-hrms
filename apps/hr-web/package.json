@@ -16,8 +16,8 @@
     "clean": "rimraf .next"
   },
   "dependencies": {
-    "@crm/auth-constants": "workspace:*",
-    "@crm/types": "workspace:*",
+    "@platform/auth-constants": "workspace:*",
+    "@platform/types": "workspace:*",
     "@platform/ui-kit": "workspace:*",
     "@platform/authz": "workspace:*",
     "@hr/authz": "workspace:*",

@@ -1,4 +1,4 @@
-import { ROLES } from '@crm/auth-constants';
+import { ROLES } from '@platform/auth-constants';
 import type { NavItem } from '@platform/ui-kit/shell';
 
 // HR product nav. Attendance + Leave are available to every employee that has

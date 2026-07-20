@@ -4,7 +4,7 @@
 // Mirrors the leave module's service/repository split.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { logActivity } from '@crm/audit-log';
+import { logActivity } from '@platform/audit-log';
 import {
   canManageAttendance,
   canManageShifts,

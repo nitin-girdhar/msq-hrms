@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import type { SessionUser } from '@crm/types';
+import type { SessionUser } from '@platform/types';
 import { attendance as attendanceApi } from '../../lib/api/client';
 import type { RegularizationView, TeamDayRow } from '../../lib/attendance/types';
 import { todayIso } from '../../lib/attendance/format';

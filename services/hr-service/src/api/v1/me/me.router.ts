@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { resolveMemberRole } from '@crm/db';
+import { resolveMemberRole } from '@platform/db';
 import { authenticate } from '../../../middleware/auth.middleware.js';
 
 // The caller's resolved HR product role/rank (hr.member_roles) for their

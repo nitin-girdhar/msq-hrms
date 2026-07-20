@@ -1,5 +1,5 @@
-import { toApiRow, toApiRows } from '@crm/db';
-import type { RoleTxContext } from '@crm/db';
+import { toApiRow, toApiRows } from '@platform/db';
+import type { RoleTxContext } from '@platform/db';
 import { ConflictError, NotFoundError } from '../../../lib/errors.js';
 import * as repo from './leave-types.repository.js';
 import type { CreateLeaveTypeInput, UpdateLeaveTypeInput } from './leave-types.schema.js';

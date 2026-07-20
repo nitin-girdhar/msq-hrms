@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { SQL, SQLChunk } from 'drizzle-orm';
 import { resolveApprovers } from '../resolve-approvers';
-import type { DrizzleTx } from '@crm/db';
+import type { DrizzleTx } from '@platform/db';
 
 // Reconstructs the literal SQL text of a drizzle `sql` template so a test can assert
 // *which tables a query touches* without a live database. resolveApprovers builds every

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { getActiveTenantModules } from '@crm/db';
+import { getActiveTenantModules } from '@platform/db';
 import { authenticate } from '../../../middleware/auth.middleware.js';
 
 // Small, read-only endpoint: which entity.tenant_modules are active for the

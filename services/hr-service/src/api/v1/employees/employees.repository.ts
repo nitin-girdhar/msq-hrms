@@ -1,7 +1,7 @@
 import { sql, eq, and } from 'drizzle-orm';
-import { withRoleTx } from '@crm/db';
-import type { RoleTxContext, DrizzleTx } from '@crm/db';
-import { employeeProfilesTable, departmentsTable, designationsTable, employmentTypesTable } from '@crm/db/schema';
+import { withRoleTx } from '@platform/db';
+import type { RoleTxContext, DrizzleTx } from '@platform/db';
+import { employeeProfilesTable, departmentsTable, designationsTable, employmentTypesTable } from '@platform/db/schema';
 import { BadRequestError, ConflictError } from '../../../lib/errors.js';
 import type {
   CreateEmployeeProfileInput,

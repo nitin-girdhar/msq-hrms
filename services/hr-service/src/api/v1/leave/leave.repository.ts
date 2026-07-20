@@ -21,7 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { sql } from 'drizzle-orm';
-import { withRoleTx, withServiceTx, type RoleTxContext, type DrizzleTx } from '@crm/db';
+import { withRoleTx, withServiceTx, type RoleTxContext, type DrizzleTx } from '@platform/db';
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../../lib/errors.js';
 import { computeLeaveDays, type HalfDay } from '../../../lib/leave/compute-leave-days.js';
 import { resolveApprovers } from '../../../lib/leave/resolve-approvers.js';

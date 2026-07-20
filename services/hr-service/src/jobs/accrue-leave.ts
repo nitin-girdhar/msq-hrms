@@ -21,7 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { sql } from 'drizzle-orm';
-import { withServiceTx, closeAllPools, type DrizzleTx } from '@crm/db';
+import { withServiceTx, closeAllPools, type DrizzleTx } from '@platform/db';
 import {
   resolveEffectivePolicy,
   resolveCycleStartMonth,

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { SessionUser } from '@crm/types';
+import type { SessionUser } from '@platform/types';
 import { leave as leaveApi } from '../../../lib/api/client';
 import { MONTHS, canManageTenantLeave } from '../../../lib/leave/format';
 

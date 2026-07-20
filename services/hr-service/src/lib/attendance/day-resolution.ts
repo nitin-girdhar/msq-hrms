@@ -19,7 +19,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { sql } from 'drizzle-orm';
-import type { DrizzleTx } from '@crm/db';
+import type { DrizzleTx } from '@platform/db';
 import { weekdayOf, parseTimeToMinutes, isLateArrival, isEarlyExit } from './time.js';
 import { resolveEventStatus, DEFAULT_THRESHOLDS } from './resolve.js';
 

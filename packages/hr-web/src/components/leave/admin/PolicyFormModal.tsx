@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Modal } from '@platform/ui-kit';
-import type { SessionUser } from '@crm/types';
+import type { SessionUser } from '@platform/types';
 import { leave as leaveApi, type CreatePolicyBody } from '../../../lib/api/client';
 import { canManageTenantLeave } from '../../../lib/leave/format';
 
