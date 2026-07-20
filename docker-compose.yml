@@ -1,4 +1,4 @@
-name: platform-hrms
+name: msq
 
 # Per-product DB login (P1.2/D8) — read/write only hr + read-only iam/entity/geo.
 # DB_CONTAINER_NAME/DB_NAME point at msq-core's Postgres container — see the
@@ -24,8 +24,8 @@ x-web-public-args: &web-public-args
 services:
   hr-service:
     build:
-      context: .
-      dockerfile: services/hr-service/Dockerfile
+      context: ..
+      dockerfile: msq-hrms/services/hr-service/Dockerfile
     restart: unless-stopped
     env_file: .env
     environment:
@@ -93,7 +93,7 @@ services:
       POSTGRES_PASSWORD: ${COMPREFACE_POSTGRES_PASSWORD}
       POSTGRES_URL: jdbc:postgresql://compreface-postgres-db:5432/${COMPREFACE_POSTGRES_DB}
       SPRING_PROFILES_ACTIVE: dev
-      API_JAVA_OPTS: -Xmx2g      # tune to host RAM
+      API_JAVA_OPTS: -Xmx2g # tune to host RAM
       SAVE_IMAGES_TO_DB: "true"
       CONNECTION_TIMEOUT: 10000
       READ_TIMEOUT: 60000
@@ -143,8 +143,8 @@ services:
 
   hr-web:
     build:
-      context: .
-      dockerfile: apps/hr-web/Dockerfile
+      context: ..
+      dockerfile: msq-hrms/apps/hr-web/Dockerfile
       args: *web-public-args
     restart: unless-stopped
     env_file: .env

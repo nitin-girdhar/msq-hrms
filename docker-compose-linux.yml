@@ -1,4 +1,4 @@
-name: platform-hrms
+name: msq
 
 x-db-env-hr: &db-env-hr
   DATABASE_URL: postgres://${DB_HR_SVC_USER}:${DB_HR_SVC_PASSWORD}@${DB_CONTAINER_NAME}:5432/${DB_NAME}
