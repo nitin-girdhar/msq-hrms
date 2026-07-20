@@ -1,52 +1,20 @@
+# Self-contained image built from a `pnpm deploy` output.
+# See docs/Platform_Architecture_Decisions.md (D5) and scripts/docker-ship.sh /
+# scripts/docker-load.md for how to ship and run this image.
+# Build from the repo root: `docker build -f services/hr-service/Dockerfile .`
 FROM node:20-alpine AS base
 RUN npm install -g pnpm@9.15.0
-WORKDIR /app
+WORKDIR /repo
 
-FROM base AS deps
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
-COPY packages/types/package.json packages/types/
-COPY packages/auth-constants/package.json packages/auth-constants/
-COPY packages/permissions/package.json packages/permissions/
-COPY packages/db/package.json packages/db/
-COPY packages/validation/package.json packages/validation/
-COPY packages/audit-log/package.json packages/audit-log/
-COPY packages/service-auth/package.json packages/service-auth/
-COPY services/hr-service/package.json services/hr-service/
-RUN echo "shamefully-hoist=true" > .npmrc
+FROM base AS builder
+COPY . .
 RUN pnpm install --frozen-lockfile
-
-FROM deps AS builder
-COPY tsconfig.base.json ./
-COPY packages/ packages/
-COPY services/hr-service/ services/hr-service/
-RUN pnpm --filter @crm/auth-constants build
-RUN pnpm --filter @crm/types build
-RUN pnpm --filter @crm/permissions build
-RUN pnpm --filter @crm/db build
-RUN pnpm --filter @crm/validation build
-RUN pnpm --filter @crm/audit-log build
-RUN pnpm --filter @crm/service-auth build
-RUN pnpm --filter @crm/hr-service build
+RUN pnpm --filter @crm/hr-service... build
+RUN pnpm --filter @crm/hr-service deploy --prod /app
 
 FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=builder /app/packages/types/dist ./packages/types/dist
-COPY --from=builder /app/packages/auth-constants/dist ./packages/auth-constants/dist
-COPY --from=builder /app/packages/permissions/dist ./packages/permissions/dist
-COPY --from=builder /app/packages/db/dist ./packages/db/dist
-COPY --from=builder /app/packages/validation/dist ./packages/validation/dist
-COPY --from=builder /app/packages/audit-log/dist ./packages/audit-log/dist
-COPY --from=builder /app/packages/service-auth/dist ./packages/service-auth/dist
-COPY --from=builder /app/services/hr-service/dist ./services/hr-service/dist
-COPY packages/types/package.json ./packages/types/
-COPY packages/auth-constants/package.json ./packages/auth-constants/
-COPY packages/permissions/package.json ./packages/permissions/
-COPY packages/db/package.json ./packages/db/
-COPY packages/validation/package.json ./packages/validation/
-COPY packages/audit-log/package.json ./packages/audit-log/
-COPY packages/service-auth/package.json ./packages/service-auth/
-COPY services/hr-service/package.json ./services/hr-service/
+COPY --from=builder /app /app
 EXPOSE 4007
-CMD ["node", "services/hr-service/dist/server.js"]
+CMD ["node", "dist/server.js"]

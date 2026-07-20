@@ -26,6 +26,7 @@ import { resolveEventStatus, DEFAULT_THRESHOLDS } from './resolve.js';
 export interface DayEmployee {
   user_id: string;
   org_id: string;
+  tenant_id: string;
   timezone: string;
   weekly_off_pattern: number[];
 }
@@ -178,7 +179,7 @@ export async function upsertResolvedDay(
        is_late, is_early_exit, leave_request_id, resolved_at, resolution_source)
     VALUES
       (${emp.user_id}, ${emp.org_id}, ${date}::date, ${r.firstIn}, ${r.lastOut}, ${r.workedMinutes},
-       (SELECT id FROM hr.attendance_statuses WHERE name = ${r.status}),
+       (SELECT id FROM hr.attendance_statuses WHERE tenant_id = ${emp.tenant_id} AND name = ${r.status}),
        ${r.isLate}, ${r.isEarlyExit}, ${r.leaveRequestId}, CLOCK_TIMESTAMP(), ${r.source})
     ${onConflict}
   `);

@@ -2,6 +2,9 @@
   "name": "@crm/hr-service",
   "version": "0.0.1",
   "private": true,
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch --env-file ../../.env src/server.ts",
@@ -15,12 +18,13 @@
     "resolve-attendance": "tsx --env-file ../../.env src/jobs/resolve-attendance.ts"
   },
   "dependencies": {
+    "@platform/authz": "workspace:*",
+    "@hr/authz": "workspace:*",
     "@crm/audit-log": "workspace:*",
     "@crm/db": "workspace:*",
-    "@crm/permissions": "workspace:*",
     "@crm/service-auth": "workspace:*",
     "@crm/types": "workspace:*",
-    "@crm/validation": "workspace:*",
+    "@hr/validation": "workspace:*",
     "drizzle-orm": "^0.44.0",
     "exceljs": "^4.4.0",
     "fastify": "^5.2.1",

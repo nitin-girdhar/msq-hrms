@@ -6,7 +6,7 @@ export {
   updateDepartmentSchema,
   createDesignationSchema,
   updateDesignationSchema,
-} from '@crm/validation';
+} from '@hr/validation';
 export type {
   CreateEmployeeProfileInput,
   UpdateEmployeeProfileInput,
@@ -15,4 +15,4 @@ export type {
   UpdateDepartmentInput,
   CreateDesignationInput,
   UpdateDesignationInput,
-} from '@crm/validation';
+} from '@hr/validation';

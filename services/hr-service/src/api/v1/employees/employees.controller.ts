@@ -1,5 +1,5 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { canManageEmployees } from '@crm/permissions';
+import { canManageEmployees } from '@hr/authz';
 import { ForbiddenError } from '../../../lib/errors.js';
 import * as service from './employees.service.js';
 import type {

@@ -52,7 +52,7 @@ function parseArgs(argv: string[]): Args {
 
 async function loadEmployees(tx: DrizzleTx): Promise<DayEmployee[]> {
   return (await tx.execute(sql`
-    SELECT ep.user_id::text, ep.org_id::text, o.timezone,
+    SELECT ep.user_id::text, ep.org_id::text, ep.tenant_id::text, o.timezone,
            ep.weekly_off_pattern AS weekly_off_pattern
     FROM hr.employee_profiles ep
     JOIN entity.organizations o ON o.id = ep.org_id

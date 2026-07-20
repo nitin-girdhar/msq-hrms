@@ -10,7 +10,7 @@ import {
   canManageShifts,
   canViewTeamAttendance,
   canOverrideAttendanceApproval,
-} from '@crm/permissions';
+} from '@hr/authz';
 import { ForbiddenError, ValidationError } from '../../../lib/errors.js';
 import { publishAttendanceEvent } from '../../../lib/events.js';
 import * as repo from './attendance.repository.js';
@@ -27,7 +27,7 @@ import type {
   ListRegularizationsInput,
   FaceEnrollInput,
   FaceReviewsQueryInput,
-} from '@crm/validation';
+} from '@hr/validation';
 
 type PunchMeta = { ip: string | null; userAgent: string | null };
 

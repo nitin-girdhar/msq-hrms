@@ -16,7 +16,7 @@ export {
   faceEnrollSchema,
   faceReviewsQuerySchema,
   faceReviewActionSchema,
-} from '@crm/validation';
+} from '@hr/validation';
 export type {
   CheckInInput,
   CheckOutInput,
@@ -35,4 +35,4 @@ export type {
   FaceEnrollInput,
   FaceReviewsQueryInput,
   FaceReviewActionInput,
-} from '@crm/validation';
+} from '@hr/validation';

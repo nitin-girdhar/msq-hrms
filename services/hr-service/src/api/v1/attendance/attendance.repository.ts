@@ -4,7 +4,7 @@
 // Conventions (mirroring services/hr-service/src/api/v1/leave):
 //   - Own-scope reads go through withRoleTx so hr.* RLS scopes them.
 //   - Punch writes (event insert + attendance_days upsert) and other cross-user
-//     writes run in the SERVICE transaction (crm_service, BYPASSRLS) because
+//     writes run in the SERVICE transaction (root_service, BYPASSRLS) because
 //     attendance_days is service-write-only and the two writes must be atomic.
 //     Authorization is enforced in the service layer; every query is explicitly
 //     scoped by the gateway-verified org_id / user_id — never a client id.
@@ -47,7 +47,7 @@ import type {
   CreateRegularizationInput,
   ListRegularizationsInput,
   FaceReviewsQueryInput,
-} from '@crm/validation';
+} from '@hr/validation';
 
 export type AttendanceCtx = RoleTxContext & { rank: number };
 type Row = Record<string, unknown>;
@@ -352,6 +352,7 @@ export async function punch(
     const dayStatus = await upsertDayFromEvents(tx, {
       userId: ctx.user_id,
       orgId: ctx.org_id,
+      tenantId: ctx.tenant_id,
       workDate: prep.workDate,
       tz: prep.org.timezone,
       isNight: prep.isNight,
@@ -385,6 +386,7 @@ async function upsertDayFromEvents(
   p: {
     userId: string;
     orgId: string;
+    tenantId: string;
     workDate: string;
     tz: string;
     isNight: boolean;
@@ -435,7 +437,7 @@ async function upsertDayFromEvents(
        is_late, is_early_exit, resolved_at, resolution_source)
     VALUES
       (${p.userId}, ${p.orgId}, ${p.workDate}::date, ${row.first_in}, ${row.last_out}, ${workedMinutes},
-       (SELECT id FROM hr.attendance_statuses WHERE name = ${statusName}),
+       (SELECT id FROM hr.attendance_statuses WHERE tenant_id = ${p.tenantId} AND name = ${statusName}),
        ${isLate}, ${isEarly}, CLOCK_TIMESTAMP(), 'events')
     ON CONFLICT (user_id, work_date) DO UPDATE SET
       first_in = EXCLUDED.first_in, last_out = EXCLUDED.last_out, worked_minutes = EXCLUDED.worked_minutes,
@@ -852,7 +854,7 @@ export async function approveRegularization(
           (user_id, org_id, work_date, first_in, last_out, worked_minutes, status_id, resolved_at, resolution_source)
         VALUES
           (${reg.user_id}, ${ctx.org_id}, ${reg.work_date}::date, ${reg.requested_in}, ${reg.requested_out}, ${worked},
-           (SELECT id FROM hr.attendance_statuses WHERE name = ${reg.requested_status_name}),
+           (SELECT id FROM hr.attendance_statuses WHERE tenant_id = ${ctx.tenant_id} AND name = ${reg.requested_status_name}),
            CLOCK_TIMESTAMP(), 'regularization')
         ON CONFLICT (user_id, work_date) DO UPDATE SET
           first_in = EXCLUDED.first_in, last_out = EXCLUDED.last_out, worked_minutes = EXCLUDED.worked_minutes,
@@ -1153,6 +1155,7 @@ export async function rejectFaceReview(ctx: AttendanceCtx, eventId: string, isOv
     const emp: DayEmployee = {
       user_id: evt!.user_id,
       org_id: ctx.org_id,
+      tenant_id: ctx.tenant_id,
       timezone: org.timezone,
       weekly_off_pattern: offRows[0]?.p ?? [0, 6],
     };

@@ -1,7 +1,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Approver-chain resolution.
 //
-// The org's approval chain walks iam.users.manager_id upward `levels` steps.
+// The org's approval chain walks the effective-dated HR reporting hierarchy
+// (hr.reporting_lines) upward `levels` steps. The chain is resolved as of the
+// current date (the request's apply time). iam.users.manager_id is NO LONGER
+// consulted here — it is an optional org default that only seeds the initial
+// reporting lines (db_scripts/21). See Platform_Architecture_Decisions.
+//
 // Rules (Platform_Expansion_Plan §4.2):
 //   - Skip managers who are inactive or not active in the org — keep walking
 //     up past them; a skipped manager does NOT consume a level.
@@ -13,7 +18,8 @@
 //
 // The graph-walking logic is a pure function (`buildApproverChain`) so every
 // case is unit-testable without a database. `resolveApprovers` pre-fetches the
-// org's user graph in two queries and hands it to the pure function.
+// org's reporting graph + active-membership set and hands it to the pure
+// function.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { sql } from 'drizzle-orm';
@@ -72,15 +78,10 @@ export function buildApproverChain(
   return approvers;
 }
 
-interface UserRow {
-  id: string;
-  manager_id: string | null;
-  is_active: boolean;
-}
-
 /**
- * DB-backed approver resolution. Pre-fetches the tenant's user graph and the
- * org's active-membership set, then delegates to `buildApproverChain`.
+ * DB-backed approver resolution. Pre-fetches the org's effective reporting
+ * graph (as of today), the org's active-membership set, and the deterministic
+ * admin fallback, then delegates to `buildApproverChain`.
  */
 export async function resolveApprovers(
   tx: DrizzleTx,
@@ -88,12 +89,24 @@ export async function resolveApprovers(
   requesterId: string,
   levels: number,
 ): Promise<ApproverAssignment[]> {
-  // manager_id chain may traverse users who are not org-active (they get
-  // skipped but we still need their manager_id), so load the full user graph.
-  const userRows = (await tx.execute(sql`
-    SELECT id::text AS id, manager_id::text AS manager_id, is_active
-    FROM iam.users
-  `)) as unknown as UserRow[];
+  // The reporting graph is the org's currently-effective reporting lines. A
+  // line is effective today when effective_from <= today and effective_to is
+  // open or in the future. The exclusion constraint guarantees at most one
+  // active line per user, so this is an unambiguous user -> manager map.
+  const reportingRows = (await tx.execute(sql`
+    SELECT user_id::text AS user_id, manager_id::text AS manager_id
+    FROM hr.reporting_lines
+    WHERE org_id = ${orgId}
+      AND NOT is_deleted
+      AND effective_from <= CURRENT_DATE
+      AND (effective_to IS NULL OR effective_to > CURRENT_DATE)
+  `)) as unknown as Array<{ user_id: string; manager_id: string }>;
+
+  // is_active (global) is still an IAM concern; a manager in the reporting
+  // chain who is globally inactive is skipped (does not consume a level).
+  const activeRows = (await tx.execute(sql`
+    SELECT id::text AS id FROM iam.users WHERE is_active AND NOT is_deleted
+  `)) as unknown as Array<{ id: string }>;
 
   const orgActiveRows = (await tx.execute(sql`
     SELECT user_id::text AS user_id
@@ -112,16 +125,14 @@ export async function resolveApprovers(
     LIMIT 1
   `)) as unknown as Array<{ user_id: string }>;
 
-  const byId = new Map<string, UserRow>(userRows.map((u) => [u.id, u]));
+  const managerOf = new Map<string, string>(reportingRows.map((r) => [r.user_id, r.manager_id]));
+  const globallyActive = new Set(activeRows.map((r) => r.id));
   const orgActive = new Set(orgActiveRows.map((r) => r.user_id));
   const fallbackAdmin = fallbackRows[0]?.user_id ?? null;
 
   const graph: ApproverGraph = {
-    managerOf: (userId) => byId.get(userId)?.manager_id ?? null,
-    isActiveInOrg: (userId) => {
-      const u = byId.get(userId);
-      return !!u && u.is_active && orgActive.has(userId);
-    },
+    managerOf: (userId) => managerOf.get(userId) ?? null,
+    isActiveInOrg: (userId) => globallyActive.has(userId) && orgActive.has(userId),
     fallbackAdmin: () => fallbackAdmin,
   };
 

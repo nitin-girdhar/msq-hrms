@@ -11,7 +11,7 @@ import {
   canOverrideLeaveApproval,
   canViewTeamLeave,
   isTenantLeaveAdmin,
-} from '@crm/permissions';
+} from '@hr/authz';
 import { ForbiddenError } from '../../../lib/errors.js';
 import { publishLeaveEvent } from '../../../lib/events.js';
 import * as repo from './leave.repository.js';
@@ -29,7 +29,7 @@ import type {
   UpdateHolidayInput,
   CreateHolidayCalendarInput,
   UpdateHolidayCalendarInput,
-} from '@crm/validation';
+} from '@hr/validation';
 
 // ── Requests ──────────────────────────────────────────────────────────────────
 export async function applyLeave(ctx: LeaveCtx, data: ApplyLeaveRequestInput) {
@@ -180,7 +180,7 @@ export async function listPolicies(ctx: LeaveCtx, filters: ListPoliciesInput) {
 export async function createPolicy(ctx: LeaveCtx, data: CreatePolicyInput) {
   const tenantWide = data.org_id == null;
   if (tenantWide) {
-    if (!isTenantLeaveAdmin(ctx.role, ctx.rank)) {
+    if (!isTenantLeaveAdmin(ctx.role)) {
       throw new ForbiddenError('Only a tenant admin can create a tenant-wide leave policy');
     }
   } else if (!canManageLeave(ctx.role, ctx.rank)) {
@@ -200,7 +200,7 @@ export async function updatePolicy(ctx: LeaveCtx, id: string, data: UpdatePolicy
   if (!canManageLeave(ctx.role, ctx.rank)) {
     throw new ForbiddenError('Only HR admins or org admins can edit leave policies');
   }
-  await repo.updatePolicy(ctx, id, data, isTenantLeaveAdmin(ctx.role, ctx.rank));
+  await repo.updatePolicy(ctx, id, data, isTenantLeaveAdmin(ctx.role));
   void logActivity({
     action_type: 'leave_policy_updated',
     performed_by: ctx.user_id,
@@ -251,7 +251,7 @@ export async function getSettings(ctx: LeaveCtx) {
 
 export async function updateSettings(ctx: LeaveCtx, month: number, scope: 'org' | 'tenant') {
   if (scope === 'tenant') {
-    if (!isTenantLeaveAdmin(ctx.role, ctx.rank)) {
+    if (!isTenantLeaveAdmin(ctx.role)) {
       throw new ForbiddenError('Only a tenant admin can change the tenant-wide leave cycle');
     }
   } else {

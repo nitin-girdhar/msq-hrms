@@ -19,7 +19,7 @@ import type {
   ReportsSummaryQueryInput,
   FaceEnrollInput,
   FaceReviewsQueryInput,
-} from '@crm/validation';
+} from '@hr/validation';
 
 function ctxOf(request: FastifyRequest): AttendanceCtx {
   const { org_id, user_id, role, tenant_id, rank } = request.auth;

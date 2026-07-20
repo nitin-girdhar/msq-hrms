@@ -5,7 +5,7 @@
 //   - Reads that only touch the caller's own rows go through withRoleTx so the
 //     hr.* RLS policies scope them.
 //   - Writes that append to hr.leave_ledger / hr.leave_request_status_log run in
-//     the SERVICE transaction (crm_service, BYPASSRLS) because those tables are
+//     the SERVICE transaction (root_service, BYPASSRLS) because those tables are
 //     INSERT-only via the service path by design (db_scripts/11). Authorization
 //     is enforced in the service layer; every query is still explicitly scoped
 //     by the gateway-verified org_id / user_id — never a client-supplied id.
@@ -39,7 +39,7 @@ import type {
   UpdateHolidayInput,
   CreateHolidayCalendarInput,
   UpdateHolidayCalendarInput,
-} from '@crm/validation';
+} from '@hr/validation';
 
 export type LeaveCtx = RoleTxContext & { rank: number };
 
@@ -67,9 +67,13 @@ function todayIso(): string {
 }
 
 // ── Small lookups ─────────────────────────────────────────────────────────────
-async function resolveLeaveType(tx: DrizzleTx, name: string): Promise<{ id: string; name: string; is_paid: boolean }> {
+// tenantId is required: several callers run in the SERVICE transaction
+// (BYPASSRLS), so hr.leave_types' tenant_isolation_policy does not filter rows
+// there — the query must scope explicitly or it can match another tenant's
+// same-named row (db_scripts/22 made this table tenant-scoped).
+async function resolveLeaveType(tx: DrizzleTx, tenantId: string, name: string): Promise<{ id: string; name: string; is_paid: boolean }> {
   const rows = (await tx.execute(sql`
-    SELECT id::text, name, is_paid FROM hr.leave_types WHERE name = ${name} AND is_active
+    SELECT id::text, name, is_paid FROM hr.leave_types WHERE tenant_id = ${tenantId} AND name = ${name} AND is_active
   `)) as unknown as Array<{ id: string; name: string; is_paid: boolean }>;
   if (!rows[0]) throw new BadRequestError(`Unknown or inactive leave type: ${name}`);
   return rows[0];
@@ -129,7 +133,7 @@ export interface ApplyResult {
 
 export async function applyLeave(ctx: LeaveCtx, data: ApplyLeaveRequestInput): Promise<ApplyResult> {
   return serviceTxWithContext(ctx, data.reason ?? null, async (tx) => {
-    const leaveType = await resolveLeaveType(tx, data.leave_type_name);
+    const leaveType = await resolveLeaveType(tx, ctx.tenant_id, data.leave_type_name);
 
     // Effective policy as of the request start date.
     const policy = await resolveEffectivePolicy(tx, ctx.tenant_id, ctx.org_id, leaveType.id, data.start_date);
@@ -253,7 +257,7 @@ export interface PreviewResult {
 
 export async function previewLeave(ctx: LeaveCtx, data: PreviewLeaveRequestInput): Promise<PreviewResult> {
   return withRoleTx(ctx, async (tx) => {
-    const leaveType = await resolveLeaveType(tx, data.leave_type_name);
+    const leaveType = await resolveLeaveType(tx, ctx.tenant_id, data.leave_type_name);
     const policy = await resolveEffectivePolicy(tx, ctx.tenant_id, ctx.org_id, leaveType.id, data.start_date);
 
     const balance = await currentBalance(tx, ctx.org_id, ctx.user_id, leaveType.id);
@@ -463,7 +467,7 @@ export async function approveLeave(
       INSERT INTO hr.attendance_days
         (user_id, org_id, work_date, status_id, leave_request_id, resolved_at, resolution_source)
       SELECT ${req.user_id}, ${req.org_id}, gs::date,
-             (SELECT id FROM hr.attendance_statuses WHERE name = 'on_leave'),
+             (SELECT id FROM hr.attendance_statuses WHERE tenant_id = ${ctx.tenant_id} AND name = 'on_leave'),
              ${id}, CLOCK_TIMESTAMP(), 'leave'
       FROM generate_series(${req.start_date}::date, ${req.end_date}::date, INTERVAL '1 day') gs
       ON CONFLICT (user_id, work_date) DO UPDATE SET
@@ -569,7 +573,7 @@ export async function cancelLeave(ctx: LeaveCtx, id: string, comment: string | n
 // ═════════════════════════════════════════════════════════════════════════════
 export async function createAdjustment(ctx: LeaveCtx, data: CreateAdjustmentInput): Promise<{ id: string }> {
   return serviceTxWithContext(ctx, data.note, async (tx) => {
-    const leaveType = await resolveLeaveType(tx, data.leave_type_name);
+    const leaveType = await resolveLeaveType(tx, ctx.tenant_id, data.leave_type_name);
     // Target user must be a member of the acting org.
     const member = (await tx.execute(sql`
       SELECT 1 FROM iam.user_org_mapping WHERE user_id = ${data.user_id} AND org_id = ${ctx.org_id} AND is_active LIMIT 1
@@ -744,7 +748,7 @@ export async function listPolicies(ctx: LeaveCtx, filters: ListPoliciesInput) {
 
 export async function createPolicy(ctx: LeaveCtx, data: CreatePolicyInput): Promise<{ id: string }> {
   return serviceTxWithContext(ctx, null, async (tx) => {
-    const leaveType = await resolveLeaveType(tx, data.leave_type_name);
+    const leaveType = await resolveLeaveType(tx, ctx.tenant_id, data.leave_type_name);
     const orgId = data.org_id ?? null;
     if (orgId) {
       const belongs = (await tx.execute(sql`

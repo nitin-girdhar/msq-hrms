@@ -16,7 +16,7 @@ export {
   createHolidayCalendarSchema,
   updateHolidayCalendarSchema,
   updateLeaveSettingsSchema,
-} from '@crm/validation';
+} from '@hr/validation';
 export type {
   ApplyLeaveRequestInput,
   PreviewLeaveRequestInput,
@@ -35,4 +35,4 @@ export type {
   CreateHolidayCalendarInput,
   UpdateHolidayCalendarInput,
   UpdateLeaveSettingsInput,
-} from '@crm/validation';
+} from '@hr/validation';
