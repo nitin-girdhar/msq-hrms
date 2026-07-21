@@ -230,6 +230,12 @@ export class AttendanceController {
     }
 
     // xlsx
+    // SECURITY NOTE: exceljs pins uuid@8.3.2, which has an open advisory
+    // (missing buffer bounds check). It affects uuid v3/v5/v6 ONLY when a
+    // `buf` argument is passed; exceljs imports just v4
+    // (`const {v4: uuidv4} = require('uuid')`), so it is not reachable. Left
+    // un-overridden deliberately: forcing uuid 8 -> 11 is a three-major jump
+    // inside exceljs for no security gain. Re-check if exceljs is upgraded.
     const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet(`Attendance ${m}`);

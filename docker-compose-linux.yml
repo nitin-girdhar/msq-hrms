@@ -10,7 +10,7 @@ x-db-env-hr: &db-env-hr
 
 services:
   hr-service:
-    image: crm-hr-service
+    image: msq-hr-service
     restart: unless-stopped
     env_file: .env
     environment:
@@ -115,7 +115,7 @@ services:
       - "${COMPREFACE_ADMIN_UI_PORT:-8010}:80"
 
   hr-web:
-    image: crm-hr-web
+    image: msq-hr-web
     restart: unless-stopped
     env_file: .env
     environment:

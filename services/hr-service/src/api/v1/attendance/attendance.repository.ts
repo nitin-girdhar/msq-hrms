@@ -806,6 +806,26 @@ async function loadRegForAction(tx: DrizzleTx, id: string): Promise<RegForAction
   return rows[0] ?? null;
 }
 
+/**
+ * Structural rule: nobody acts on their OWN request -- not a subtree manager,
+ * not an hr_admin override, not a tenant/super admin.
+ *
+ * hr.can_approve already returns FALSE when approver = requester, but the
+ * override path deliberately short-circuits that call (`!isOverride && ...`),
+ * so an hr_admin could approve their own regularization or clear their own
+ * failed face review. Burying the rule inside a function that is sometimes
+ * skipped is exactly how that was missed -- so it lives here, at the call site,
+ * where it is unconditional and visible.
+ *
+ * Leave enforces the same rule by calling canApproveLeave unconditionally
+ * (leave.repository.ts); this is the attendance-side equivalent.
+ */
+function assertNotSelfApproval(actorId: string, requesterId: string): void {
+  if (actorId === requesterId) {
+    throw new ForbiddenError('You cannot approve or reject your own request');
+  }
+}
+
 async function canApprove(tx: DrizzleTx, orgId: string, approverId: string, requesterId: string): Promise<boolean> {
   const rows = (await tx.execute(sql`
     SELECT hr.can_approve(${orgId}, ${approverId}, ${requesterId}) AS ok
@@ -832,6 +852,7 @@ export async function approveRegularization(
     if (!reg) throw new NotFoundError('Regularization not found');
     if (reg.org_id !== ctx.org_id) throw new NotFoundError('Regularization not found');
     if (reg.status !== 'pending') throw new ConflictError(`Regularization is already ${reg.status}`);
+    assertNotSelfApproval(ctx.user_id, reg.user_id);
     if (!isOverride && !(await canApprove(tx, ctx.org_id, ctx.user_id, reg.user_id))) {
       throw new ForbiddenError('You are not authorized to approve this regularization');
     }
@@ -885,6 +906,7 @@ export async function rejectRegularization(
     if (!reg) throw new NotFoundError('Regularization not found');
     if (reg.org_id !== ctx.org_id) throw new NotFoundError('Regularization not found');
     if (reg.status !== 'pending') throw new ConflictError(`Regularization is already ${reg.status}`);
+    assertNotSelfApproval(ctx.user_id, reg.user_id);
     if (!isOverride && !(await canApprove(tx, ctx.org_id, ctx.user_id, reg.user_id))) {
       throw new ForbiddenError('You are not authorized to act on this regularization');
     }
@@ -1113,6 +1135,9 @@ async function assertCanActOnFaceReview(
   if (evt.face_review_status !== 'pending') {
     throw new ConflictError(`Face review is already ${evt.face_review_status ?? 'resolved'}`);
   }
+  // Most important of the three: face review exists to catch buddy-punching, so
+  // clearing your own flagged punch would defeat the control outright.
+  assertNotSelfApproval(ctx.user_id, evt.user_id);
   if (!isOverride && !(await canApprove(tx, ctx.org_id, ctx.user_id, evt.user_id))) {
     throw new ForbiddenError('You are not authorized to act on this face review');
   }
