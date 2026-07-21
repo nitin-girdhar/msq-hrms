@@ -73,6 +73,12 @@ export class AttendanceController {
     return reply.send({ success: true, data });
   };
 
+  todaySummary = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { date } = request.query as AttendanceTeamQueryInput;
+    const data = await service.getTodaySummary(ctxOf(request), date ?? currentDate());
+    return reply.send({ success: true, data });
+  };
+
   // ── Photo (authenticated) ─────────────────────────────────────────────────────
   photo = async (request: FastifyRequest, reply: FastifyReply) => {
     const { id } = request.params as { id: string };

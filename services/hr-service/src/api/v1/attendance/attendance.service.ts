@@ -104,6 +104,16 @@ export async function getTeam(ctx: AttendanceCtx, date: string) {
   return repo.getTeam(ctx, date, seeAllOrg);
 }
 
+// Same authority as the team view: this is that roster reduced to counts, so it
+// must not become a way to infer team size for someone barred from getTeam.
+export async function getTodaySummary(ctx: AttendanceCtx, date: string) {
+  if (!canViewTeamAttendance(ctx.role, ctx.rank)) {
+    throw new ForbiddenError('Insufficient rank to view the team attendance view');
+  }
+  const seeAllOrg = canManageAttendance(ctx.role, ctx.rank);
+  return repo.getTodaySummary(ctx, date, seeAllOrg);
+}
+
 // ── Photo (authenticated fetch) ─────────────────────────────────────────────
 export async function getPhotoKey(ctx: AttendanceCtx, eventId: string): Promise<string | null> {
   const evt = await repo.loadEventForPhoto(ctx, eventId);

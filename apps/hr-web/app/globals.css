@@ -5,7 +5,12 @@
    content auto-detection doesn't reliably pick up shared monorepo packages
    across every route's build chunk, which silently drops their utility
    classes from the compiled CSS. Declare the source explicitly. */
-@source "../../../packages/ui/src";
+@source "../../../../msq-core/packages/ui/src";
+
+/* This product's own component package — see the note above. Every attendance
+   and leave screen is imported from @hr/web in packages/hr-web/src, which sits
+   outside this app's tree and so is not auto-detected either. */
+@source "../../../packages/hr-web/src";
 
 * { box-sizing: border-box; }
 

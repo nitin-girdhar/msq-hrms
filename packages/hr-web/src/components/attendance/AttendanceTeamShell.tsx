@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { SessionUser } from '@platform/types';
+import { Alert, PageBody, PageHeader, PageSection } from '@platform/ui-kit';
 import { attendance as attendanceApi } from '../../lib/api/client';
 import type { RegularizationView, TeamDayRow } from '../../lib/attendance/types';
 import { todayIso } from '../../lib/attendance/format';
@@ -53,35 +54,36 @@ export default function AttendanceTeamShell({ hrRank }: Props) {
   };
 
   return (
-    <div className="w-full space-y-6 px-3 py-4 sm:px-4">
-      <AttendanceTabs hrRank={hrRank} />
+    <div className="flex w-full flex-1 flex-col">
+      <PageHeader
+        title="Team Attendance"
+        subtitle="Who’s in, who’s out, and pending regularization requests."
+        tabs={<AttendanceTabs hrRank={hrRank} />}
+      />
 
-      <div>
-        <h1 className="text-2xl font-bold text-[#0F172A]">Team Attendance</h1>
-        <p className="mt-1 text-sm text-[#64748B]">Who’s in, who’s out, and pending regularization requests.</p>
-      </div>
+      <PageBody>
+        {notice && <Alert tone="success">{notice}</Alert>}
+        {error && <Alert tone="error">{error}</Alert>}
 
-      {notice && <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-xs text-green-700">{notice}</div>}
-      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">{error}</div>}
+        <PageSection
+          title="Day view"
+          action={
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              aria-label="Select date"
+              className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs text-[#0F172A] focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20"
+            />
+          }
+        >
+          <TeamDayView rows={rows} loading={rowsLoading} />
+        </PageSection>
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-[#0b6cbf]">Day view</h2>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            aria-label="Select date"
-            className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs text-[#0F172A] focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20"
-          />
-        </div>
-        <TeamDayView rows={rows} loading={rowsLoading} />
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-[#0b6cbf]">Pending regularizations ({pending.length})</h2>
-        <RegularizationQueue items={pending} loading={pendingLoading} onReview={(r) => { setReviewing(r); setNotice(null); }} />
-      </section>
+        <PageSection title={`Pending regularizations (${pending.length})`}>
+          <RegularizationQueue items={pending} loading={pendingLoading} onReview={(r) => { setReviewing(r); setNotice(null); }} />
+        </PageSection>
+      </PageBody>
 
       <RegularizationDecisionModal request={reviewing} onClose={() => setReviewing(null)} onDecided={handleDecided} />
     </div>

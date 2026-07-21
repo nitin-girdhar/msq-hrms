@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { SessionUser } from '@platform/types';
+import { Alert, PageBody, PageHeader } from '@platform/ui-kit';
 import type { HrRank } from '../../lib/hr-rank';
 import AttendanceTabs from './AttendanceTabs';
 import RulesEditor from './admin/RulesEditor';
@@ -30,39 +31,38 @@ export default function AttendanceAdminShell({ actor, hrRank }: Props) {
   const onNotice = (msg: string) => setNotice(msg);
 
   return (
-    <div className="w-full space-y-6 px-3 py-4 sm:px-4">
-      <AttendanceTabs hrRank={hrRank} />
+    <div className="flex w-full flex-1 flex-col">
+      <PageHeader
+        title="Attendance Administration"
+        subtitle="Capture rules, shifts, shift assignments and payroll reports."
+        tabs={<AttendanceTabs hrRank={hrRank} />}
+      />
 
-      <div>
-        <h1 className="text-2xl font-bold text-[#0F172A]">Attendance Administration</h1>
-        <p className="mt-1 text-sm text-[#64748B]">Capture rules, shifts, shift assignments and payroll reports.</p>
-      </div>
+      <PageBody>
+        {notice && <Alert tone="success">{notice}</Alert>}
 
-      {notice && <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-xs text-green-700">{notice}</div>}
+        <div className="flex flex-wrap gap-1 rounded-xl border border-[#E2E8F0] bg-white p-1 shadow-sm">
+          {SECTIONS.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => { setSection(s.id); setNotice(null); }}
+              className={
+                section === s.id
+                  ? 'rounded-lg bg-[#EFF6FF] px-3 py-1.5 text-xs font-semibold text-[#0b6cbf]'
+                  : 'rounded-lg px-3 py-1.5 text-xs font-medium text-[#475569] transition-colors hover:bg-[#F8FAFC]'
+              }
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
 
-      <div className="flex flex-wrap gap-1 rounded-xl border border-[#E2E8F0] bg-white p-1 shadow-sm">
-        {SECTIONS.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => { setSection(s.id); setNotice(null); }}
-            className={
-              section === s.id
-                ? 'rounded-lg bg-[#EFF6FF] px-4 py-2 text-sm font-semibold text-[#0b6cbf]'
-                : 'rounded-lg px-4 py-2 text-sm font-medium text-[#475569] transition-colors hover:bg-[#F8FAFC]'
-            }
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
-
-      <div>
         {section === 'rules' && <RulesEditor actor={actor} onNotice={onNotice} />}
         {section === 'shifts' && <ShiftsManager onNotice={onNotice} />}
         {section === 'assignments' && <ShiftAssignmentsManager onNotice={onNotice} />}
         {section === 'reports' && <MonthlySummaryReport />}
-      </div>
+      </PageBody>
     </div>
   );
 }

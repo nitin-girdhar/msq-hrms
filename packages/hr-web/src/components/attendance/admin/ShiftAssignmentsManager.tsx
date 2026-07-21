@@ -1,9 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { Alert, Button, PageSection } from '@platform/ui-kit';
 import { shiftAssignments as shiftAssignmentsApi } from '../../../lib/api/client';
 import type { ShiftAssignmentView } from '../../../lib/attendance/types';
 import { formatDay } from '../../../lib/attendance/format';
+import { emptyBlockCls, stateBlockCls } from '../../../lib/ui';
 import ShiftAssignmentFormModal from './ShiftAssignmentFormModal';
 
 interface Props {
@@ -28,20 +30,22 @@ export default function ShiftAssignmentsManager({ onNotice }: Props) {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-[#64748B]">Effective-dated shift assignments per employee.</p>
-        <button type="button" onClick={() => setFormOpen(true)} className="rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699]">
+    <PageSection
+      title="Shift assignments"
+      action={
+        <Button variant="primary" size="md" onClick={() => setFormOpen(true)}>
           Assign shift
-        </button>
-      </div>
+        </Button>
+      }
+    >
+      <p className="mb-3 text-xs text-[#64748B]">Effective-dated shift assignments per employee.</p>
 
-      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">{error}</div>}
+      {error && <div className="mb-3"><Alert tone="error">{error}</Alert></div>}
 
       {loading ? (
-        <div className="flex items-center justify-center py-12 text-sm text-[#94A3B8]">Loading…</div>
+        <div className={stateBlockCls}>Loading…</div>
       ) : items.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-[#E2E8F0] bg-white px-4 py-8 text-center text-sm text-[#94A3B8]">No shift assignments yet.</p>
+        <p className={emptyBlockCls}>No shift assignments yet.</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
           <table className="w-full min-w-[680px] text-sm">
@@ -78,6 +82,6 @@ export default function ShiftAssignmentsManager({ onNotice }: Props) {
         onClose={() => setFormOpen(false)}
         onSaved={(msg) => { onNotice(msg); load(); }}
       />
-    </div>
+    </PageSection>
   );
 }

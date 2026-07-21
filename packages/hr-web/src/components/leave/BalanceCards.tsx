@@ -14,26 +14,32 @@ export default function BalanceCards({ balances }: Props) {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+    // Same flex-wrap tile rhythm as the LMS StatsCards row rather than a fixed
+    // 4-column grid — with 2-4 leave types a grid stretched each card to ~290px
+    // for one number, which is what made the page read as sparse next to LMS.
+    <div className="flex flex-wrap gap-1.5">
       {balances.map((b) => (
         <div
           key={b.leave_type_id}
-          className="rounded-xl border border-[#E2E8F0] bg-white p-4 shadow-sm"
+          // max-w keeps a 2-4 type org from stretching each tile to a third of
+          // the viewport for a single number; LMS gets away with plain flex-1
+          // only because it always renders 7-8 cards.
+          className="flex min-w-[130px] max-w-[220px] flex-1 flex-col gap-1 rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 shadow-sm"
         >
-          <div className="flex items-start justify-between gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+          <div className="flex items-start justify-between gap-1.5">
+            <span className="text-[9px] font-semibold uppercase leading-tight tracking-widest text-[#64748B]">
               {b.leave_type_label}
             </span>
             <span
-              className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+              className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
                 b.is_paid ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'
               }`}
             >
               {b.is_paid ? 'Paid' : 'Unpaid'}
             </span>
           </div>
-          <div className="mt-2 text-2xl font-bold text-[#0F172A]">{b.balance}</div>
-          <div className="text-xs text-[#94A3B8]">days available</div>
+          <span className="text-lg font-bold tabular-nums text-[#0F172A]">{b.balance}</span>
+          <p className="text-[9px] text-[#94A3B8]">days available</p>
         </div>
       ))}
     </div>

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { SessionUser } from '@platform/types';
+import { Alert, PageBody, PageHeader } from '@platform/ui-kit';
 import type { HrRank } from '../../lib/hr-rank';
 import LeaveTabs from './LeaveTabs';
 import PoliciesManager from './admin/PoliciesManager';
@@ -32,40 +33,39 @@ export default function LeaveAdminShell({ actor, hrRank }: Props) {
   const onNotice = (msg: string) => setNotice(msg);
 
   return (
-    <div className="w-full space-y-6 px-3 py-4 sm:px-4">
-      <LeaveTabs hrRank={hrRank} />
+    <div className="flex w-full flex-1 flex-col">
+      <PageHeader
+        title="Leave Administration"
+        subtitle="Policies, leave cycle, holidays, manual adjustments and employee profiles."
+        tabs={<LeaveTabs hrRank={hrRank} />}
+      />
 
-      <div>
-        <h1 className="text-2xl font-bold text-[#0F172A]">Leave Administration</h1>
-        <p className="mt-1 text-sm text-[#64748B]">Policies, leave cycle, holidays, manual adjustments and employee profiles.</p>
-      </div>
+      <PageBody>
+        {notice && <Alert tone="success">{notice}</Alert>}
 
-      {notice && <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-xs text-green-700">{notice}</div>}
+        <div className="flex flex-wrap gap-1 rounded-xl border border-[#E2E8F0] bg-white p-1 shadow-sm">
+          {SECTIONS.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => { setSection(s.id); setNotice(null); }}
+              className={
+                section === s.id
+                  ? 'rounded-lg bg-[#EFF6FF] px-3 py-1.5 text-xs font-semibold text-[#0b6cbf]'
+                  : 'rounded-lg px-3 py-1.5 text-xs font-medium text-[#475569] transition-colors hover:bg-[#F8FAFC]'
+              }
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
 
-      <div className="flex flex-wrap gap-1 rounded-xl border border-[#E2E8F0] bg-white p-1 shadow-sm">
-        {SECTIONS.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => { setSection(s.id); setNotice(null); }}
-            className={
-              section === s.id
-                ? 'rounded-lg bg-[#EFF6FF] px-4 py-2 text-sm font-semibold text-[#0b6cbf]'
-                : 'rounded-lg px-4 py-2 text-sm font-medium text-[#475569] transition-colors hover:bg-[#F8FAFC]'
-            }
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
-
-      <div>
         {section === 'policies' && <PoliciesManager actor={actor} onNotice={onNotice} />}
         {section === 'cycle' && <LeaveCycleSetting actor={actor} onNotice={onNotice} />}
         {section === 'holidays' && <HolidaysManager onNotice={onNotice} />}
         {section === 'adjustment' && <AdjustmentForm onNotice={onNotice} />}
         {section === 'employees' && <EmployeeProfilesManager onNotice={onNotice} />}
-      </div>
+      </PageBody>
     </div>
   );
 }

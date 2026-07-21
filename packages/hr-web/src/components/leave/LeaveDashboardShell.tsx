@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { SessionUser } from '@platform/types';
+import { Alert, Button, PageBody, PageHeader, PageSection } from '@platform/ui-kit';
 import { leave as leaveApi } from '../../lib/api/client';
 import type { LeaveBalance, LeavePolicyView, LeaveRequestView } from '../../lib/leave/types';
 import { LEAVE_STATUS_FILTERS } from '../../lib/leave/format';
@@ -71,53 +72,46 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
   };
 
   return (
-    <div className="w-full space-y-6 px-3 py-4 sm:px-4">
-      <LeaveTabs hrRank={hrRank} />
+    <div className="flex w-full flex-1 flex-col">
+      <PageHeader
+        title="My Leave"
+        subtitle={`Balances, requests and approvals for ${actor.name || actor.email}.`}
+        tabs={<LeaveTabs hrRank={hrRank} />}
+        actions={
+          <Button variant="primary" onClick={() => { setApplyOpen(true); setNotice(null); }}>
+            Apply leave
+          </Button>
+        }
+      />
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-[#0F172A]">My Leave</h1>
-          <p className="mt-1 text-sm text-[#64748B]">Balances, requests and approvals for {actor.name || actor.email}.</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => { setApplyOpen(true); setNotice(null); }}
-          className="rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699]"
+      <PageBody>
+        {notice && <Alert tone="success">{notice}</Alert>}
+        {error && <Alert tone="error">{error}</Alert>}
+
+        <PageSection title="Balances">
+          <BalanceCards balances={balances} />
+        </PageSection>
+
+        <PageSection
+          title="My requests"
+          action={
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              aria-label="Filter by status"
+              className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs text-[#0F172A] focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20"
+            >
+              {LEAVE_STATUS_FILTERS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+            </select>
+          }
         >
-          Apply leave
-        </button>
-      </div>
-
-      {notice && (
-        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-xs text-green-700">{notice}</div>
-      )}
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">{error}</div>
-      )}
-
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-[#0b6cbf]">Balances</h2>
-        <BalanceCards balances={balances} />
-      </section>
-
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-[#0b6cbf]">My requests</h2>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            aria-label="Filter by status"
-            className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs text-[#0F172A] focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20"
-          >
-            {LEAVE_STATUS_FILTERS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
-          </select>
-        </div>
-        {loading ? (
-          <div className="flex items-center justify-center py-12 text-sm text-[#94A3B8]">Loading…</div>
-        ) : (
-          <MyRequestsTable items={requests} onCancel={handleCancel} busyId={cancelBusyId} />
-        )}
-      </section>
+          {loading ? (
+            <div className="flex items-center justify-center py-12 text-sm text-[#94A3B8]">Loading…</div>
+          ) : (
+            <MyRequestsTable items={requests} onCancel={handleCancel} busyId={cancelBusyId} />
+          )}
+        </PageSection>
+      </PageBody>
 
       <ApplyLeaveModal
         open={applyOpen}

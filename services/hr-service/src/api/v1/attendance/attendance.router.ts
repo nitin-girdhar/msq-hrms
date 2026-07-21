@@ -41,6 +41,8 @@ export async function attendanceRouter(app: FastifyInstance) {
   // ── Me / Team ─────────────────────────────────────────────────────────────────
   app.get('/attendance/me', { preHandler: [...gate, validate({ query: attendanceMeQuerySchema })] }, ctrl.me);
   app.get('/attendance/team', { preHandler: [...gate, validate({ query: attendanceTeamQuerySchema })] }, ctrl.team);
+  // Counts-only form of /attendance/team, for the cross-product "my day" tiles.
+  app.get('/attendance/today-summary', { preHandler: [...gate, validate({ query: attendanceTeamQuerySchema })] }, ctrl.todaySummary);
 
   // ── Photo (authenticated fetch — never a public static dir) ─────────────────
   app.get('/attendance/photos/:id', { preHandler: [...gate] }, ctrl.photo);

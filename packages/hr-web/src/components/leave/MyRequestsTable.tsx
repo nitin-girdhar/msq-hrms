@@ -1,3 +1,4 @@
+import { Button } from '@platform/ui-kit';
 import type { LeaveRequestView } from '../../lib/leave/types';
 import { formatDateRange, formatDays, formatDateTime, canCancelRequest } from '../../lib/leave/format';
 import StatusChip from './StatusChip';
@@ -45,14 +46,9 @@ export default function MyRequestsTable({ items, onCancel, busyId }: Props) {
               <td className="px-4 py-3 text-[11px] text-[#94A3B8]">{formatDateTime(r.created_at)}</td>
               <td className="px-4 py-3 text-right">
                 {canCancelRequest(r.status_name, r.start_date) ? (
-                  <button
-                    type="button"
-                    onClick={() => onCancel(r)}
-                    disabled={busyId === r.id}
-                    className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-semibold text-[#475569] transition-colors hover:border-red-300 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
+                  <Button variant="danger" onClick={() => onCancel(r)} disabled={busyId === r.id}>
                     {busyId === r.id ? 'Cancelling…' : 'Cancel'}
-                  </button>
+                  </Button>
                 ) : (
                   <span className="text-xs text-[#CBD5E1]">—</span>
                 )}

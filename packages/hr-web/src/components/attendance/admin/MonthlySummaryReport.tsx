@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { DownloadButton, type ExportFormat } from '@platform/ui-kit';
+import { Alert, DownloadButton, PageSection, type ExportFormat } from '@platform/ui-kit';
 import { attendance as attendanceApi } from '../../../lib/api/client';
 import type { MonthlySummaryRow } from '../../../lib/attendance/types';
 import { formatWorkedMinutes } from '../../../lib/attendance/format';
+import { emptyBlockCls, fieldInputCls, fieldLabelCls, stateBlockCls } from '../../../lib/ui';
 
 function currentMonth(): string {
   return new Date().toISOString().slice(0, 7);
@@ -38,29 +39,31 @@ export default function MonthlySummaryReport() {
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-end gap-3">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="msr-month" className="text-xs font-semibold text-[#0F172A]">Month</label>
-            <input
-              id="msr-month"
-              type="month"
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              className="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#0F172A] shadow-sm focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20"
-            />
-          </div>
-        </div>
-        <DownloadButton onExport={handleExport} rowCount={rows.length} disabled={loading} />
+    <PageSection
+      title="Monthly summary"
+      action={<DownloadButton onExport={handleExport} rowCount={rows.length} disabled={loading} />}
+    >
+      {/* The month picker was the page's only visible control and carried a
+          bold near-black label, so it read as a section heading rather than a
+          filter. It now sits under the section title with the same muted field
+          label as every other input on these screens. */}
+      <div className="mb-3 flex flex-col gap-1.5">
+        <label htmlFor="msr-month" className={fieldLabelCls}>Month</label>
+        <input
+          id="msr-month"
+          type="month"
+          value={month}
+          onChange={(e) => setMonth(e.target.value)}
+          className={`${fieldInputCls} w-48`}
+        />
       </div>
 
-      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">{error}</div>}
+      {error && <div className="mb-3"><Alert tone="error">{error}</Alert></div>}
 
       {loading ? (
-        <div className="flex items-center justify-center py-12 text-sm text-[#94A3B8]">Loading…</div>
+        <div className={stateBlockCls}>Loading…</div>
       ) : rows.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-[#E2E8F0] bg-white px-4 py-8 text-center text-sm text-[#94A3B8]">No attendance data for {month}.</p>
+        <p className={emptyBlockCls}>No attendance data for {month}.</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
           <table className="w-full min-w-[960px] text-sm">
@@ -102,6 +105,6 @@ export default function MonthlySummaryReport() {
           </table>
         </div>
       )}
-    </div>
+    </PageSection>
   );
 }

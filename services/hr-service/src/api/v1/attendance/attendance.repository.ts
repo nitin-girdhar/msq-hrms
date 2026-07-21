@@ -554,6 +554,91 @@ export async function getTeam(ctx: AttendanceCtx, date: string, seeAllOrg: boole
   });
 }
 
+export interface TodaySummary {
+  present: number;
+  checked_in: number;
+  checked_out: number;
+  half_day: number;
+  on_leave: number;
+  wfh: number;
+  absent: number;
+  not_marked: number;
+}
+
+// One row of counts for the "my day" tiles, over the same roster and scope rule
+// as getTeam. Aggregating here rather than in the client keeps the org/manager
+// scoping server-side and avoids shipping every employee's row to render six
+// numbers.
+//
+// `wfh` is derived from hr.attendance_events.is_wfh, not from a status: the
+// attendance_statuses catalog has no 'wfh' member (present / half_day / on_leave
+// / absent / holiday / weekly_off), and a work-from-home punch is an ordinary
+// present day flagged on the event. It therefore OVERLAPS `present` by design —
+// the same person is both — which is how vw_attendance_monthly_summary already
+// reports wfh_count.
+export async function getTodaySummary(
+  ctx: AttendanceCtx,
+  date: string,
+  seeAllOrg: boolean,
+): Promise<TodaySummary> {
+  return withServiceTx(async (tx) => {
+    const scopeClause = seeAllOrg
+      ? sql``
+      : sql`AND EXISTS (
+          SELECT 1 FROM iam.vw_user_team_members m
+          WHERE m.manager_id = ${ctx.user_id} AND m.member_id = ep.user_id AND m.org_id = ${ctx.org_id}
+        )`;
+    const rows = (await tx.execute(sql`
+      WITH roster AS (
+        SELECT ep.user_id
+        FROM hr.employee_profiles ep
+        WHERE ep.org_id = ${ctx.org_id} AND ep.is_active AND NOT ep.is_deleted
+        ${scopeClause}
+      ),
+      day AS (
+        SELECT r.user_id, ad.first_in, ad.last_out, st.name AS status_name
+        FROM roster r
+        LEFT JOIN hr.attendance_days ad
+               ON ad.user_id = r.user_id AND ad.work_date = ${date}::date
+        LEFT JOIN hr.attendance_statuses st ON st.id = ad.status_id
+      ),
+      wfh AS (
+        SELECT DISTINCT e.user_id
+        FROM hr.attendance_events e
+        JOIN roster r ON r.user_id = e.user_id
+        WHERE e.org_id = ${ctx.org_id}
+          AND e.is_wfh
+          AND e.occurred_at >= ${date}::date
+          AND e.occurred_at <  (${date}::date + INTERVAL '1 day')
+      )
+      SELECT
+        COUNT(*) FILTER (WHERE d.status_name = 'present')                      AS present,
+        -- checked in but not yet out = still on the clock
+        COUNT(*) FILTER (WHERE d.first_in IS NOT NULL AND d.last_out IS NULL)  AS checked_in,
+        COUNT(*) FILTER (WHERE d.last_out IS NOT NULL)                         AS checked_out,
+        COUNT(*) FILTER (WHERE d.status_name = 'half_day')                     AS half_day,
+        COUNT(*) FILTER (WHERE d.status_name = 'on_leave')                     AS on_leave,
+        (SELECT COUNT(*) FROM wfh)                                             AS wfh,
+        COUNT(*) FILTER (WHERE d.status_name = 'absent')                       AS absent,
+        COUNT(*) FILTER (WHERE d.status_name IS NULL)                          AS not_marked
+      FROM day d
+    `)) as unknown as Array<Record<string, string | number>>;
+
+    const r = rows[0] ?? {};
+    const n = (v: unknown) => Number(v ?? 0);
+    return {
+      present: n(r['present']),
+      checked_in: n(r['checked_in']),
+      checked_out: n(r['checked_out']),
+      half_day: n(r['half_day']),
+      on_leave: n(r['on_leave']),
+      wfh: n(r['wfh']),
+      absent: n(r['absent']),
+      not_marked: n(r['not_marked']),
+    };
+  });
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // PHOTO — load an event's photo key after an authority check
 // ═════════════════════════════════════════════════════════════════════════════

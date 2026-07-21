@@ -1,7 +1,6 @@
 'use client';
 
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { PageTabs, type PageTab } from '@platform/ui-kit';
 import type { HrRank } from '../../lib/hr-rank';
 import { canManageAttendanceAdmin } from '../../lib/attendance/format';
 
@@ -11,50 +10,20 @@ interface Props {
   hrRank: HrRank;
 }
 
-interface Tab {
-  href: string;
-  label: string;
-  show: boolean;
-}
-
-// In-page sub-navigation for the Attendance module. Mirrors apps/web/components/leave/LeaveTabs.tsx.
+// In-page sub-navigation for the Attendance module. Renders inside PageHeader's
+// band so the underline sits on the band's own edge-to-edge rule.
 export default function AttendanceTabs({ hrRank }: Props) {
-  const pathname = usePathname();
-
-  const tabs: Tab[] = [
-    { href: '/attendance', label: 'Dashboard', show: true },
+  const tabs: PageTab[] = [
+    { href: '/attendance', label: 'Dashboard', exact: true },
     // Always shown: the backend's getTeam/listRegularizations queries already
     // scope results to the acting user's own reports or (with HR manager+/
     // admin rank) the full org — see attendance.service.ts. A user with
     // neither just sees an empty team view, same as any other empty state.
-    { href: '/attendance/team', label: 'Team', show: true },
-    { href: '/attendance/admin', label: 'Admin', show: canManageAttendanceAdmin(hrRank.rank) },
+    { href: '/attendance/team', label: 'Team' },
   ];
+  if (canManageAttendanceAdmin(hrRank.rank)) {
+    tabs.push({ href: '/attendance/admin', label: 'Admin' });
+  }
 
-  return (
-    <nav className="flex gap-1 border-b border-[#E2E8F0]" aria-label="Attendance sections">
-      {tabs
-        .filter((t) => t.show)
-        .map((tab) => {
-          const active =
-            tab.href === '/attendance'
-              ? pathname === '/attendance'
-              : pathname === tab.href || pathname.startsWith(`${tab.href}/`);
-          return (
-            <Link
-              key={tab.href}
-              href={tab.href}
-              aria-current={active ? 'page' : undefined}
-              className={
-                active
-                  ? '-mb-px border-b-2 border-[#0b6cbf] px-4 py-2.5 text-sm font-semibold text-[#0b6cbf]'
-                  : '-mb-px border-b-2 border-transparent px-4 py-2.5 text-sm font-medium text-[#64748B] transition-colors hover:text-[#0F172A]'
-              }
-            >
-              {tab.label}
-            </Link>
-          );
-        })}
-    </nav>
-  );
+  return <PageTabs tabs={tabs} label="Attendance sections" />;
 }

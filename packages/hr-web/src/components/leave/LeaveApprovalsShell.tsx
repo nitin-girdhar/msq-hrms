@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { SessionUser } from '@platform/types';
+import { Alert, Button, PageBody, PageHeader, PageSection } from '@platform/ui-kit';
 import { leave as leaveApi } from '../../lib/api/client';
 import type { LeaveRequestView } from '../../lib/leave/types';
 import { formatDateRange, formatDays, formatDateTime } from '../../lib/leave/format';
@@ -39,19 +40,18 @@ export default function LeaveApprovalsShell({ hrRank }: Props) {
   };
 
   return (
-    <div className="w-full space-y-6 px-3 py-4 sm:px-4">
-      <LeaveTabs hrRank={hrRank} />
+    <div className="flex w-full flex-1 flex-col">
+      <PageHeader
+        title="Leave Approvals"
+        subtitle="Pending requests awaiting your decision, and your team’s approved leave."
+        tabs={<LeaveTabs hrRank={hrRank} />}
+      />
 
-      <div>
-        <h1 className="text-2xl font-bold text-[#0F172A]">Leave Approvals</h1>
-        <p className="mt-1 text-sm text-[#64748B]">Pending requests awaiting your decision, and your team’s approved leave.</p>
-      </div>
+      <PageBody>
+        {notice && <Alert tone="success">{notice}</Alert>}
+        {error && <Alert tone="error">{error}</Alert>}
 
-      {notice && <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-xs text-green-700">{notice}</div>}
-      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">{error}</div>}
-
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-[#0b6cbf]">Pending approvals ({pending.length})</h2>
+        <PageSection title={`Pending approvals (${pending.length})`}>
         {loading ? (
           <div className="flex items-center justify-center py-12 text-sm text-[#94A3B8]">Loading…</div>
         ) : pending.length === 0 ? (
@@ -86,13 +86,9 @@ export default function LeaveApprovalsShell({ hrRank }: Props) {
                     <td className="px-4 py-3 text-[#475569]">{formatDays(r.days_count)}</td>
                     <td className="px-4 py-3 text-[11px] text-[#94A3B8]">{formatDateTime(r.created_at)}</td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => { setReviewing(r); setNotice(null); }}
-                        className="rounded-lg bg-[#0b6cbf] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#095699]"
-                      >
+                      <Button variant="primary" onClick={() => { setReviewing(r); setNotice(null); }}>
                         Review
-                      </button>
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -100,12 +96,12 @@ export default function LeaveApprovalsShell({ hrRank }: Props) {
             </table>
           </div>
         )}
-      </section>
+        </PageSection>
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-[#0b6cbf]">Team calendar</h2>
-        <TeamLeaveCalendar />
-      </section>
+        <PageSection title="Team calendar">
+          <TeamLeaveCalendar />
+        </PageSection>
+      </PageBody>
 
       <ApprovalDecisionModal request={reviewing} onClose={() => setReviewing(null)} onDecided={handleDecided} />
     </div>

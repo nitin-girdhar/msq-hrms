@@ -1,11 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { SessionUser } from '@platform/types';
 import { attendance as attendanceApi } from '../../../lib/api/client';
-import { orgs as orgsApi } from '@platform/ui-kit';
+import { orgs as orgsApi, Alert, Button, PageSection } from '@platform/ui-kit';
 import type { AttendanceRules } from '../../../lib/attendance/types';
 import { canSetOrgLocation } from '../../../lib/attendance/format';
+import { fieldInputCls, fieldLabelCls, stateBlockCls } from '../../../lib/ui';
 import { useGeolocation } from '../../../hooks/useGeolocation';
 
 interface Props {
@@ -13,30 +15,79 @@ interface Props {
   onNotice: (msg: string) => void;
 }
 
-interface OrgLocation {
-  geoLat: number | null | undefined;
-  geoLng: number | null | undefined;
+// The saved server state this form is diffed against, so the footer can say
+// whether anything is actually pending and the save can skip the endpoint whose
+// half of the form is untouched.
+interface Baseline {
+  rules: AttendanceRules;
+  lat: string;
+  lng: string;
+}
+
+const inputCls = `${fieldInputCls} tabular-nums`;
+
+// Checkbox first, then label and description, all inside one clickable row.
+// The previous layout put the label hard left and the checkbox hard right of a
+// full-width row, so at desktop width ~1000px of dead space separated a control
+// from the thing it controlled and every row looked like a separate section.
+function ToggleRow({
+  id, label, description, checked, onChange, children,
+}: {
+  id: string;
+  label: string;
+  description: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="border-b border-[#F1F5F9] py-3 last:border-b-0">
+      <div className="flex items-start gap-3">
+        <input
+          id={id}
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#CBD5E1] text-[#0b6cbf] focus:ring-2 focus:ring-[#0b6cbf]/20"
+        />
+        <div className="min-w-0">
+          <label htmlFor={id} className="block cursor-pointer text-sm font-medium text-[#0F172A]">
+            {label}
+          </label>
+          <p className="mt-0.5 text-xs text-[#64748B]">{description}</p>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function RulesEditor({ actor, onNotice }: Props) {
   const [rules, setRules] = useState<AttendanceRules | null>(null);
-  const [orgLoc, setOrgLoc] = useState<OrgLocation | null>(null);
+  const [baseline, setBaseline] = useState<Baseline | null>(null);
   const [lat, setLat] = useState('');
   const [lng, setLng] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [savingGeo, setSavingGeo] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const geo = useGeolocation();
+  const canSetLocation = canSetOrgLocation(actor.rank);
 
   const load = useCallback(() => {
     setLoading(true);
     Promise.all([attendanceApi.getRules(), orgsApi.list()])
       .then(([rulesRes, orgsRes]) => {
-        setRules(rulesRes.data);
         const mine = orgsRes.data.find((o) => o.org_id === actor.org_id || o.id === actor.org_id);
-        setOrgLoc(mine ? { geoLat: mine.geoLat, geoLng: mine.geoLng } : null);
+        // Seed the inputs with the saved coordinates rather than leaving them
+        // blank behind a placeholder: a greyed-out placeholder reads as "not
+        // set", so a configured office looked unconfigured.
+        const nextLat = mine?.geoLat != null ? String(mine.geoLat) : '';
+        const nextLng = mine?.geoLng != null ? String(mine.geoLng) : '';
+        setRules(rulesRes.data);
+        setLat(nextLat);
+        setLng(nextLng);
+        setBaseline({ rules: rulesRes.data, lat: nextLat, lng: nextLng });
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load attendance rules.'))
       .finally(() => setLoading(false));
@@ -51,112 +102,167 @@ export default function RulesEditor({ actor, onNotice }: Props) {
     }
   }, [geo.state]);
 
+  if (loading) return <div className={stateBlockCls}>Loading…</div>;
+  if (!rules || !baseline) return null;
+
+  const locationSet = baseline.lat !== '' && baseline.lng !== '';
+  const geoDirty = canSetLocation && (lat !== baseline.lat || lng !== baseline.lng);
+  const rulesDirty = JSON.stringify(rules) !== JSON.stringify(baseline.rules);
+  const dirty = geoDirty || rulesDirty;
+
   const save = async () => {
-    if (!rules) return;
     setError(null);
+
+    // Validated before either request so a bad coordinate cannot leave the two
+    // endpoints half-applied.
+    let coords: { lat: number; lng: number } | null = null;
+    if (geoDirty) {
+      const latNum = Number(lat);
+      const lngNum = Number(lng);
+      if (lat.trim() === '' || lng.trim() === '' || Number.isNaN(latNum) || Number.isNaN(lngNum)) {
+        setError('Enter both a latitude and a longitude.');
+        return;
+      }
+      if (latNum < -90 || latNum > 90) { setError('Latitude must be between -90 and 90.'); return; }
+      if (lngNum < -180 || lngNum > 180) { setError('Longitude must be between -180 and 180.'); return; }
+      coords = { lat: latNum, lng: lngNum };
+    }
+
     setSaving(true);
     try {
-      const res = await attendanceApi.updateRules(rules);
-      setRules(res.data);
-      onNotice('Attendance rules saved.');
+      if (coords) await orgsApi.updateGeo(actor.org_id, { geo_lat: coords.lat, geo_lng: coords.lng });
+      if (rulesDirty) await attendanceApi.updateRules(rules);
+      onNotice(
+        coords && rulesDirty ? 'Location and check-in rules saved.'
+          : coords ? 'Organization location saved.'
+            : 'Check-in rules saved.',
+      );
+      load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save attendance rules.');
+      setError(err instanceof Error ? err.message : 'Failed to save changes.');
     } finally {
       setSaving(false);
     }
   };
 
-  const saveGeo = async () => {
-    const latNum = Number(lat);
-    const lngNum = Number(lng);
-    if (Number.isNaN(latNum) || Number.isNaN(lngNum)) {
-      setError('Enter valid coordinates.');
-      return;
-    }
-    setError(null);
-    setSavingGeo(true);
-    try {
-      await orgsApi.updateGeo(actor.org_id, { geo_lat: latNum, geo_lng: lngNum });
-      onNotice('Organization location saved.');
-      load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save the organization location.');
-    } finally {
-      setSavingGeo(false);
-    }
-  };
-
-  if (loading) return <div className="flex items-center justify-center py-12 text-sm text-[#94A3B8]">Loading…</div>;
-  if (!rules) return null;
-
-  const locationMissing = orgLoc && (orgLoc.geoLat == null || orgLoc.geoLng == null);
-
-  const inputCls =
-    'rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#0F172A] shadow-sm focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20';
-
   return (
-    <div className="space-y-4">
-      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">{error}</div>}
+    <div className="max-w-3xl space-y-5">
+      {error && (
+        <Alert tone="error">{error}</Alert>
+      )}
 
-      {locationMissing && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <p className="font-semibold">Organization location isn't set.</p>
-          <p className="mt-1 text-xs">Geofenced check-in cannot work until an org admin sets the office coordinates below.</p>
+      {!locationSet && canSetLocation && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+          Set the office coordinates below — geofenced check-in stays off until they exist.
         </div>
       )}
 
-      {canSetOrgLocation(actor.rank) ? (
-        <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#64748B]">Organization location</p>
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="re-lat" className="text-xs font-semibold text-[#0F172A]">Latitude</label>
-              <input id="re-lat" value={lat} onChange={(e) => setLat(e.target.value)} placeholder={orgLoc?.geoLat != null ? String(orgLoc.geoLat) : '—'} className={inputCls} />
+      {canSetLocation && (
+        <PageSection title="Organization location">
+          <div className="rounded-xl border border-[#E2E8F0] bg-white p-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="re-lat" className={fieldLabelCls}>Latitude</label>
+                <input
+                  id="re-lat" value={lat} onChange={(e) => setLat(e.target.value)}
+                  inputMode="decimal" placeholder="28.393895"
+                  className={`${inputCls} w-36`}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="re-lng" className={fieldLabelCls}>Longitude</label>
+                <input
+                  id="re-lng" value={lng} onChange={(e) => setLng(e.target.value)}
+                  inputMode="decimal" placeholder="76.965164"
+                  className={`${inputCls} w-36`}
+                />
+              </div>
+              <Button
+                size="md"
+                onClick={geo.request}
+                disabled={geo.state.status === 'prompting'}
+                className="h-10"
+              >
+                {geo.state.status === 'prompting' ? 'Locating…' : 'Use my current location'}
+              </Button>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="re-lng" className="text-xs font-semibold text-[#0F172A]">Longitude</label>
-              <input id="re-lng" value={lng} onChange={(e) => setLng(e.target.value)} placeholder={orgLoc?.geoLng != null ? String(orgLoc.geoLng) : '—'} className={inputCls} />
-            </div>
-            <button type="button" onClick={geo.request} className="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC]">
-              Use my current location
-            </button>
-            <button type="button" onClick={saveGeo} disabled={savingGeo} className="rounded-xl bg-[#0b6cbf] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#095699] disabled:opacity-60">
-              {savingGeo ? 'Saving…' : 'Save location'}
-            </button>
+
+            <p className="mt-2.5 text-xs text-[#64748B]">
+              {geo.state.status === 'error' ? (
+                <span className="text-red-600">{geo.state.message}</span>
+              ) : geo.state.status === 'success' && geo.state.coords.accuracy != null ? (
+                `Captured to about ${Math.round(geo.state.coords.accuracy)} m — review before saving.`
+              ) : (
+                'The centre point of the check-in geofence.'
+              )}
+            </p>
           </div>
-          {geo.state.status === 'error' && <p className="mt-2 text-xs text-red-600">{geo.state.message}</p>}
-        </div>
-      ) : (
-        locationMissing && <p className="text-xs text-[#94A3B8]">Only an org admin can set the organization location.</p>
+        </PageSection>
       )}
 
-      <div className="grid grid-cols-1 gap-4 rounded-xl border border-[#E2E8F0] bg-white p-4 sm:grid-cols-2">
-        <label className="flex items-center justify-between gap-3 text-sm text-[#0F172A]">
-          <span>Geofence enabled</span>
-          <input type="checkbox" checked={rules.geofence_enabled} onChange={(e) => setRules({ ...rules, geofence_enabled: e.target.checked })} className="h-4 w-4 rounded border-[#E2E8F0] text-[#0b6cbf]" />
-        </label>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="re-radius" className="text-xs font-semibold text-[#0F172A]">Geofence radius (meters)</label>
-          <input id="re-radius" type="number" min={1} value={rules.geofence_radius_meters} onChange={(e) => setRules({ ...rules, geofence_radius_meters: Number(e.target.value) })} className={inputCls} />
-        </div>
-        <label className="flex items-center justify-between gap-3 text-sm text-[#0F172A]">
-          <span>Require geolocation</span>
-          <input type="checkbox" checked={rules.require_geo} onChange={(e) => setRules({ ...rules, require_geo: e.target.checked })} className="h-4 w-4 rounded border-[#E2E8F0] text-[#0b6cbf]" />
-        </label>
-        <label className="flex items-center justify-between gap-3 text-sm text-[#0F172A]">
-          <span>Require photo</span>
-          <input type="checkbox" checked={rules.require_photo} onChange={(e) => setRules({ ...rules, require_photo: e.target.checked })} className="h-4 w-4 rounded border-[#E2E8F0] text-[#0b6cbf]" />
-        </label>
-        <label className="flex items-center justify-between gap-3 text-sm text-[#0F172A]">
-          <span>Allow WFH check-in</span>
-          <input type="checkbox" checked={rules.allow_wfh_checkin} onChange={(e) => setRules({ ...rules, allow_wfh_checkin: e.target.checked })} className="h-4 w-4 rounded border-[#E2E8F0] text-[#0b6cbf]" />
-        </label>
-      </div>
+      {!canSetLocation && !locationSet && (
+        <p className="text-xs text-[#94A3B8]">Only an org admin can set the organization location.</p>
+      )}
 
-      <div className="flex justify-end">
-        <button type="button" onClick={save} disabled={saving} className="rounded-xl bg-[#0b6cbf] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#095699] disabled:opacity-60">
-          {saving ? 'Saving…' : 'Save rules'}
-        </button>
+      <PageSection title="Check-in rules">
+        <div className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-1">
+          <ToggleRow
+            id="re-geofence"
+            label="Geofence enabled"
+            description="Only accept a check-in made within range of the office."
+            checked={rules.geofence_enabled}
+            onChange={(v) => setRules({ ...rules, geofence_enabled: v })}
+          >
+            {/* Nested under its own toggle: the radius only means anything while
+                geofencing is on, and as a sibling field it read as an unrelated
+                setting stretched across the full card width. */}
+            <div className="mt-2.5 flex items-center gap-2">
+              <label htmlFor="re-radius" className={fieldLabelCls}>Radius</label>
+              <input
+                id="re-radius" type="number" min={1} step={10}
+                value={rules.geofence_radius_meters}
+                onChange={(e) => setRules({ ...rules, geofence_radius_meters: Number(e.target.value) })}
+                disabled={!rules.geofence_enabled}
+                className={`${inputCls} w-24`}
+              />
+              <span className={`text-xs ${rules.geofence_enabled ? 'text-[#64748B]' : 'text-[#CBD5E1]'}`}>
+                meters
+              </span>
+            </div>
+          </ToggleRow>
+
+          <ToggleRow
+            id="re-require-geo"
+            label="Require geolocation"
+            description="Check-in is refused if the device will not share a location."
+            checked={rules.require_geo}
+            onChange={(v) => setRules({ ...rules, require_geo: v })}
+          />
+          <ToggleRow
+            id="re-require-photo"
+            label="Require photo"
+            description="Employees capture a selfie as part of checking in."
+            checked={rules.require_photo}
+            onChange={(v) => setRules({ ...rules, require_photo: v })}
+          />
+          <ToggleRow
+            id="re-wfh"
+            label="Allow WFH check-in"
+            description="Lets employees check in from outside the geofence."
+            checked={rules.allow_wfh_checkin}
+            onChange={(v) => setRules({ ...rules, allow_wfh_checkin: v })}
+          />
+        </div>
+      </PageSection>
+
+      {/* One action for the whole form. Two separate save buttons meant the page
+          could not say whether an edit was persisted, and editing both halves
+          then pressing one of them silently dropped the other. */}
+      <div className="flex items-center justify-end gap-3 border-t border-[#E2E8F0] pt-4">
+        {dirty && <span className="text-xs text-[#64748B]">Unsaved changes</span>}
+        <Button variant="primary" size="md" onClick={save} disabled={saving || !dirty}>
+          {saving ? 'Saving…' : 'Save changes'}
+        </Button>
       </div>
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { SessionUser } from '@platform/types';
+import { Alert, PageBody, PageHeader, PageSection } from '@platform/ui-kit';
 import { attendance as attendanceApi, shiftAssignments as shiftAssignmentsApi } from '../../lib/api/client';
 import type { AttendanceDayRow, AttendanceRules, PunchResult, RegularizationView, ShiftAssignmentView } from '../../lib/attendance/types';
 import { todayIso } from '../../lib/attendance/format';
@@ -81,31 +82,30 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
   };
 
   return (
-    <div className="w-full space-y-6 px-3 py-4 sm:px-4">
-      <AttendanceTabs hrRank={hrRank} />
+    <div className="flex w-full flex-1 flex-col">
+      <PageHeader
+        title="My Attendance"
+        subtitle="Check in/out, your monthly calendar, and regularization requests."
+        tabs={<AttendanceTabs hrRank={hrRank} />}
+      />
 
-      <div>
-        <h1 className="text-2xl font-bold text-[#0F172A]">My Attendance</h1>
-        <p className="mt-1 text-sm text-[#64748B]">Check in/out, your monthly calendar, and regularization requests.</p>
-      </div>
+      <PageBody>
+        {notice && <Alert tone="success">{notice}</Alert>}
+        {error && <Alert tone="error">{error}</Alert>}
 
-      {notice && <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-xs text-green-700">{notice}</div>}
-      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">{error}</div>}
+        <TodayCard todayRow={todayRow} shift={shift} onPunch={(mode) => { setPunchMode(mode); setNotice(null); }} busy={punchMode !== null} />
 
-      <TodayCard todayRow={todayRow} shift={shift} onPunch={(mode) => { setPunchMode(mode); setNotice(null); }} busy={punchMode !== null} />
+        <PageSection title="My month">
+          <MyMonthCalendar
+            refreshKey={refreshKey}
+            onDayClick={(row, date) => { setDetailRow(row); setDetailDate(date); }}
+          />
+        </PageSection>
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-[#0b6cbf]">My month</h2>
-        <MyMonthCalendar
-          refreshKey={refreshKey}
-          onDayClick={(row, date) => { setDetailRow(row); setDetailDate(date); }}
-        />
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-[#0b6cbf]">My regularizations</h2>
-        <MyRegularizationsList items={regularizations} loading={regLoading} />
-      </section>
+        <PageSection title="My regularizations">
+          <MyRegularizationsList items={regularizations} loading={regLoading} />
+        </PageSection>
+      </PageBody>
 
       {rules && punchMode && (
         <PunchModal
