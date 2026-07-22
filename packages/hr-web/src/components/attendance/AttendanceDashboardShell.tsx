@@ -35,25 +35,29 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
   const [detailRow, setDetailRow] = useState<AttendanceDayRow | undefined>(undefined);
   const [regFormDate, setRegFormDate] = useState<string | null>(null);
 
+  // Derive "today" in the org timezone (from rules) so it matches the
+  // server-computed work_date. Falls back to browser-local until rules load.
+  const orgTz = rules?.timezone;
+
   const loadToday = useCallback(() => {
     attendanceApi
       .me()
-      .then((res) => setTodayRow(res.data.days.find((d) => d.work_date === todayIso())))
+      .then((res) => setTodayRow(res.data.days.find((d) => d.work_date === todayIso(orgTz))))
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load today’s status.'));
-  }, []);
+  }, [orgTz]);
 
   const loadShift = useCallback(() => {
     shiftAssignmentsApi
       .list({ userId: actor.id })
       .then((res) => {
-        const today = todayIso();
+        const today = todayIso(orgTz);
         const current = res.data.find(
           (a) => a.is_active && a.effective_from <= today && (!a.effective_to || a.effective_to >= today),
         );
         setShift(current);
       })
       .catch(() => setShift(undefined));
-  }, [actor.id]);
+  }, [actor.id, orgTz]);
 
   const loadRegularizations = useCallback(() => {
     setRegLoading(true);

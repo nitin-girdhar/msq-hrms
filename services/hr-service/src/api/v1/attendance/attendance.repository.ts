@@ -74,6 +74,11 @@ export interface EffectiveRules {
   require_face_match: boolean;
   face_match_threshold: number;
   face_match_action: string;
+  // The org's IANA timezone. Attendance work_date and shift boundaries are
+  // computed in this zone server-side (see workDateOf), so the client must use
+  // it to derive "today" — using the browser's UTC date mismatched the stored
+  // work_date during the UTC+ evening window and hid a just-made check-in.
+  timezone: string;
 }
 
 const DEFAULT_RULES: EffectiveRules = {
@@ -85,18 +90,31 @@ const DEFAULT_RULES: EffectiveRules = {
   require_face_match: false,
   face_match_threshold: 85,
   face_match_action: 'flag',
+  timezone: 'Asia/Kolkata',
 };
 
 const RULES_TTL_MS = 60_000;
 const rulesCache = new Map<string, { rules: EffectiveRules; expiresAt: number }>();
 
 async function loadRulesRow(tx: DrizzleTx, orgId: string): Promise<EffectiveRules> {
+  // Always resolve the org timezone (from entity.organizations); the
+  // attendance_rules row is optional and its columns are NULL when unset.
   const rows = (await tx.execute(sql`
-    SELECT geofence_enabled, geofence_radius_meters, require_photo, require_geo, allow_wfh_checkin,
-           require_face_match, face_match_threshold::float8 AS face_match_threshold, face_match_action
-    FROM hr.attendance_rules WHERE org_id = ${orgId} AND NOT is_deleted LIMIT 1
-  `)) as unknown as EffectiveRules[];
-  return rows[0] ?? { ...DEFAULT_RULES };
+    SELECT o.timezone,
+           r.geofence_enabled, r.geofence_radius_meters, r.require_photo, r.require_geo, r.allow_wfh_checkin,
+           r.require_face_match, r.face_match_threshold::float8 AS face_match_threshold, r.face_match_action
+    FROM entity.organizations o
+    LEFT JOIN hr.attendance_rules r ON r.org_id = o.id AND NOT r.is_deleted
+    WHERE o.id = ${orgId} LIMIT 1
+  `)) as unknown as Array<Partial<EffectiveRules> & { timezone: string | null; geofence_enabled: boolean | null }>;
+  const row = rows[0];
+  if (!row) return { ...DEFAULT_RULES };
+  const timezone = row.timezone ?? DEFAULT_RULES.timezone;
+  // No attendance_rules row → fall back to defaults, but keep the real org tz.
+  if (row.geofence_enabled === null || row.geofence_enabled === undefined) {
+    return { ...DEFAULT_RULES, timezone };
+  }
+  return { ...(row as EffectiveRules), timezone };
 }
 
 async function getCachedRules(orgId: string): Promise<EffectiveRules> {

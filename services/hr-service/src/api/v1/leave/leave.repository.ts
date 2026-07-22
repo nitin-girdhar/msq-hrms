@@ -21,7 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { sql } from 'drizzle-orm';
-import { withRoleTx, withServiceTx, type RoleTxContext, type DrizzleTx } from '@platform/db';
+import { withRoleTx, withServiceTx, pgErrorCode, type RoleTxContext, type DrizzleTx } from '@platform/db';
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../../lib/errors.js';
 import { computeLeaveDays, type HalfDay } from '../../../lib/leave/compute-leave-days.js';
 import { resolveApprovers } from '../../../lib/leave/resolve-approvers.js';
@@ -771,7 +771,7 @@ export async function createPolicy(ctx: LeaveCtx, data: CreatePolicyInput): Prom
       `)) as unknown as Array<{ id: string }>;
       return { id: rows[0]!.id };
     } catch (err) {
-      if ((err as { code?: string }).code === '23505') {
+      if (pgErrorCode(err) === '23505') {
         throw new ConflictError('A policy revision already exists for this scope, type and effective date');
       }
       throw err;
@@ -854,7 +854,7 @@ export async function createHoliday(ctx: LeaveCtx, data: CreateHolidayInput): Pr
       `)) as unknown as Array<{ id: string }>;
       return { id: rows[0]!.id };
     } catch (err) {
-      if ((err as { code?: string }).code === '23505') {
+      if (pgErrorCode(err) === '23505') {
         throw new ConflictError('A holiday already exists on that date in this calendar');
       }
       throw err;
@@ -900,7 +900,7 @@ export async function createHolidayCalendar(ctx: LeaveCtx, data: CreateHolidayCa
       `)) as unknown as Array<{ id: string }>;
       return { id: rows[0]!.id };
     } catch (err) {
-      if ((err as { code?: string }).code === '23505') {
+      if (pgErrorCode(err) === '23505') {
         throw new ConflictError('A calendar with that name and year already exists');
       }
       throw err;

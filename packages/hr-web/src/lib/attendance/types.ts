@@ -22,6 +22,9 @@ export interface AttendanceRules {
   require_face_match: boolean;
   face_match_threshold: number;
   face_match_action: string;
+  // Org IANA timezone; use it with todayIso(tz) so the client's "today" matches
+  // the server-computed attendance work_date.
+  timezone: string;
 }
 
 export interface PunchResult {

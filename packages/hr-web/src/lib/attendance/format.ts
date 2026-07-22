@@ -70,8 +70,15 @@ export function formatDateTime(iso: string | null): string {
   });
 }
 
-export function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+// "Today" as a YYYY-MM-DD calendar date. When a timezone is given (the org's
+// IANA zone from the attendance rules) the date is computed in THAT zone, to
+// match the server, which keys attendance work_date on the org timezone. Without
+// it, falls back to the browser's local date. Never use the raw UTC date here:
+// during the UTC+ evening window the org-local day is already "tomorrow" vs UTC,
+// which mismatched a just-recorded check-in's work_date and hid it.
+export function todayIso(timezone?: string): string {
+  if (!timezone) return new Date().toLocaleDateString('en-CA');
+  return new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(new Date());
 }
 
 interface PunchErrorDetails {
