@@ -65,7 +65,7 @@ export function canManageShifts(actor: CapabilityHolder): boolean {
 
 /** See a team/subtree attendance view at all — this gates the Team tab. */
 export function canViewTeamAttendance(actor: CapabilityHolder): boolean {
-  return can(actor, CAPABILITY.HR_ATTENDANCE_TEAM);
+  return can(actor, CAPABILITY.HR_ATTENDANCE_VIEW_TEAM);
 }
 
 /** Act as approval-override on any in-org attendance regularization. */

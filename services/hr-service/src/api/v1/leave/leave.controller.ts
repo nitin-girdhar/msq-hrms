@@ -1,4 +1,5 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
+import { can, CAPABILITY } from '@platform/rbac';
 import * as service from './leave.service.js';
 import type { LeaveCtx } from './leave.repository.js';
 import type {
@@ -23,7 +24,11 @@ import type {
 
 function ctxOf(request: FastifyRequest): LeaveCtx {
   const { org_id, user_id, role, tenant_id, rank, capabilities } = request.auth;
-  return { org_id, user_id, role, tenant_id, rank, capabilities };
+  // Tier C3 defence-in-depth: a role without platform.write runs its whole
+  // transaction as readonly_user with transaction_read_only = on, so a missed
+  // app-layer check still cannot write. Previously LMS-only and keyed on rank 0.
+  const readOnly = !can(request.auth, CAPABILITY.PLATFORM_WRITE);
+  return { org_id, user_id, role, tenant_id, rank, capabilities, readOnly };
 }
 
 export class LeaveController {

@@ -1,4 +1,5 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
+import { can, CAPABILITY } from '@platform/rbac';
 import * as service from './attendance.service.js';
 import type { AttendanceCtx } from './attendance.repository.js';
 import { getPhotoStorage, contentTypeForKey } from '../../../lib/storage/photo-storage.js';
@@ -23,7 +24,11 @@ import type {
 
 function ctxOf(request: FastifyRequest): AttendanceCtx {
   const { org_id, user_id, role, tenant_id, rank, capabilities } = request.auth;
-  return { org_id, user_id, role, tenant_id, rank, capabilities };
+  // Tier C3 defence-in-depth: a role without platform.write runs its whole
+  // transaction as readonly_user with transaction_read_only = on, so a missed
+  // app-layer check still cannot write. Previously LMS-only and keyed on rank 0.
+  const readOnly = !can(request.auth, CAPABILITY.PLATFORM_WRITE);
+  return { org_id, user_id, role, tenant_id, rank, capabilities, readOnly };
 }
 
 function punchMeta(request: FastifyRequest) {
@@ -52,6 +57,11 @@ export class AttendanceController {
   // ── Rules ───────────────────────────────────────────────────────────────────
   getRules = async (request: FastifyRequest, reply: FastifyReply) => {
     const data = await service.getRules(ctxOf(request));
+    return reply.send({ success: true, data });
+  };
+
+  getAdminRules = async (request: FastifyRequest, reply: FastifyReply) => {
+    const data = await service.getAdminRules(ctxOf(request));
     return reply.send({ success: true, data });
   };
 

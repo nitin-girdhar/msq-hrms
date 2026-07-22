@@ -73,7 +73,19 @@ export async function checkOut(ctx: AttendanceCtx, data: CheckOutInput, meta: Pu
 }
 
 // ── Rules ───────────────────────────────────────────────────────────────────
+// Two readers, two different gates. The dashboard needs the org's timezone and
+// grace window to render a correct "today", so the plain read stays open to
+// anyone in the module. The ADMIN read exposes the whole configuration and is
+// what the Admin tab loads, so it requires the same grant as writing it —
+// otherwise the tab is hidden but its data is still served on request.
 export async function getRules(ctx: AttendanceCtx) {
+  return repo.getEffectiveRules(ctx);
+}
+
+export async function getAdminRules(ctx: AttendanceCtx) {
+  if (!canManageAttendance(ctx)) {
+    throw new ForbiddenError('Only HR admins or org admins can view attendance rules');
+  }
   return repo.getEffectiveRules(ctx);
 }
 

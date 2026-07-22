@@ -18,13 +18,14 @@
     "resolve-attendance": "tsx --env-file ../../.env src/jobs/resolve-attendance.ts"
   },
   "dependencies": {
-    "@platform/authz": "workspace:*",
     "@hr/authz": "workspace:*",
+    "@hr/validation": "workspace:*",
     "@platform/audit-log": "workspace:*",
+    "@platform/authz": "workspace:*",
     "@platform/db": "workspace:*",
+    "@platform/rbac": "workspace:*",
     "@platform/service-auth": "workspace:*",
     "@platform/types": "workspace:*",
-    "@hr/validation": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "exceljs": "^4.4.0",
     "fastify": "^5.2.1",

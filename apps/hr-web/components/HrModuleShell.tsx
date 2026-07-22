@@ -37,9 +37,9 @@ export default async function HrModuleShell({ module, children }: Props) {
           homeHref="/attendance"
           title="Fitclass - People & Attendance"
         />
-        <MobileSidebar role={session.role} items={HR_NAV} />
+        <MobileSidebar actor={session} items={HR_NAV} />
         <div className="flex w-full flex-1 lg:min-h-0 lg:overflow-hidden">
-          <AppSidebar role={session.role} items={HR_NAV} />
+          <AppSidebar actor={session} items={HR_NAV} />
           <main className="flex w-full min-w-0 flex-1 flex-col lg:overflow-y-auto">
             {children}
           </main>
