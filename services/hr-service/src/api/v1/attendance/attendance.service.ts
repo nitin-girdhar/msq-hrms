@@ -78,7 +78,7 @@ export async function getRules(ctx: AttendanceCtx) {
 }
 
 export async function updateRules(ctx: AttendanceCtx, data: AttendanceRulesAdminInput) {
-  if (!canManageAttendance(ctx.role, ctx.rank)) {
+  if (!canManageAttendance(ctx)) {
     throw new ForbiddenError('Only HR admins or org admins can manage attendance rules');
   }
   const result = await repo.upsertRules(ctx, data);
@@ -97,20 +97,20 @@ export async function getMyMonth(ctx: AttendanceCtx, month: string) {
 }
 
 export async function getTeam(ctx: AttendanceCtx, date: string) {
-  if (!canViewTeamAttendance(ctx.role, ctx.rank)) {
+  if (!canViewTeamAttendance(ctx)) {
     throw new ForbiddenError('Insufficient rank to view the team attendance view');
   }
-  const seeAllOrg = canManageAttendance(ctx.role, ctx.rank);
+  const seeAllOrg = canManageAttendance(ctx);
   return repo.getTeam(ctx, date, seeAllOrg);
 }
 
 // Same authority as the team view: this is that roster reduced to counts, so it
 // must not become a way to infer team size for someone barred from getTeam.
 export async function getTodaySummary(ctx: AttendanceCtx, date: string) {
-  if (!canViewTeamAttendance(ctx.role, ctx.rank)) {
+  if (!canViewTeamAttendance(ctx)) {
     throw new ForbiddenError('Insufficient rank to view the team attendance view');
   }
-  const seeAllOrg = canManageAttendance(ctx.role, ctx.rank);
+  const seeAllOrg = canManageAttendance(ctx);
   return repo.getTodaySummary(ctx, date, seeAllOrg);
 }
 
@@ -118,7 +118,7 @@ export async function getTodaySummary(ctx: AttendanceCtx, date: string) {
 export async function getPhotoKey(ctx: AttendanceCtx, eventId: string): Promise<string | null> {
   const evt = await repo.loadEventForPhoto(ctx, eventId);
   if (!evt) return null;
-  if (evt.user_id !== ctx.user_id && !canManageAttendance(ctx.role, ctx.rank)) {
+  if (evt.user_id !== ctx.user_id && !canManageAttendance(ctx)) {
     if (!(await repo.canViewUserAttendance(ctx, evt.user_id))) {
       throw new ForbiddenError('Not authorized to view this photo');
     }
@@ -132,7 +132,7 @@ export async function listShifts(ctx: AttendanceCtx) {
 }
 
 function assertCanManageShifts(ctx: AttendanceCtx) {
-  if (!canManageShifts(ctx.role, ctx.rank)) {
+  if (!canManageShifts(ctx)) {
     throw new ForbiddenError('Only HR admins or org admins can manage shifts');
   }
 }
@@ -157,7 +157,7 @@ export async function updateShift(ctx: AttendanceCtx, id: string, data: UpdateSh
 // ── Shift assignments ─────────────────────────────────────────────────────────
 export async function listShiftAssignments(ctx: AttendanceCtx, userId?: string) {
   // Non-managers may only list their own assignments.
-  if (!canViewTeamAttendance(ctx.role, ctx.rank)) {
+  if (!canViewTeamAttendance(ctx)) {
     return repo.listShiftAssignments(ctx, ctx.user_id);
   }
   return repo.listShiftAssignments(ctx, userId);
@@ -195,15 +195,15 @@ export async function createRegularization(ctx: AttendanceCtx, data: CreateRegul
 }
 
 export async function listRegularizations(ctx: AttendanceCtx, filters: ListRegularizationsInput) {
-  if (filters.scope === 'team' && !canViewTeamAttendance(ctx.role, ctx.rank)) {
+  if (filters.scope === 'team' && !canViewTeamAttendance(ctx)) {
     throw new ForbiddenError('Insufficient rank to view the team regularization queue');
   }
-  const seeAllOrg = canManageAttendance(ctx.role, ctx.rank);
+  const seeAllOrg = canManageAttendance(ctx);
   return repo.listRegularizations(ctx, filters, seeAllOrg);
 }
 
 export async function approveRegularization(ctx: AttendanceCtx, id: string, comment: string | null) {
-  const isOverride = canOverrideAttendanceApproval(ctx.role, ctx.rank);
+  const isOverride = canOverrideAttendanceApproval(ctx);
   const result = await repo.approveRegularization(ctx, id, comment, isOverride);
   void logActivity({
     action_type: 'attendance_regularization_approved',
@@ -216,7 +216,7 @@ export async function approveRegularization(ctx: AttendanceCtx, id: string, comm
 }
 
 export async function rejectRegularization(ctx: AttendanceCtx, id: string, comment: string) {
-  const isOverride = canOverrideAttendanceApproval(ctx.role, ctx.rank);
+  const isOverride = canOverrideAttendanceApproval(ctx);
   const result = await repo.rejectRegularization(ctx, id, comment, isOverride);
   void logActivity({
     action_type: 'attendance_regularization_rejected',
@@ -230,7 +230,7 @@ export async function rejectRegularization(ctx: AttendanceCtx, id: string, comme
 
 // ── Reports ───────────────────────────────────────────────────────────────────
 export async function monthlySummary(ctx: AttendanceCtx, month: string) {
-  if (!canManageAttendance(ctx.role, ctx.rank)) {
+  if (!canManageAttendance(ctx)) {
     throw new ForbiddenError('Only HR admins or org admins can access attendance reports');
   }
   return repo.monthlySummary(ctx, month);
@@ -240,7 +240,7 @@ export async function monthlySummary(ctx: AttendanceCtx, month: string) {
 // NOTE: for now only hr_admin/org_admin may enroll/unenroll anyone in-org.
 // Self-enrollment (gated by an org "allow self-enrollment" rule) is deferred.
 export async function enrollFace(ctx: AttendanceCtx, data: FaceEnrollInput) {
-  if (!canManageAttendance(ctx.role, ctx.rank)) {
+  if (!canManageAttendance(ctx)) {
     throw new ForbiddenError('Only HR admins or org admins can enroll faces');
   }
   // DPDP consent is mandatory — reject a false/absent consent with 422.
@@ -261,7 +261,7 @@ export async function enrollFace(ctx: AttendanceCtx, data: FaceEnrollInput) {
 
 async function assertCanViewFace(ctx: AttendanceCtx, userId: string) {
   if (userId === ctx.user_id) return;
-  if (canManageAttendance(ctx.role, ctx.rank)) return;
+  if (canManageAttendance(ctx)) return;
   if (await repo.canViewUserAttendance(ctx, userId)) return;
   throw new ForbiddenError('Not authorized to view this user’s face-enrollment status');
 }
@@ -278,7 +278,7 @@ export async function getReferencePhotoKey(ctx: AttendanceCtx, userId: string): 
 }
 
 export async function deleteFaceEnrollment(ctx: AttendanceCtx, userId: string) {
-  if (!canManageAttendance(ctx.role, ctx.rank)) {
+  if (!canManageAttendance(ctx)) {
     throw new ForbiddenError('Only HR admins or org admins can remove a face enrollment');
   }
   await repo.deleteFaceEnrollment(ctx, userId);
@@ -292,15 +292,15 @@ export async function deleteFaceEnrollment(ctx: AttendanceCtx, userId: string) {
 }
 
 export async function listFaceReviews(ctx: AttendanceCtx, filters: FaceReviewsQueryInput) {
-  if (!canViewTeamAttendance(ctx.role, ctx.rank)) {
+  if (!canViewTeamAttendance(ctx)) {
     throw new ForbiddenError('Insufficient rank to view the face-review queue');
   }
-  const seeAllOrg = canManageAttendance(ctx.role, ctx.rank);
+  const seeAllOrg = canManageAttendance(ctx);
   return repo.listFaceReviews(ctx, filters, seeAllOrg);
 }
 
 export async function clearFaceReview(ctx: AttendanceCtx, eventId: string) {
-  const isOverride = canOverrideAttendanceApproval(ctx.role, ctx.rank);
+  const isOverride = canOverrideAttendanceApproval(ctx);
   const result = await repo.clearFaceReview(ctx, eventId, isOverride);
   void logActivity({
     action_type: 'attendance_face_review_cleared',
@@ -313,7 +313,7 @@ export async function clearFaceReview(ctx: AttendanceCtx, eventId: string) {
 }
 
 export async function rejectFaceReview(ctx: AttendanceCtx, eventId: string) {
-  const isOverride = canOverrideAttendanceApproval(ctx.role, ctx.rank);
+  const isOverride = canOverrideAttendanceApproval(ctx);
   const result = await repo.rejectFaceReview(ctx, eventId, isOverride);
   void logActivity({
     action_type: 'attendance_face_review_rejected',

@@ -17,7 +17,7 @@ interface Props {
   hrRank: HrRank;
 }
 
-export default function AttendanceTeamShell({ hrRank }: Props) {
+export default function AttendanceTeamShell({ actor, hrRank }: Props) {
   const [date, setDate] = useState(todayIso());
   const [rows, setRows] = useState<TeamDayRow[]>([]);
   const [rowsLoading, setRowsLoading] = useState(true);
@@ -58,7 +58,7 @@ export default function AttendanceTeamShell({ hrRank }: Props) {
       <PageHeader
         title="Team Attendance"
         subtitle="Who’s in, who’s out, and pending regularization requests."
-        tabs={<AttendanceTabs hrRank={hrRank} />}
+        tabs={<AttendanceTabs hrRank={hrRank} actor={actor} />}
       />
 
       <PageBody>

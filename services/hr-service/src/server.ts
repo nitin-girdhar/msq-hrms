@@ -3,7 +3,7 @@ import { ZodError } from 'zod';
 import { config } from './config/index.js';
 import { v1Router } from './api/v1/index.js';
 import { AppError } from './lib/errors.js';
-import { closeAllPools } from '@platform/db';
+import { closeAllPools, startCapabilityCache } from '@platform/db';
 
 const app = Fastify({
   // Attendance punch photos travel as base64 in the JSON body (≤2 MB binary ≈
@@ -35,6 +35,8 @@ app.get('/health', async () => ({ status: 'ok', service: 'hr-service' }));
 
 const start = async () => {
   try {
+    // Tier C3: keep the in-memory capability matrix fresh via LISTEN/NOTIFY.
+    await startCapabilityCache();
     await app.listen({ port: config.port, host: '0.0.0.0' });
   } catch (err) {
     app.log.error(err);

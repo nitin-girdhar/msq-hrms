@@ -22,8 +22,8 @@ import type {
 } from './leave.schema.js';
 
 function ctxOf(request: FastifyRequest): LeaveCtx {
-  const { org_id, user_id, role, tenant_id, rank } = request.auth;
-  return { org_id, user_id, role, tenant_id, rank };
+  const { org_id, user_id, role, tenant_id, rank, capabilities } = request.auth;
+  return { org_id, user_id, role, tenant_id, rank, capabilities };
 }
 
 export class LeaveController {

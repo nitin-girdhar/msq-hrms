@@ -22,8 +22,8 @@ import type {
 } from '@hr/validation';
 
 function ctxOf(request: FastifyRequest): AttendanceCtx {
-  const { org_id, user_id, role, tenant_id, rank } = request.auth;
-  return { org_id, user_id, role, tenant_id, rank };
+  const { org_id, user_id, role, tenant_id, rank, capabilities } = request.auth;
+  return { org_id, user_id, role, tenant_id, rank, capabilities };
 }
 
 function punchMeta(request: FastifyRequest) {

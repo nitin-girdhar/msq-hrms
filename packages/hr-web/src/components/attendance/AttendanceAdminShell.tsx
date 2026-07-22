@@ -35,7 +35,7 @@ export default function AttendanceAdminShell({ actor, hrRank }: Props) {
       <PageHeader
         title="Attendance Administration"
         subtitle="Capture rules, shifts, shift assignments and payroll reports."
-        tabs={<AttendanceTabs hrRank={hrRank} />}
+        tabs={<AttendanceTabs hrRank={hrRank} actor={actor} />}
       />
 
       <PageBody>

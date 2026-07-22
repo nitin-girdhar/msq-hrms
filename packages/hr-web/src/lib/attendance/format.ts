@@ -2,22 +2,25 @@
 // composites and the server pages (role gating). Mirrors apps/web/src/lib/leave/format.ts.
 
 import type { ApiRequestError } from '@platform/ui-kit';
+import { ANCHOR_RANK, can, CAPABILITY, type CapabilityHolder } from '@platform/rbac';
 import type { AttendanceStatusName, RegularizationStatus } from './types';
 
 /**
- * HR admin (rank ≥ 80) can manage attendance configuration. `rank` must be
- * the caller's resolved HR product rank (hr.member_roles, via getHrRank/GET
- * /hr/me) — never SessionUser.rank, which is the platform/session rank, a
- * different scale that only coincidentally overlaps for org/tenant admins.
+ * Who may manage attendance configuration.
+ *
+ * Tier C3: this asks the DB-resolved capability list on the session — the SAME
+ * list hr-service gates on — instead of comparing a rank. That is what stops the
+ * Admin tab from rendering for someone the service will refuse, and it means the
+ * answer changes with a DB grant rather than a deploy.
  */
-export function canManageAttendanceAdmin(rank: number): boolean {
-  return rank >= 80;
+export function canManageAttendanceAdmin(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_ATTENDANCE_ADMIN);
 }
 
-/** Only an org admin (rank ≥ 80) can set the org's geofence-centre coordinates
- * (identity-service's updateOrgGeo hard-codes rank >= 80, excluding hr_admin). */
+/** Only an org admin can set the org's geofence-centre coordinates — matches the
+ *  floor identity-service's updateOrgGeo enforces, which excludes hr_admin. */
 export function canSetOrgLocation(rank: number): boolean {
-  return rank >= 80;
+  return rank >= ANCHOR_RANK.ORG_ADMIN;
 }
 
 export const ATTENDANCE_STATUS_STYLES: Record<AttendanceStatusName, { bg: string; fg: string; dot: string }> = {

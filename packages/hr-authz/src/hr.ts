@@ -1,89 +1,74 @@
-// ── HR product rank scale (P1.3) ────────────────────────────────────────────
-// Owned by @hr/authz; comparable only WITHIN HR. Mirrors hr.roles.rank in
-// db_scripts/17_init-per-product-roles.sql:
-//   hr_viewer 0 · hr_staff 40 · hr_manager 70 · hr_admin 80
-// `role`/`rank` below are the HR PRODUCT role/rank (from hr.member_roles),
-// resolved per request by hr-service. Tenant-wide authority is a PLATFORM
-// concern keyed on platform_role — see isTenantLeaveAdmin.
+// ── HR authority (Tier C3: capability-driven) ───────────────────────────────
+// These predicates no longer compare ranks. They ask whether the actor holds a
+// CAPABILITY, which is a row in iam.role_capabilities resolved per tenant — so
+// "which roles may open the Team tab" becomes a DB change, not a deploy.
+//
+// The actor is anything carrying a resolved capability list: a service's
+// `request.auth` (filled by the auth middleware) or a `SessionUser` from
+// /auth/me. Both are filled from the SAME matrix, which is what stops a rendered
+// tab and the call behind it from disagreeing.
+//
+// The rank ladder still exists and still matters — it answers "who is senior to
+// whom" for manager-of resolution and approval chains. It just no longer answers
+// "may this person do this".
+import { can, CAPABILITY, ANCHOR_RANK, DEFAULT_ROLE_RANK, type CapabilityHolder } from '@platform/rbac';
+
+/** Retained for the questions that are genuinely about SENIORITY, not access. */
 export const HR_RANKS = {
-  VIEWER: 0,
-  STAFF: 40,
-  MANAGER: 70,
-  ADMIN: 80,
+  VIEWER:  ANCHOR_RANK.READ_ONLY,
+  STAFF:   DEFAULT_ROLE_RANK.SENIOR_SALES_EXECUTIVE,
+  MANAGER: DEFAULT_ROLE_RANK.ORG_MANAGER,
+  ADMIN:   DEFAULT_ROLE_RANK.HR_ADMIN,
 } as const;
 
-/**
- * True when the acting user holds the HR admin product role. Retained as a
- * self-documenting predicate; note hr_admin now sits at the TOP of the HR scale
- * (rank 80), so `rank >= HR_RANKS.ADMIN` already implies it.
- */
+/** True when the acting user holds the HR admin role by name. Kept for copy and
+ *  logging; gate on capabilities, not on this. */
 export function isHrAdmin(role: string): boolean {
   return role === 'hr_admin';
 }
 
-/**
- * Whether the acting user may create/update employee profiles, departments,
- * and designations for their org: HR admin (rank >= 80).
- */
-export function canManageEmployees(_role: string, rank: number): boolean {
-  return rank >= HR_RANKS.ADMIN;
+/** Create/update employee profiles, departments and designations. */
+export function canManageEmployees(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_EMPLOYEES_MANAGE);
+}
+
+/** Leave configuration — policies, holidays, settings, manual ledger adjustments. */
+export function canManageLeave(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_LEAVE_ADMIN);
+}
+
+/** Act as approval-override on any in-org leave request. */
+export function canOverrideLeaveApproval(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_LEAVE_ADMIN);
 }
 
 /**
- * Whether the acting user may manage leave configuration (policies, holidays,
- * settings, manual ledger adjustments) for their org: HR admin.
- */
-export function canManageLeave(_role: string, rank: number): boolean {
-  return rank >= HR_RANKS.ADMIN;
-}
-
-/**
- * Whether the acting user may act as an approval-override on any in-org leave
- * request (independent of being the resolved approver): HR admin.
- */
-export function canOverrideLeaveApproval(_role: string, rank: number): boolean {
-  return rank >= HR_RANKS.ADMIN;
-}
-
-/**
- * Tenant-wide leave policy/settings authority. This is a PLATFORM capability
- * (managing HR config across every org in the tenant), so it is keyed on
- * platform_role, not the HR product rank (which tops out per-org at hr_admin).
+ * Tenant-wide leave policy/settings authority. Still keyed on platform_role:
+ * this is a TENANCY question ("may you act across every org"), not a per-role
+ * permission, so it is answered by the JWT rather than the capability matrix.
  */
 export function isTenantLeaveAdmin(platformRole: string): boolean {
   return platformRole === 'tenant_admin' || platformRole === 'super_admin';
 }
 
-// ── Attendance ────────────────────────────────────────────────────────────────
-// Attendance shares the same authority model as leave (HR admin for
-// configuration; HR manager+ for team views). Dedicated names keep call sites
-// self-documenting without duplicating the logic.
+// ── Attendance ──────────────────────────────────────────────────────────────
 
-/**
- * Whether the acting user may manage attendance configuration — rules, shifts,
- * shift assignments — for their org: HR admin.
- */
-export function canManageAttendance(_role: string, rank: number): boolean {
-  return rank >= HR_RANKS.ADMIN;
+/** Attendance configuration — rules, shifts, shift assignments. */
+export function canManageAttendance(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_ATTENDANCE_ADMIN);
 }
 
-/** Alias for shift/shift-assignment management (same authority as attendance config). */
-export function canManageShifts(role: string, rank: number): boolean {
-  return canManageAttendance(role, rank);
+/** Shift and shift-assignment management (same authority as attendance config). */
+export function canManageShifts(actor: CapabilityHolder): boolean {
+  return canManageAttendance(actor);
 }
 
-/**
- * Whether the acting user may see a team/subtree attendance view at all:
- * HR manager+ (rank >= 70).
- */
-export function canViewTeamAttendance(_role: string, rank: number): boolean {
-  return rank >= HR_RANKS.MANAGER;
+/** See a team/subtree attendance view at all — this gates the Team tab. */
+export function canViewTeamAttendance(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_ATTENDANCE_TEAM);
 }
 
-/**
- * Whether the acting user may act as an approval-override on any in-org attendance
- * regularization (independent of being the resolved approver): HR admin.
- */
-export function canOverrideAttendanceApproval(_role: string, rank: number): boolean {
-  return rank >= HR_RANKS.ADMIN;
+/** Act as approval-override on any in-org attendance regularization. */
+export function canOverrideAttendanceApproval(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_ATTENDANCE_ADMIN);
 }

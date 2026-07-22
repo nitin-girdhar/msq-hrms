@@ -1,4 +1,4 @@
-import { sql, eq, and } from 'drizzle-orm';
+import { sql, eq, and, or, isNull } from 'drizzle-orm';
 import { withRoleTx } from '@platform/db';
 import type { RoleTxContext, DrizzleTx } from '@platform/db';
 import { employeeProfilesTable, departmentsTable, designationsTable, employmentTypesTable } from '@platform/db/schema';
@@ -23,7 +23,7 @@ const JOINS = sql`
   JOIN iam.users u ON u.id = ep.user_id
   JOIN iam.user_roles ur ON ur.id = u.role_id
   LEFT JOIN hr.employment_types et ON et.id = ep.employment_type_id
-  LEFT JOIN hr.departments d ON d.id = ep.department_id
+  LEFT JOIN iam.departments d ON d.id = ep.department_id
   LEFT JOIN hr.designations ds ON ds.id = ep.designation_id
 `;
 
@@ -80,7 +80,14 @@ async function resolveDepartmentId(tx: DrizzleTx, orgId: string, name: string) {
   const [row] = await tx
     .select({ id: departmentsTable.id })
     .from(departmentsTable)
-    .where(and(eq(departmentsTable.orgId, orgId), eq(departmentsTable.name, name), eq(departmentsTable.isDeleted, false)))
+    // Tier C: match this org's own departments AND the tenant-wide ones
+    // (org_id NULL), which every org in the tenant shares. RLS already fences
+    // the row set to the caller's tenant.
+    .where(and(
+      or(eq(departmentsTable.orgId, orgId), isNull(departmentsTable.orgId)),
+      eq(departmentsTable.name, name),
+      eq(departmentsTable.isDeleted, false),
+    ))
     .limit(1);
   if (!row) throw new BadRequestError(`Department not found: ${name}`);
   return row.id;
@@ -190,9 +197,19 @@ export async function updateEmployee(ctx: RoleTxContext, userId: string, data: U
 export async function listDepartments(ctx: RoleTxContext) {
   return withRoleTx(ctx, async (tx) => {
     return tx
-      .select({ id: departmentsTable.id, name: departmentsTable.name, isActive: departmentsTable.isActive })
+      .select({
+        id: departmentsTable.id,
+        name: departmentsTable.name,
+        label: departmentsTable.label,
+        isActive: departmentsTable.isActive,
+      })
       .from(departmentsTable)
-      .where(and(eq(departmentsTable.orgId, ctx.org_id), eq(departmentsTable.isDeleted, false)))
+      // Tier C: this org's own departments plus the tenant-wide ones (org_id
+      // NULL) that every org in the tenant shares.
+      .where(and(
+        or(eq(departmentsTable.orgId, ctx.org_id), isNull(departmentsTable.orgId)),
+        eq(departmentsTable.isDeleted, false),
+      ))
       .orderBy(departmentsTable.name);
   });
 }
@@ -201,7 +218,9 @@ export async function createDepartment(ctx: RoleTxContext, name: string) {
   return withRoleTx(ctx, async (tx) => {
     const [inserted] = await tx
       .insert(departmentsTable)
-      .values({ orgId: ctx.org_id, name, createdBy: ctx.user_id })
+      // Tier C: iam.departments is tenant-scoped; org_id keeps the branch this
+      // was created in, label defaults to the name until an admin edits it.
+      .values({ tenantId: ctx.tenant_id, orgId: ctx.org_id, name, label: name, createdBy: ctx.user_id })
       .returning({ id: departmentsTable.id });
     return inserted!;
   });

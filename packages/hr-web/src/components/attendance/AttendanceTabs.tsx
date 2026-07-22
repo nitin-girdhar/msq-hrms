@@ -1,27 +1,31 @@
 'use client';
 
+import type { SessionUser } from '@platform/types';
 import { PageTabs, type PageTab } from '@platform/ui-kit';
 import type { HrRank } from '../../lib/hr-rank';
+import { canViewTeamAttendance } from '@hr/authz';
 import { canManageAttendanceAdmin } from '../../lib/attendance/format';
 
 interface Props {
-  // The caller's resolved HR product rank (hr.member_roles) — never
-  // SessionUser.rank, which is the platform/session rank. See lib/hr-rank.ts.
+  // The caller's resolved rank on the unified iam ladder. See lib/hr-rank.ts.
   hrRank: HrRank;
+  // Carries the DB-resolved capability list that decides which tabs exist.
+  actor: SessionUser;
 }
 
 // In-page sub-navigation for the Attendance module. Renders inside PageHeader's
 // band so the underline sits on the band's own edge-to-edge rule.
-export default function AttendanceTabs({ hrRank }: Props) {
+export default function AttendanceTabs({ hrRank, actor }: Props) {
   const tabs: PageTab[] = [
     { href: '/attendance', label: 'Dashboard', exact: true },
-    // Always shown: the backend's getTeam/listRegularizations queries already
-    // scope results to the acting user's own reports or (with HR manager+/
-    // admin rank) the full org — see attendance.service.ts. A user with
-    // neither just sees an empty team view, same as any other empty state.
-    { href: '/attendance/team', label: 'Team' },
   ];
-  if (canManageAttendanceAdmin(hrRank.rank)) {
+  // Tier C3: a tab exists when the DB grants the capability behind it — the same
+  // list hr-service gates on. Previously unconditional, on the incorrect
+  // assumption that the backend returns an empty view; it throws instead.
+  if (canViewTeamAttendance(actor)) {
+    tabs.push({ href: '/attendance/team', label: 'Team' });
+  }
+  if (canManageAttendanceAdmin(actor)) {
     tabs.push({ href: '/attendance/admin', label: 'Admin' });
   }
 

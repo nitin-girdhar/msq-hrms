@@ -21,7 +21,8 @@
     "@platform/types": "workspace:*",
     "@platform/ui-kit": "workspace:*",
     "@platform/authz": "workspace:*",
-    "@hr/authz": "workspace:*"
+    "@hr/authz": "workspace:*",
+    "@platform/rbac": "workspace:*"
   },
   "peerDependencies": {
     "next": "^15.2.4",

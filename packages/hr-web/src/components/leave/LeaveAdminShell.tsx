@@ -37,7 +37,7 @@ export default function LeaveAdminShell({ actor, hrRank }: Props) {
       <PageHeader
         title="Leave Administration"
         subtitle="Policies, leave cycle, holidays, manual adjustments and employee profiles."
-        tabs={<LeaveTabs hrRank={hrRank} />}
+        tabs={<LeaveTabs hrRank={hrRank} actor={actor} />}
       />
 
       <PageBody>

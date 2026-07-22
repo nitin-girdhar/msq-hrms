@@ -25,7 +25,7 @@ export class EmployeesController {
 
   create = async (request: FastifyRequest, reply: FastifyReply) => {
     const { org_id, user_id, role, tenant_id, rank } = request.auth;
-    if (!canManageEmployees(role, rank)) throw new ForbiddenError('Only org admins or HR admins can create employee profiles');
+    if (!canManageEmployees(request.auth)) throw new ForbiddenError('Only org admins or HR admins can create employee profiles');
     const data = request.body as CreateEmployeeProfileInput;
     const result = await service.createEmployee({ org_id, user_id, role, tenant_id }, data);
     return reply.status(201).send({ success: true, data: { user_id: result.userId } });
@@ -33,7 +33,7 @@ export class EmployeesController {
 
   update = async (request: FastifyRequest, reply: FastifyReply) => {
     const { org_id, user_id, role, tenant_id, rank } = request.auth;
-    if (!canManageEmployees(role, rank)) throw new ForbiddenError('Only org admins or HR admins can update employee profiles');
+    if (!canManageEmployees(request.auth)) throw new ForbiddenError('Only org admins or HR admins can update employee profiles');
     const { userId } = request.params as { userId: string };
     const data = request.body as UpdateEmployeeProfileInput;
     await service.updateEmployee({ org_id, user_id, role, tenant_id }, userId, data);
@@ -48,7 +48,7 @@ export class EmployeesController {
 
   createDepartment = async (request: FastifyRequest, reply: FastifyReply) => {
     const { org_id, user_id, role, tenant_id, rank } = request.auth;
-    if (!canManageEmployees(role, rank)) throw new ForbiddenError('Only org admins or HR admins can manage departments');
+    if (!canManageEmployees(request.auth)) throw new ForbiddenError('Only org admins or HR admins can manage departments');
     const { name } = request.body as { name: string };
     const result = await service.createDepartment({ org_id, user_id, role, tenant_id }, name);
     return reply.status(201).send({ success: true, data: { id: result.id } });
@@ -56,7 +56,7 @@ export class EmployeesController {
 
   updateDepartment = async (request: FastifyRequest, reply: FastifyReply) => {
     const { org_id, user_id, role, tenant_id, rank } = request.auth;
-    if (!canManageEmployees(role, rank)) throw new ForbiddenError('Only org admins or HR admins can manage departments');
+    if (!canManageEmployees(request.auth)) throw new ForbiddenError('Only org admins or HR admins can manage departments');
     const { id } = request.params as { id: string };
     const data = request.body as { name?: string; is_active?: boolean };
     await service.updateDepartment({ org_id, user_id, role, tenant_id }, id, data);
@@ -71,7 +71,7 @@ export class EmployeesController {
 
   createDesignation = async (request: FastifyRequest, reply: FastifyReply) => {
     const { org_id, user_id, role, tenant_id, rank } = request.auth;
-    if (!canManageEmployees(role, rank)) throw new ForbiddenError('Only org admins or HR admins can manage designations');
+    if (!canManageEmployees(request.auth)) throw new ForbiddenError('Only org admins or HR admins can manage designations');
     const { name } = request.body as { name: string };
     const result = await service.createDesignation({ org_id, user_id, role, tenant_id }, name);
     return reply.status(201).send({ success: true, data: { id: result.id } });
@@ -79,7 +79,7 @@ export class EmployeesController {
 
   updateDesignation = async (request: FastifyRequest, reply: FastifyReply) => {
     const { org_id, user_id, role, tenant_id, rank } = request.auth;
-    if (!canManageEmployees(role, rank)) throw new ForbiddenError('Only org admins or HR admins can manage designations');
+    if (!canManageEmployees(request.auth)) throw new ForbiddenError('Only org admins or HR admins can manage designations');
     const { id } = request.params as { id: string };
     const data = request.body as { name?: string; is_active?: boolean };
     await service.updateDesignation({ org_id, user_id, role, tenant_id }, id, data);

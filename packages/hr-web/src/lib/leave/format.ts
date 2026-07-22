@@ -1,6 +1,7 @@
 // Pure leave-module helpers — no React, no I/O. Shared by the leave composites
 // and the server pages (role gating).
 
+import { ANCHOR_RANK, can, CAPABILITY, type CapabilityHolder } from '@platform/rbac';
 import type { HalfDay, LeaveStatusName } from './types';
 
 export const MONTHS = [
@@ -9,20 +10,18 @@ export const MONTHS = [
 ] as const;
 
 /**
- * HR admin (rank ≥ 80) can manage leave configuration. `rank` must be the
- * caller's resolved HR product rank (hr.member_roles, via getHrRank/GET
- * /hr/me) — never SessionUser.rank, which is the platform/session rank, a
- * different scale that only coincidentally overlaps for org/tenant admins.
+ * Who may manage leave configuration.
+ *
+ * Tier C3: DB-resolved capability, not a rank comparison — the same list
+ * hr-service gates on, so the Admin tab and the calls behind it agree.
  */
-export function canManageLeaveAdmin(rank: number): boolean {
-  return rank >= 80;
+export function canManageLeaveAdmin(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_LEAVE_ADMIN);
 }
 
-/** A tenant_admin (rank ≥ 90) may additionally write tenant-wide policies/settings.
- *  This one IS the platform/session rank — tenant_admin is a platform-tier
- *  concept, not an HR product role, so SessionUser.rank is the correct input. */
+/** A tenant admin may additionally write tenant-wide policies/settings. */
 export function canManageTenantLeave(rank: number): boolean {
-  return rank >= 90;
+  return rank >= ANCHOR_RANK.TENANT_ADMIN;
 }
 
 function formatDay(iso: string): string {

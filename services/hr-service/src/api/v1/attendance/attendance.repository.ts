@@ -49,7 +49,9 @@ import type {
   FaceReviewsQueryInput,
 } from '@hr/validation';
 
-export type AttendanceCtx = RoleTxContext & { rank: number };
+// `capabilities` (Tier C3) rides along so the service-layer gates can ask the
+// DB-resolved matrix instead of comparing ranks.
+export type AttendanceCtx = RoleTxContext & { rank: number; capabilities: string[] };
 type Row = Record<string, unknown>;
 
 // ── Service-tx helper: sets the session GUCs hr.* triggers read ──────────────

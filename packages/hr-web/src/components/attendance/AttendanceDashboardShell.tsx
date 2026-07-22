@@ -90,7 +90,7 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
       <PageHeader
         title="My Attendance"
         subtitle="Check in/out, your monthly calendar, and regularization requests."
-        tabs={<AttendanceTabs hrRank={hrRank} />}
+        tabs={<AttendanceTabs hrRank={hrRank} actor={actor} />}
       />
 
       <PageBody>

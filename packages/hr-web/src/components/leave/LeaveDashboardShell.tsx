@@ -76,7 +76,7 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
       <PageHeader
         title="My Leave"
         subtitle={`Balances, requests and approvals for ${actor.name || actor.email}.`}
-        tabs={<LeaveTabs hrRank={hrRank} />}
+        tabs={<LeaveTabs hrRank={hrRank} actor={actor} />}
         actions={
           <Button variant="primary" onClick={() => { setApplyOpen(true); setNotice(null); }}>
             Apply leave

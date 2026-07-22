@@ -72,12 +72,12 @@ export async function listTeamRequests(ctx: LeaveCtx, filters: ListLeaveRequests
   // /leave/approvals UI) a request assigned to them when they hadn't also been
   // separately granted an hr.member_roles row — see approveLeave, which
   // already allows the assigned approver through regardless of rank.
-  const seeAllOrg = canManageLeave(ctx.role, ctx.rank);
+  const seeAllOrg = canManageLeave(ctx);
   return repo.listTeamRequests(ctx, filters, seeAllOrg);
 }
 
 export async function approveLeave(ctx: LeaveCtx, id: string, comment: string | null) {
-  const isOverride = canOverrideLeaveApproval(ctx.role, ctx.rank);
+  const isOverride = canOverrideLeaveApproval(ctx);
   const result = await repo.approveLeave(ctx, id, comment, isOverride);
   if (result.final) {
     void publishLeaveEvent({
@@ -109,7 +109,7 @@ export async function approveLeave(ctx: LeaveCtx, id: string, comment: string | 
 }
 
 export async function rejectLeave(ctx: LeaveCtx, id: string, comment: string) {
-  const isOverride = canOverrideLeaveApproval(ctx.role, ctx.rank);
+  const isOverride = canOverrideLeaveApproval(ctx);
   const result = await repo.rejectLeave(ctx, id, comment, isOverride);
   void publishLeaveEvent({
     type: 'leave:rejected',
@@ -148,7 +148,7 @@ export async function listOwnBalances(ctx: LeaveCtx) {
 
 async function assertCanViewUser(ctx: LeaveCtx, targetUserId: string) {
   if (targetUserId === ctx.user_id) return;
-  if (canManageLeave(ctx.role, ctx.rank)) return; // hr_admin / org_admin see any in-org
+  if (canManageLeave(ctx)) return; // hr_admin / org_admin see any in-org
   if (await repo.canViewUserLeave(ctx, targetUserId)) return; // subtree manager
   throw new ForbiddenError('Not authorized to view this user’s leave');
 }
@@ -164,7 +164,7 @@ export async function listLedger(ctx: LeaveCtx, targetUserId: string, page: numb
 }
 
 export async function createAdjustment(ctx: LeaveCtx, data: CreateAdjustmentInput) {
-  if (!canManageLeave(ctx.role, ctx.rank)) {
+  if (!canManageLeave(ctx)) {
     throw new ForbiddenError('Only HR admins or org admins can make manual ledger adjustments');
   }
   const result = await repo.createAdjustment(ctx, data);
@@ -189,7 +189,7 @@ export async function createPolicy(ctx: LeaveCtx, data: CreatePolicyInput) {
     if (!isTenantLeaveAdmin(ctx.role)) {
       throw new ForbiddenError('Only a tenant admin can create a tenant-wide leave policy');
     }
-  } else if (!canManageLeave(ctx.role, ctx.rank)) {
+  } else if (!canManageLeave(ctx)) {
     throw new ForbiddenError('Only HR admins or org admins can create leave policies');
   }
   const result = await repo.createPolicy(ctx, data);
@@ -203,7 +203,7 @@ export async function createPolicy(ctx: LeaveCtx, data: CreatePolicyInput) {
 }
 
 export async function updatePolicy(ctx: LeaveCtx, id: string, data: UpdatePolicyInput) {
-  if (!canManageLeave(ctx.role, ctx.rank)) {
+  if (!canManageLeave(ctx)) {
     throw new ForbiddenError('Only HR admins or org admins can edit leave policies');
   }
   await repo.updatePolicy(ctx, id, data, isTenantLeaveAdmin(ctx.role));
@@ -221,7 +221,7 @@ export async function listHolidays(ctx: LeaveCtx, filters: ListHolidaysInput) {
 }
 
 function assertCanManageLeave(ctx: LeaveCtx) {
-  if (!canManageLeave(ctx.role, ctx.rank)) {
+  if (!canManageLeave(ctx)) {
     throw new ForbiddenError('Only HR admins or org admins can manage this resource');
   }
 }

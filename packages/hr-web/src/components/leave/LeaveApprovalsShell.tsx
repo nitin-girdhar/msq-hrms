@@ -16,7 +16,7 @@ interface Props {
   hrRank: HrRank;
 }
 
-export default function LeaveApprovalsShell({ hrRank }: Props) {
+export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
   const [pending, setPending] = useState<LeaveRequestView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +44,7 @@ export default function LeaveApprovalsShell({ hrRank }: Props) {
       <PageHeader
         title="Leave Approvals"
         subtitle="Pending requests awaiting your decision, and your team’s approved leave."
-        tabs={<LeaveTabs hrRank={hrRank} />}
+        tabs={<LeaveTabs hrRank={hrRank} actor={actor} />}
       />
 
       <PageBody>
