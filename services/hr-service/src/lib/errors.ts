@@ -40,3 +40,32 @@ export class ValidationError extends AppError {
 export class UnauthorizedError extends AppError {
   constructor(m = 'Unauthorized') { super(m, HttpStatus.UNAUTHORIZED); }
 }
+
+/**
+ * Last-resort translator for raw Postgres errors that reach the error handler.
+ * Service-level checks should map most of these to domain errors first; this
+ * backstop guarantees a well-formed 4xx — never a leaked `"Internal server error"`
+ * carrying the raw DB string — for the known constraint/RAISE cases. Returns null
+ * when the error is not a recognised DB error, so the handler falls through to a
+ * generic 500. See Issue #3.
+ */
+export function translatePgError(error: unknown): AppError | null {
+  const e = error as { code?: string; message?: string };
+  const code = e?.code;
+  const message = e?.message ?? '';
+
+  if (/does not belong to org|has no active mapping to org|has been deleted/i.test(message)) {
+    return new NotFoundError('The referenced record was not found or is not accessible');
+  }
+
+  switch (code) {
+    case '23505': // unique_violation
+    case '23P01': // exclusion_violation
+      return new ConflictError('This record conflicts with an existing one');
+    case '23503': // foreign_key_violation
+    case '23514': // check_violation
+      return new BadRequestError('The request references invalid or inconsistent data');
+    default:
+      return null;
+  }
+}

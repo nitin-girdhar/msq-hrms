@@ -775,7 +775,11 @@ export async function createShiftAssignment(ctx: AttendanceCtx, data: CreateShif
       `)) as unknown as Array<{ id: string }>;
       return { id: rows[0]!.id };
     } catch (err) {
-      if ((err as { code?: string }).code === '23P01') {
+      // 23P01 exclusion_violation (overlapping date range) and 23505 unique_violation
+      // (exact duplicate) both mean the same thing to the caller: this assignment
+      // already exists. Map to 409 rather than leaking a raw 500. See Issue #3b.
+      const code = (err as { code?: string }).code;
+      if (code === '23P01' || code === '23505') {
         throw new ConflictError('This user already has a shift assignment overlapping those dates');
       }
       throw err;
