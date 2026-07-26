@@ -1,0 +1,24 @@
+meta {
+  name: Face Self Context
+  type: http
+  seq: 23
+}
+
+get {
+  url: {{baseUrl}}/hr/attendance/face/me
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: auth_token={{authToken}}
+}
+
+docs {
+  Self-service enrollment context for the photo-upload modal. Always about the
+  caller. Returns:
+    { has_photo, enrolled, require_face_match, cooldown_days,
+      can_change_photo, next_change_allowed_at }
+  can_change_photo is false while within the org's photo-change cooldown
+  (measured from the last enrolment); next_change_allowed_at is when it unlocks.
+}

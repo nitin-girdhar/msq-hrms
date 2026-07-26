@@ -55,8 +55,11 @@ export async function attendanceRouter(app: FastifyInstance) {
   app.post('/attendance/regularizations/:id/approve', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_APPROVE, 'You do not have permission to approve corrections'), validate({ body: approveRegularizationSchema })] }, ctrl.approveRegularization);
   app.post('/attendance/regularizations/:id/reject', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_REJECT, 'You do not have permission to reject corrections'), validate({ body: rejectRegularizationSchema })] }, ctrl.rejectRegularization);
 
-  // ── Face enrollment / status (hr_admin/org_admin for enroll+delete; view gated in service) ──
+  // ── Face enrollment / status (self-enroll allowed; view gated in service) ──
+  // Enroll needs only PUNCH — every employee holds it — because a member may
+  // enroll themselves; the service gates enrolling *others* to admins.
   app.post('/attendance/face/enroll', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_PUNCH), validate({ body: faceEnrollSchema })] }, ctrl.faceEnroll);
+  app.get('/attendance/face/me', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_PUNCH)] }, ctrl.faceSelf);
   app.delete('/attendance/face/enroll/:userId', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_ADMIN_RULES_UPDATE, 'You do not have permission to reset face enrolment')] }, ctrl.faceDelete);
   app.get('/attendance/face/status/:userId', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_PHOTO_VIEW)] }, ctrl.faceStatus);
   app.get('/attendance/face/reference/:userId', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_PHOTO_VIEW)] }, ctrl.faceReference);

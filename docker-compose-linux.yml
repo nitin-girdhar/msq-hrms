@@ -16,14 +16,32 @@ services:
     environment:
       PORT: ${HR_SERVICE_PORT}
       <<: *db-env-hr
-      PHOTO_STORAGE_DRIVER: ${PHOTO_STORAGE_DRIVER:-local}
-      PHOTO_STORAGE_DIR: ${PHOTO_STORAGE_DIR:-/data/attendance-photos}
+      # Shared blob store: hr-service reads a user's AVATAR (written by
+      # identity-service) as the face-verification reference, so both services
+      # MUST mount the SAME host directory at the SAME container path. The legacy
+      # PHOTO_STORAGE_* vars remain as a fallback (see hr-service config).
+      BLOB_STORAGE_DRIVER: ${BLOB_STORAGE_DRIVER:-local}
+      BLOB_STORAGE_DIR: ${BLOB_STORAGE_DIR:-/data/blobs}
       PHOTO_MAX_BYTES: ${PHOTO_MAX_BYTES:-2097152}
       FACE_DRIVER: ${FACE_DRIVER:-compreface}
       COMPREFACE_URL: http://compreface-api:8080
       FACE_VERIFY_TIMEOUT_MS: ${FACE_VERIFY_TIMEOUT_MS:-5000}
     volumes:
-      - attendance-photos:${PHOTO_STORAGE_DIR:-/data/attendance-photos}
+      # BLOB_HOST_PATH is the *host* directory (OS-specific: /deployment/...
+      # on Linux, C:/... on Windows); BLOB_STORAGE_DIR is the path *inside*
+      # the container and must always stay a Linux path -- it is also what the
+      # service writes to, via the env var above. identity-service mounts the
+      # very same pair (msq-core/docker-compose-linux.yml) so avatars are shared.
+      #
+      # Long syntax on purpose: build-deploy.ps1 merges with
+      # `docker compose config --no-interpolate`, and in the short form a
+      # `${VAR}` source is classified as a named volume (it doesn't start with
+      # ./ or /), yielding "refers to undefined volume" on the server.
+      - type: bind
+        source: ${BLOB_HOST_PATH:-./data/blobs}
+        target: ${BLOB_STORAGE_DIR:-/data/blobs}
+        bind:
+          create_host_path: true
     expose:
       - "${HR_SERVICE_PORT}"
     depends_on:
@@ -124,5 +142,4 @@ services:
       - "3002:3002"
 
 volumes:
-  attendance-photos:
   compreface-postgres-data:

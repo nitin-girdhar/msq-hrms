@@ -20,6 +20,7 @@ export default function ShiftAssignmentFormModal({ open, onClose, onSaved }: Pro
   const [effectiveFrom, setEffectiveFrom] = useState('');
   const [effectiveTo, setEffectiveTo] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [loadingLookups, setLoadingLookups] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -29,9 +30,20 @@ export default function ShiftAssignmentFormModal({ open, onClose, onSaved }: Pro
     setEffectiveFrom(new Date().toISOString().slice(0, 10));
     setEffectiveTo('');
     setError(null);
-    Promise.all([hrEmployees.list(), shiftsApi.list()])
-      .then(([e, s]) => { setEmployees(e.data); setShiftOptions(s.data.filter((x) => x.is_active)); })
-      .catch(() => { /* lookups optional */ });
+    setLoadingLookups(true);
+    // Settle the two lookups independently: a failure on one must not blank the
+    // other, and it must surface — a silently empty picker looks like "no data".
+    Promise.allSettled([hrEmployees.list({ limit: 100 }), shiftsApi.list()])
+      .then(([e, s]) => {
+        if (e.status === 'fulfilled') setEmployees(e.value.data);
+        if (s.status === 'fulfilled') setShiftOptions(s.value.data.filter((x) => x.is_active));
+        const failed = [
+          e.status === 'rejected' ? 'employees' : null,
+          s.status === 'rejected' ? 'shifts' : null,
+        ].filter(Boolean);
+        if (failed.length) setError(`Could not load ${failed.join(' and ')}. Close and retry.`);
+      })
+      .finally(() => setLoadingLookups(false));
   }, [open]);
 
   const handleClose = () => {
@@ -73,18 +85,26 @@ export default function ShiftAssignmentFormModal({ open, onClose, onSaved }: Pro
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor="sa-user" className="text-xs font-semibold text-[#0F172A]">Employee *</label>
-          <select id="sa-user" value={userId} onChange={(e) => setUserId(e.target.value)} disabled={submitting} className={inputCls}>
-            <option value="">Select…</option>
+          <select id="sa-user" value={userId} onChange={(e) => setUserId(e.target.value)} disabled={submitting || loadingLookups} className={inputCls}>
+            <option value="">{loadingLookups ? 'Loading…' : 'Select…'}</option>
             {employees.map((e) => <option key={e.user_id} value={e.user_id}>{e.full_name} ({e.email})</option>)}
           </select>
+          {!loadingLookups && !error && employees.length === 0 && (
+            <p className="text-[11px] text-[#B45309]">
+              No employee profiles in this branch yet — add them under Leave → Admin → Employees before assigning shifts.
+            </p>
+          )}
         </div>
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor="sa-shift" className="text-xs font-semibold text-[#0F172A]">Shift *</label>
-          <select id="sa-shift" value={shiftId} onChange={(e) => setShiftId(e.target.value)} disabled={submitting} className={inputCls}>
-            <option value="">Select…</option>
+          <select id="sa-shift" value={shiftId} onChange={(e) => setShiftId(e.target.value)} disabled={submitting || loadingLookups} className={inputCls}>
+            <option value="">{loadingLookups ? 'Loading…' : 'Select…'}</option>
             {shiftOptions.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.start_time.slice(0, 5)}–{s.end_time.slice(0, 5)})</option>)}
           </select>
+          {!loadingLookups && !error && shiftOptions.length === 0 && (
+            <p className="text-[11px] text-[#B45309]">No active shifts — create one on the Shifts tab first.</p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">

@@ -26,6 +26,7 @@ import type {
   ShiftAssignmentView,
   RegularizationView,
   MonthlySummaryRow,
+  FaceSelfContext,
 } from '../attendance/types';
 
 const { request } = createApiClient('/api');
@@ -204,7 +205,10 @@ export const holidayCalendars = {
 // ── Employee profiles & lookups ─────────────────────────────────────────────
 
 export const hrEmployees = {
-  list: () => request<Envelope<EmployeeProfileView[]>>('/hr/employees'),
+  // The endpoint paginates (default limit 20), so callers that need the full
+  // roster — e.g. the shift-assignment picker — must pass an explicit limit.
+  list: (params: { page?: number; limit?: number; search?: string } = {}) =>
+    request<ListEnvelope<EmployeeProfileView>>(`/hr/employees${qs(params)}`),
 
   get: (userId: string) => request<Envelope<EmployeeProfileView>>(`/hr/employees/${userId}`),
 
@@ -282,6 +286,23 @@ export const attendance = {
   team: (params: { date?: string } = {}) => request<Envelope<TeamDayRow[]>>(`/hr/attendance/team${qs(params)}`),
 
   photoUrl: (eventId: string) => `/api/hr/attendance/photos/${eventId}`,
+
+  // ── Face enrollment (reference photo lives in identity as the avatar) ──
+  face: {
+    // Self-service enrollment context (own user): drives the check-in gate.
+    me: () => request<Envelope<FaceSelfContext>>('/hr/attendance/face/me'),
+
+    // Register the user's stored avatar with CompreFace. Self-enroll (own id) or
+    // admin (any in-org). No image travels — enroll reads the avatar.
+    enroll: (body: { user_id: string; consent: boolean }) =>
+      request<Envelope<{ user_id: string; face_subject_id: string; face_enrolled_at: string }>>(
+        '/hr/attendance/face/enroll',
+        { method: 'POST', body: JSON.stringify(body) },
+      ),
+
+    // Stable, authenticated URL for a user's reference photo (avatar).
+    referenceUrl: (userId: string) => `/api/users/${userId}/photo`,
+  },
 
   regularizations: {
     create: (body: CreateRegularizationBody) =>

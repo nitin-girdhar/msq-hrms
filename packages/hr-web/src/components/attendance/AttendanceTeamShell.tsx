@@ -5,7 +5,7 @@ import type { SessionUser } from '@platform/types';
 import { Alert, PageBody, PageHeader, PageSection } from '@platform/ui-kit';
 import { attendance as attendanceApi } from '../../lib/api/client';
 import type { RegularizationView, TeamDayRow } from '../../lib/attendance/types';
-import { todayIso } from '../../lib/attendance/format';
+import { canManageAttendanceAdmin, todayIso } from '../../lib/attendance/format';
 import type { HrRank } from '../../lib/hr-rank';
 import AttendanceTabs from './AttendanceTabs';
 import TeamDayView from './TeamDayView';
@@ -26,6 +26,13 @@ export default function AttendanceTeamShell({ actor, hrRank }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState<RegularizationView | null>(null);
+  const [faceEnabled, setFaceEnabled] = useState(false);
+
+  const canManage = canManageAttendanceAdmin(actor);
+
+  useEffect(() => {
+    attendanceApi.getRules().then((res) => setFaceEnabled(res.data.require_face_match)).catch(() => setFaceEnabled(false));
+  }, []);
 
   const loadRows = useCallback(() => {
     setRowsLoading(true);
@@ -77,7 +84,7 @@ export default function AttendanceTeamShell({ actor, hrRank }: Props) {
             />
           }
         >
-          <TeamDayView rows={rows} loading={rowsLoading} />
+          <TeamDayView rows={rows} loading={rowsLoading} faceEnabled={faceEnabled} canManage={canManage} onChanged={loadRows} />
         </PageSection>
 
         <PageSection title={`Pending regularizations (${pending.length})`}>

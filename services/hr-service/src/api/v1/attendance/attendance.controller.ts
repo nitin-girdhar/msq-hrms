@@ -171,6 +171,12 @@ export class AttendanceController {
     return reply.send({ success: true, data });
   };
 
+  // Self-service enrollment context for the photo-upload modal (own user only).
+  faceSelf = async (request: FastifyRequest, reply: FastifyReply) => {
+    const data = await service.getSelfFaceContext(ctxOf(request));
+    return reply.send({ success: true, data });
+  };
+
   faceDelete = async (request: FastifyRequest, reply: FastifyReply) => {
     const { userId } = request.params as { userId: string };
     await service.deleteFaceEnrollment(ctxOf(request), userId);

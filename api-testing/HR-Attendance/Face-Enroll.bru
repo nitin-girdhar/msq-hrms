@@ -17,12 +17,18 @@ headers {
 body:json {
   {
     "user_id": "{{userId}}",
-    "consent": true,
-    "photo": "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAAAv/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AfwD/2Q=="
+    "consent": true
   }
 }
 
 docs {
-  hr_admin/org_admin only. `consent` MUST be true (DPDP) — false returns 422
-  FACE_CONSENT_REQUIRED. subject id === user UUID; re-enrolling replaces faces.
+  The reference photo is NOT sent here — it is the user's avatar, uploaded first
+  via identity-service (POST /users/me/photo or /users/:id/photo). Enroll reads
+  that stored photo and registers it with CompreFace.
+
+  A member may enroll THEMSELVES (user_id === caller); hr_admin/org_admin may
+  enroll anyone in-org. `consent` MUST be true (DPDP) — false returns 422
+  FACE_CONSENT_REQUIRED. With no avatar on file: 400 FACE_NO_PHOTO. Self-service
+  re-enrolment within the org's cooldown: 422 FACE_CHANGE_COOLDOWN (admins bypass).
+  subject id === user UUID; re-enrolling replaces faces.
 }

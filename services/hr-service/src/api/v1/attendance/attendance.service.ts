@@ -249,18 +249,31 @@ export async function monthlySummary(ctx: AttendanceCtx, month: string) {
 }
 
 // ── Face enrollment / status / reviews ────────────────────────────────────────
-// NOTE: for now only hr_admin/org_admin may enroll/unenroll anyone in-org.
-// Self-enrollment (gated by an org "allow self-enrollment" rule) is deferred.
+// A member may enroll THEMSELVES; hr_admin/org_admin may enroll anyone in-org.
+// The reference photo is the user's avatar (uploaded first via identity-service);
+// enroll reads it, so no image travels in this request. Self-enrolment is rate-
+// limited by the org's photo-change cooldown; admins bypass it.
 export async function enrollFace(ctx: AttendanceCtx, data: FaceEnrollInput) {
-  if (!canManageAttendance(ctx)) {
-    throw new ForbiddenError('Only HR admins or org admins can enroll faces');
+  const isSelf = data.user_id === ctx.user_id;
+  const isAdmin = canManageAttendance(ctx);
+  if (!isSelf && !isAdmin) {
+    throw new ForbiddenError('You can only enroll your own face');
   }
   // DPDP consent is mandatory — reject a false/absent consent with 422.
   if (!data.consent) {
     throw new ValidationError('Face-enrollment consent is required', { code: 'FACE_CONSENT_REQUIRED' });
   }
-  const buf = repo.decodePhoto(data.photo);
-  const result = await repo.enrollFace(ctx, data.user_id, buf);
+  // Cooldown applies to self-service only; admins change a reference any time.
+  if (isSelf && !isAdmin) {
+    const remaining = await repo.enrollCooldownRemainingDays(ctx, data.user_id);
+    if (remaining > 0) {
+      throw new ValidationError(
+        `You can change your reference photo again in ${remaining} day${remaining === 1 ? '' : 's'}`,
+        { code: 'FACE_CHANGE_COOLDOWN', remaining_days: remaining },
+      );
+    }
+  }
+  const result = await repo.enrollFace(ctx, data.user_id);
   void logActivity({
     action_type: 'attendance_face_enrolled',
     performed_by: ctx.user_id,
@@ -281,6 +294,13 @@ async function assertCanViewFace(ctx: AttendanceCtx, userId: string) {
 export async function getFaceStatus(ctx: AttendanceCtx, userId: string) {
   await assertCanViewFace(ctx, userId);
   return repo.getFaceStatus(ctx, userId);
+}
+
+// Self-service enrollment context for the shared photo-upload modal: drives
+// whether the "change photo" action is offered and, if within cooldown, when it
+// unlocks. Always about the caller — no extra authorization needed.
+export async function getSelfFaceContext(ctx: AttendanceCtx) {
+  return repo.getSelfFaceContext(ctx);
 }
 
 export async function getReferencePhotoKey(ctx: AttendanceCtx, userId: string): Promise<string | null> {

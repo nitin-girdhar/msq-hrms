@@ -22,6 +22,7 @@
     "@hr/validation": "workspace:*",
     "@platform/audit-log": "workspace:*",
     "@platform/authz": "workspace:*",
+    "@platform/blob-storage": "workspace:*",
     "@platform/db": "workspace:*",
     "@platform/rbac": "workspace:*",
     "@platform/service-auth": "workspace:*",

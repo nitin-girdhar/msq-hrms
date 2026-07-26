@@ -10,9 +10,12 @@ export const config = {
   databaseUrl: requireEnv('DATABASE_URL'),
   databaseUrlService: requireEnv('DATABASE_URL_SERVICE'),
   logLevel: process.env['LOG_LEVEL'] ?? 'info',
-  // Attendance photo storage (see lib/storage/photo-storage.ts).
-  photoStorageDriver: process.env['PHOTO_STORAGE_DRIVER'] ?? 'local',
-  photoStorageDir: process.env['PHOTO_STORAGE_DIR'] ?? '/data/attendance-photos',
+  // Attendance photo storage (see lib/storage/photo-storage.ts). Shared with
+  // identity-service via one volume — both must resolve to the same directory,
+  // so BLOB_STORAGE_* is preferred; the legacy PHOTO_STORAGE_* vars remain as a
+  // fallback for existing deployments.
+  photoStorageDriver: process.env['BLOB_STORAGE_DRIVER'] ?? process.env['PHOTO_STORAGE_DRIVER'] ?? 'local',
+  photoStorageDir: process.env['BLOB_STORAGE_DIR'] ?? process.env['PHOTO_STORAGE_DIR'] ?? '/data/blobs',
   photoMaxBytes: parseInt(process.env['PHOTO_MAX_BYTES'] ?? String(2 * 1024 * 1024), 10),
   // Face verification (see lib/face/). The driver is constructed lazily, so a
   // missing API key never blocks startup — it only matters once an org turns on

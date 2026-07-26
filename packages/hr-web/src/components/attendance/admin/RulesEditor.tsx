@@ -255,6 +255,81 @@ export default function RulesEditor({ actor, onNotice }: Props) {
         </div>
       </PageSection>
 
+      <PageSection title="Face verification">
+        <div className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-1">
+          <ToggleRow
+            id="re-face-match"
+            label="Require face match"
+            description="Compare each check-in selfie against the employee's enrolled photo. Employees without a photo are prompted to add one before they can check in."
+            checked={rules.require_face_match}
+            onChange={(v) => setRules({ ...rules, require_face_match: v })}
+          >
+            <div className="mt-2.5 flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <label htmlFor="re-threshold" className={fieldLabelCls}>Match threshold</label>
+                <input
+                  id="re-threshold" type="number" min={50} max={100} step={1}
+                  value={rules.face_match_threshold}
+                  onChange={(e) => setRules({ ...rules, face_match_threshold: Number(e.target.value) })}
+                  disabled={!rules.require_face_match}
+                  className={`${inputCls} w-20`}
+                />
+                <span className={`text-xs ${rules.require_face_match ? 'text-[#64748B]' : 'text-[#CBD5E1]'}`}>%</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <label htmlFor="re-face-action" className={fieldLabelCls}>On mismatch</label>
+                <select
+                  id="re-face-action"
+                  value={rules.face_match_action}
+                  onChange={(e) => setRules({ ...rules, face_match_action: e.target.value })}
+                  disabled={!rules.require_face_match}
+                  className={`${inputCls} w-28`}
+                >
+                  <option value="flag">Flag for review</option>
+                  <option value="block">Block check-in</option>
+                </select>
+              </div>
+            </div>
+          </ToggleRow>
+
+          <div className="border-b border-[#F1F5F9] py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <label htmlFor="re-cooldown" className="block text-sm font-medium text-[#0F172A]">
+                Photo change cooldown
+              </label>
+              <input
+                id="re-cooldown" type="number" min={0} max={365} step={1}
+                value={rules.photo_change_cooldown_days}
+                onChange={(e) => setRules({ ...rules, photo_change_cooldown_days: Number(e.target.value) })}
+                className={`${inputCls} w-20`}
+              />
+              <span className="text-xs text-[#64748B]">days</span>
+            </div>
+            <p className="mt-0.5 text-xs text-[#64748B]">
+              How long a member must wait before changing their own reference photo. Admins can change it any time from the Team screen.
+            </p>
+          </div>
+
+          <div className="py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <label htmlFor="re-retention" className="block text-sm font-medium text-[#0F172A]">
+                Check-in photo retention
+              </label>
+              <input
+                id="re-retention" type="number" min={1} max={3650} step={1}
+                value={rules.image_retention_days}
+                onChange={(e) => setRules({ ...rules, image_retention_days: Number(e.target.value) })}
+                className={`${inputCls} w-24`}
+              />
+              <span className="text-xs text-[#64748B]">days</span>
+            </div>
+            <p className="mt-0.5 text-xs text-[#64748B]">
+              Daily check-in/out selfies are deleted by the cleanup job after this many days. The enrolled reference photo is never auto-deleted.
+            </p>
+          </div>
+        </div>
+      </PageSection>
+
       {/* One action for the whole form. Two separate save buttons meant the page
           could not say whether an edit was persisted, and editing both halves
           then pressing one of them silently dropped the other. */}

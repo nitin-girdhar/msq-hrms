@@ -22,9 +22,25 @@ export interface AttendanceRules {
   require_face_match: boolean;
   face_match_threshold: number;
   face_match_action: string;
+  // Min days before a member may self-change their reference photo (admins bypass).
+  photo_change_cooldown_days: number;
+  // Days daily check-in/out selfies are retained before the cleanup job deletes them.
+  image_retention_days: number;
   // Org IANA timezone; use it with todayIso(tz) so the client's "today" matches
   // the server-computed attendance work_date.
   timezone: string;
+}
+
+// Self-service enrollment context (GET /hr/attendance/face/me) — drives the
+// check-in gate and the photo-upload modal.
+export interface FaceSelfContext {
+  user_id: string;
+  has_photo: boolean;
+  enrolled: boolean;
+  require_face_match: boolean;
+  cooldown_days: number;
+  can_change_photo: boolean;
+  next_change_allowed_at: string | null;
 }
 
 export interface PunchResult {
@@ -75,6 +91,17 @@ export interface TeamDayRow {
   status_label: string;
   is_late: boolean;
   is_early_exit: boolean;
+  // Face-attendance columns (present when the org uses face matching).
+  has_photo: boolean;
+  enrolled: boolean;
+  face_match_score: number | null;
+  face_review_status: string | null;
+  checkin_event_id: string | null;
+  checkin_lat: number | null;
+  checkin_lng: number | null;
+  checkout_event_id: string | null;
+  checkout_lat: number | null;
+  checkout_lng: number | null;
 }
 
 export interface ShiftView {

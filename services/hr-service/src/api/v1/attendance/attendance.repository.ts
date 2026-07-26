@@ -76,6 +76,8 @@ export interface EffectiveRules {
   require_face_match: boolean;
   face_match_threshold: number;
   face_match_action: string;
+  photo_change_cooldown_days: number;
+  image_retention_days: number;
   // The org's IANA timezone. Attendance work_date and shift boundaries are
   // computed in this zone server-side (see workDateOf), so the client must use
   // it to derive "today" — using the browser's UTC date mismatched the stored
@@ -92,6 +94,8 @@ const DEFAULT_RULES: EffectiveRules = {
   require_face_match: false,
   face_match_threshold: 85,
   face_match_action: 'flag',
+  photo_change_cooldown_days: 30,
+  image_retention_days: 90,
   timezone: 'Asia/Kolkata',
 };
 
@@ -104,7 +108,8 @@ async function loadRulesRow(tx: DrizzleTx, orgId: string): Promise<EffectiveRule
   const rows = (await tx.execute(sql`
     SELECT o.timezone,
            r.geofence_enabled, r.geofence_radius_meters, r.require_photo, r.require_geo, r.allow_wfh_checkin,
-           r.require_face_match, r.face_match_threshold::float8 AS face_match_threshold, r.face_match_action
+           r.require_face_match, r.face_match_threshold::float8 AS face_match_threshold, r.face_match_action,
+           r.photo_change_cooldown_days, r.image_retention_days
     FROM entity.organizations o
     LEFT JOIN hr.attendance_rules r ON r.org_id = o.id AND NOT r.is_deleted
     WHERE o.id = ${orgId} LIMIT 1
@@ -286,14 +291,15 @@ export async function punch(
       }
     }
 
-    // Photo enforcement (identical for both punch types).
+    // Photo enforcement (identical for both punch types). Decode now for the
+    // required-photo check; the bytes are stored after the work date is known so
+    // the key can be the retention-friendly `punch/<user>/<YYYYMMDD>_chkin|chkout`.
     let photoKey: string | null = null;
     let photoBuf: Buffer | null = null;
     if (data.photo) {
       photoBuf = decodePhoto(data.photo);
-      photoKey = await getPhotoStorage().put(photoBuf, detectImageExt(photoBuf));
     }
-    if (rules.require_photo && !photoKey) {
+    if (rules.require_photo && !photoBuf) {
       throw new ValidationError('PHOTO_REQUIRED', { code: 'PHOTO_REQUIRED' });
     }
 
@@ -304,6 +310,15 @@ export async function punch(
     const shiftStartMin = shift ? parseTimeToMinutes(shift.start_time) : 0;
     const isNight = shift?.is_night_shift ?? false;
     const workDate = workDateOf(now, org.timezone, isNight, shiftStartMin);
+
+    if (photoBuf) {
+      const compact = workDate.replace(/-/g, '');
+      const kind = eventType === 'check_in' ? 'chkin' : 'chkout';
+      const ext = detectImageExt(photoBuf);
+      // One check-in + one check-out per day are enforced below, so this
+      // deterministic key never collides within a day.
+      photoKey = await getPhotoStorage().putAt(`punch/${ctx.user_id}/${compact}_${kind}.${ext}`, photoBuf);
+    }
 
     // Face subject (only needed when the rule is on AND a photo is present).
     const faceSubjectId =
@@ -481,11 +496,13 @@ export async function upsertRules(ctx: AttendanceCtx, data: AttendanceRulesAdmin
     await tx.execute(sql`
       INSERT INTO hr.attendance_rules
         (org_id, geofence_enabled, geofence_radius_meters, require_photo, require_geo, allow_wfh_checkin,
-         require_face_match, face_match_threshold, face_match_action, created_by)
+         require_face_match, face_match_threshold, face_match_action,
+         photo_change_cooldown_days, image_retention_days, created_by)
       VALUES
         (${ctx.org_id}, ${data.geofence_enabled}, ${data.geofence_radius_meters}, ${data.require_photo},
          ${data.require_geo}, ${data.allow_wfh_checkin},
          ${data.require_face_match ?? false}, ${data.face_match_threshold ?? 85}, ${data.face_match_action ?? 'flag'},
+         ${data.photo_change_cooldown_days ?? 30}, ${data.image_retention_days ?? 90},
          ${ctx.user_id})
       ON CONFLICT (org_id) WHERE NOT is_deleted DO UPDATE SET
         geofence_enabled = EXCLUDED.geofence_enabled,
@@ -496,6 +513,8 @@ export async function upsertRules(ctx: AttendanceCtx, data: AttendanceRulesAdmin
         require_face_match = EXCLUDED.require_face_match,
         face_match_threshold = EXCLUDED.face_match_threshold,
         face_match_action = EXCLUDED.face_match_action,
+        photo_change_cooldown_days = EXCLUDED.photo_change_cooldown_days,
+        image_retention_days = EXCLUDED.image_retention_days,
         updated_at = CLOCK_TIMESTAMP()
     `);
     return loadRulesRow(tx, ctx.org_id);
@@ -555,6 +574,10 @@ export async function getTeam(ctx: AttendanceCtx, date: string, seeAllOrg: boole
           SELECT 1 FROM iam.vw_user_team_members m
           WHERE m.manager_id = ${ctx.user_id} AND m.member_id = ep.user_id AND m.org_id = ${ctx.org_id}
         )`;
+    // The check-in / check-out events are located by exact timestamp match on the
+    // day's first_in / last_out, so no tz bucketing is needed here. We surface the
+    // check-in face-match score (the meaningful one) plus each event's id + device
+    // geo, and whether the user has an avatar (drives the grid thumbnail).
     return (await tx.execute(sql`
       SELECT ep.user_id::text, u.full_name AS user_full_name, u.email AS user_email,
              ${date}::date AS work_date,
@@ -562,11 +585,31 @@ export async function getTeam(ctx: AttendanceCtx, date: string, seeAllOrg: boole
              COALESCE(st.name, 'not_marked')  AS status_name,
              COALESCE(st.label, 'Not Marked') AS status_label,
              COALESCE(ad.is_late, FALSE)       AS is_late,
-             COALESCE(ad.is_early_exit, FALSE) AS is_early_exit
+             COALESCE(ad.is_early_exit, FALSE) AS is_early_exit,
+             (u.photo_key IS NOT NULL)         AS has_photo,
+             (ep.face_subject_id IS NOT NULL)  AS enrolled,
+             e_in.id::text  AS checkin_event_id,
+             e_in.face_match_score::float8 AS face_match_score,
+             e_in.face_review_status       AS face_review_status,
+             e_in.geo_lat::float8 AS checkin_lat, e_in.geo_lng::float8 AS checkin_lng,
+             e_out.id::text AS checkout_event_id,
+             e_out.geo_lat::float8 AS checkout_lat, e_out.geo_lng::float8 AS checkout_lng
       FROM hr.employee_profiles ep
       JOIN iam.users u ON u.id = ep.user_id
       LEFT JOIN hr.attendance_days ad ON ad.user_id = ep.user_id AND ad.work_date = ${date}::date
       LEFT JOIN hr.attendance_statuses st ON st.id = ad.status_id
+      LEFT JOIN LATERAL (
+        SELECT id, face_match_score, face_review_status, geo_lat, geo_lng
+        FROM hr.attendance_events
+        WHERE user_id = ep.user_id AND event_type = 'check_in' AND occurred_at = ad.first_in
+        LIMIT 1
+      ) e_in ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT id, geo_lat, geo_lng
+        FROM hr.attendance_events
+        WHERE user_id = ep.user_id AND event_type = 'check_out' AND occurred_at = ad.last_out
+        LIMIT 1
+      ) e_out ON TRUE
       WHERE ep.org_id = ${ctx.org_id} AND ep.is_active AND NOT ep.is_deleted
       ${scopeClause}
       ORDER BY u.full_name
@@ -1067,10 +1110,35 @@ async function assertEmployeeInOrg(tx: DrizzleTx, orgId: string, userId: string)
   if (rows.length === 0) throw new NotFoundError('Employee profile not found in this org');
 }
 
-export async function enrollFace(ctx: AttendanceCtx, userId: string, photoBuf: Buffer): Promise<FaceEnrollResult> {
-  // 1. Confirm the target is an employee of this org (own-org authorization is
-  //    enforced in the service; this is the existence/tenancy check).
-  await serviceTxWithContext(ctx, (tx) => assertEmployeeInOrg(tx, ctx.org_id, userId));
+/** The user's stored avatar (iam.users.photo_key) — the reference photo source. */
+async function loadAvatarKey(tx: DrizzleTx, userId: string): Promise<string | null> {
+  const rows = (await tx.execute(sql`
+    SELECT photo_key FROM iam.users WHERE id = ${userId} AND NOT is_deleted
+  `)) as unknown as Array<{ photo_key: string | null }>;
+  return rows[0]?.photo_key ?? null;
+}
+
+export async function enrollFace(ctx: AttendanceCtx, userId: string): Promise<FaceEnrollResult> {
+  // 1. Confirm the target is an employee of this org, and pull the avatar key
+  //    that will serve as the CompreFace reference. The photo is uploaded first
+  //    via identity-service, so the avatar and the biometric reference are the
+  //    same image — no second copy is stored here.
+  const refKey = await serviceTxWithContext(ctx, async (tx) => {
+    await assertEmployeeInOrg(tx, ctx.org_id, userId);
+    return loadAvatarKey(tx, userId);
+  });
+  if (!refKey) {
+    throw new BadRequestError('Upload a profile photo before enrolling for face attendance', {
+      code: 'FACE_NO_PHOTO',
+    });
+  }
+
+  const photoBuf = await getPhotoStorage().get(refKey);
+  if (!photoBuf) {
+    throw new BadRequestError('Stored profile photo could not be read; re-upload it', {
+      code: 'FACE_NO_PHOTO',
+    });
+  }
 
   const subjectId = userId; // subject id === user UUID
   const driver = getFaceDriver();
@@ -1088,8 +1156,7 @@ export async function enrollFace(ctx: AttendanceCtx, userId: string, photoBuf: B
     });
   }
 
-  // 3. Persist the reference photo + profile columns (consent recorded now).
-  const refKey = await getPhotoStorage().put(photoBuf, detectImageExt(photoBuf));
+  // 3. Point the profile at the avatar key + record consent/enrolment time.
   return serviceTxWithContext(ctx, async (tx) => {
     const rows = (await tx.execute(sql`
       UPDATE hr.employee_profiles
@@ -1101,6 +1168,76 @@ export async function enrollFace(ctx: AttendanceCtx, userId: string, photoBuf: B
     `)) as unknown as Array<{ user_id: string; face_subject_id: string; face_enrolled_at: string }>;
     const row = rows[0]!;
     return { user_id: row.user_id, face_subject_id: row.face_subject_id, face_enrolled_at: row.face_enrolled_at };
+  });
+}
+
+// Self-service enrollment context: whether the caller has a photo, is enrolled,
+// whether the org enforces face matching, and — for the cooldown gate — when they
+// may next change their reference photo. Cooldown is measured from the last
+// successful enrolment (face_enrolled_at), which the avatar upload never touches,
+// so a pre-upload check and the post-upload enroll re-check always agree.
+export interface SelfFaceContext {
+  user_id: string;
+  has_photo: boolean;
+  enrolled: boolean;
+  require_face_match: boolean;
+  cooldown_days: number;
+  can_change_photo: boolean;
+  next_change_allowed_at: string | null;
+}
+
+export async function getSelfFaceContext(ctx: AttendanceCtx): Promise<SelfFaceContext> {
+  return withServiceTx(async (tx) => {
+    const rows = (await tx.execute(sql`
+      SELECT u.photo_key,
+             ep.face_subject_id,
+             ep.face_enrolled_at,
+             COALESCE(r.require_face_match, FALSE)        AS require_face_match,
+             COALESCE(r.photo_change_cooldown_days, 30)   AS cooldown_days,
+             (ep.face_enrolled_at + make_interval(days => COALESCE(r.photo_change_cooldown_days, 30)))::text
+                                                          AS next_change_allowed_at,
+             (ep.face_enrolled_at IS NULL
+               OR NOW() >= ep.face_enrolled_at + make_interval(days => COALESCE(r.photo_change_cooldown_days, 30)))
+                                                          AS can_change_photo
+      FROM iam.users u
+      LEFT JOIN hr.employee_profiles ep ON ep.user_id = u.id AND ep.org_id = ${ctx.org_id} AND NOT ep.is_deleted
+      LEFT JOIN hr.attendance_rules r  ON r.org_id = ${ctx.org_id} AND r.is_active AND NOT r.is_deleted
+      WHERE u.id = ${ctx.user_id}
+    `)) as unknown as Array<{
+      photo_key: string | null;
+      face_subject_id: string | null;
+      face_enrolled_at: string | null;
+      require_face_match: boolean;
+      cooldown_days: number;
+      next_change_allowed_at: string | null;
+      can_change_photo: boolean;
+    }>;
+    const row = rows[0];
+    return {
+      user_id: ctx.user_id,
+      has_photo: !!row?.photo_key,
+      enrolled: row?.face_subject_id != null,
+      require_face_match: row?.require_face_match ?? false,
+      cooldown_days: Number(row?.cooldown_days ?? 30),
+      can_change_photo: row?.can_change_photo ?? true,
+      next_change_allowed_at: row?.can_change_photo ? null : (row?.next_change_allowed_at ?? null),
+    };
+  });
+}
+
+/** Days remaining before `userId` may re-enroll, or 0 if allowed now. */
+export async function enrollCooldownRemainingDays(ctx: AttendanceCtx, userId: string): Promise<number> {
+  return withServiceTx(async (tx) => {
+    const rows = (await tx.execute(sql`
+      SELECT GREATEST(0, CEIL(EXTRACT(EPOCH FROM (
+               ep.face_enrolled_at + make_interval(days => COALESCE(r.photo_change_cooldown_days, 30)) - NOW()
+             )) / 86400))::int AS remaining
+      FROM hr.employee_profiles ep
+      LEFT JOIN hr.attendance_rules r ON r.org_id = ${ctx.org_id} AND r.is_active AND NOT r.is_deleted
+      WHERE ep.user_id = ${userId} AND ep.org_id = ${ctx.org_id} AND NOT ep.is_deleted
+        AND ep.face_enrolled_at IS NOT NULL
+    `)) as unknown as Array<{ remaining: number }>;
+    return rows[0]?.remaining ?? 0;
   });
 }
 

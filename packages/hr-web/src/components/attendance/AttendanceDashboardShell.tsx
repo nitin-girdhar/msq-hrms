@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { SessionUser } from '@platform/types';
-import { Alert, PageBody, PageHeader, PageSection } from '@platform/ui-kit';
+import { Alert, PageBody, PageHeader, PageSection, PhotoUploadModal, users as usersApi } from '@platform/ui-kit';
 import { attendance as attendanceApi, shiftAssignments as shiftAssignmentsApi } from '../../lib/api/client';
-import type { AttendanceDayRow, AttendanceRules, PunchResult, RegularizationView, ShiftAssignmentView } from '../../lib/attendance/types';
+import type { AttendanceDayRow, AttendanceRules, FaceSelfContext, PunchResult, RegularizationView, ShiftAssignmentView } from '../../lib/attendance/types';
 import { todayIso } from '../../lib/attendance/format';
 import type { HrRank } from '../../lib/hr-rank';
 import AttendanceTabs from './AttendanceTabs';
@@ -31,6 +31,9 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
   const [refreshKey, setRefreshKey] = useState(0);
 
   const [punchMode, setPunchMode] = useState<'check_in' | 'check_out' | null>(null);
+  const [faceCtx, setFaceCtx] = useState<FaceSelfContext | null>(null);
+  const [facePhotoOpen, setFacePhotoOpen] = useState(false);
+  const [gateBusy, setGateBusy] = useState(false);
   const [detailDate, setDetailDate] = useState<string | null>(null);
   const [detailRow, setDetailRow] = useState<AttendanceDayRow | undefined>(undefined);
   const [regFormDate, setRegFormDate] = useState<string | null>(null);
@@ -73,11 +76,78 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
       .getRules()
       .then((res) => setRules(res.data))
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load attendance rules.'));
+    attendanceApi.face.me().then((res) => setFaceCtx(res.data)).catch(() => setFaceCtx(null));
     loadShift();
   }, [loadShift]);
 
   useEffect(() => { loadToday(); }, [loadToday, refreshKey]);
   useEffect(() => { loadRegularizations(); }, [loadRegularizations, refreshKey]);
+
+  // Check-in gate: when the org enforces face matching, a check-in requires an
+  // enrolled reference photo. No photo → prompt upload (then enroll); has photo
+  // but not yet enrolled → enroll silently; otherwise proceed. Check-out and
+  // face-disabled orgs are never gated.
+  const startPunch = useCallback(
+    async (mode: 'check_in' | 'check_out') => {
+      setNotice(null);
+      setError(null);
+      if (mode === 'check_out' || !rules?.require_face_match) {
+        setPunchMode(mode);
+        return;
+      }
+      let ctx = faceCtx;
+      if (!ctx) {
+        try {
+          ctx = (await attendanceApi.face.me()).data;
+          setFaceCtx(ctx);
+        } catch {
+          setPunchMode(mode); // face status unavailable → let the punch flow decide
+          return;
+        }
+      }
+      if (!ctx.has_photo) {
+        setFacePhotoOpen(true);
+        return;
+      }
+      if (!ctx.enrolled) {
+        setGateBusy(true);
+        try {
+          await attendanceApi.face.enroll({ user_id: actor.id, consent: true });
+          setFaceCtx({ ...ctx, enrolled: true });
+          setPunchMode(mode);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Could not enroll your face. Try again.');
+        } finally {
+          setGateBusy(false);
+        }
+        return;
+      }
+      setPunchMode(mode);
+    },
+    [rules, faceCtx, actor.id],
+  );
+
+  // Upload avatar → enroll → continue to check-in. Consent captured in the modal.
+  const handleFacePhotoSubmit = useCallback(
+    async (dataUrl: string, consent: boolean) => {
+      await usersApi.uploadMyPhoto({ photo: dataUrl, consent });
+      await attendanceApi.face.enroll({ user_id: actor.id, consent });
+      setFaceCtx((c) => ({
+        ...(c ?? {
+          user_id: actor.id,
+          require_face_match: true,
+          cooldown_days: 0,
+          can_change_photo: true,
+          next_change_allowed_at: null,
+        }),
+        has_photo: true,
+        enrolled: true,
+      }));
+      setFacePhotoOpen(false);
+      setPunchMode('check_in');
+    },
+    [actor.id],
+  );
 
   const handlePunchSuccess = (result: PunchResult) => {
     setNotice(result.event_type === 'check_in' ? 'Checked in.' : 'Checked out.');
@@ -97,7 +167,7 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
         {notice && <Alert tone="success">{notice}</Alert>}
         {error && <Alert tone="error">{error}</Alert>}
 
-        <TodayCard todayRow={todayRow} shift={shift} onPunch={(mode) => { setPunchMode(mode); setNotice(null); }} busy={punchMode !== null} />
+        <TodayCard todayRow={todayRow} shift={shift} onPunch={startPunch} busy={punchMode !== null || gateBusy} />
 
         <PageSection title="My month">
           <MyMonthCalendar
@@ -120,6 +190,14 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
           onSuccess={handlePunchSuccess}
         />
       )}
+
+      <PhotoUploadModal
+        open={facePhotoOpen}
+        onClose={() => setFacePhotoOpen(false)}
+        title="Add your photo to check in"
+        consentLabel="I consent to my photo being stored and used to verify my attendance."
+        onSubmit={handleFacePhotoSubmit}
+      />
 
       <DayDetailPopover
         date={detailDate}

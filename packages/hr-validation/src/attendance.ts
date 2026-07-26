@@ -34,6 +34,10 @@ export const attendanceRulesAdminSchema = z.object({
   require_face_match: z.boolean().optional(),
   face_match_threshold: z.number().min(50).max(100).optional(),
   face_match_action: z.enum(['flag', 'block']).optional(),
+  // Min days before a member may self-change their reference photo (admins bypass).
+  photo_change_cooldown_days: z.number().int().min(0).max(365).optional(),
+  // Days daily check-in/out selfies are retained before the cleanup job deletes them.
+  image_retention_days: z.number().int().min(1).max(3650).optional(),
 });
 
 // ── Shifts ──────────────────────────────────────────────────────────────────
@@ -104,10 +108,12 @@ export const listRegularizationsSchema = z.object({
 });
 
 // ── Face verification (enrollment + review queue) ───────────────────────────
-// Reference/probe photos travel as base64 in the JSON body, same as punch photos.
+// Enrollment no longer carries the image: the reference photo is the user's
+// avatar (iam.users.photo_key), uploaded first via identity-service. Enroll
+// reads that stored photo and registers it with CompreFace, so the avatar and
+// the biometric reference are guaranteed to be the same image.
 export const faceEnrollSchema = z.object({
   user_id: z.string().uuid(),
-  photo: z.string().min(1).max(PHOTO_MAX_B64_CHARS),
   // DPDP consent — MUST be true; the service rejects false with 422.
   consent: z.boolean(),
 });
