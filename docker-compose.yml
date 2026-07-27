@@ -32,9 +32,18 @@ services:
       PORT: ${HR_SERVICE_PORT}
       <<: *db-env-hr
       # Attendance punch-photo storage (local driver → Docker volume below).
+      # Container paths are hardcoded, NOT interpolated: .env holds *host* paths
+      # for natively-run services, which would be meaningless inside Linux.
       PHOTO_STORAGE_DRIVER: ${PHOTO_STORAGE_DRIVER:-local}
-      PHOTO_STORAGE_DIR: ${PHOTO_STORAGE_DIR:-/data/attendance-photos}
+      PHOTO_STORAGE_DIR: /data/attendance-photos
       PHOTO_MAX_BYTES: ${PHOTO_MAX_BYTES:-2097152}
+      # Shared blob store: hr-service reads a user's AVATAR (written by
+      # identity-service) as the face-verification reference, so both services
+      # MUST mount the SAME host directory at the SAME container path. This also
+      # TAKES PRECEDENCE over PHOTO_STORAGE_DIR in hr-service's config, so the
+      # bind mount below is what punch selfies land in too.
+      BLOB_STORAGE_DRIVER: ${BLOB_STORAGE_DRIVER:-local}
+      BLOB_STORAGE_DIR: /data/blobs
       # Face verification — in-cluster URL bypasses the CompreFace nginx. The API
       # key and timeout come from .env (env_file above); require_face_match is an
       # opt-in per-org rule, so a blank key is fine until an org enables it.
@@ -42,7 +51,16 @@ services:
       COMPREFACE_URL: http://compreface-api:8080
       FACE_VERIFY_TIMEOUT_MS: ${FACE_VERIFY_TIMEOUT_MS:-5000}
     volumes:
-      - attendance-photos:${PHOTO_STORAGE_DIR:-/data/attendance-photos}
+      - attendance-photos:/data/attendance-photos
+      # BLOB_HOST_PATH is the *host* directory (OS-specific; forward slashes on
+      # Windows); BLOB_STORAGE_DIR is the path *inside* the container and must
+      # always stay a Linux path. identity-service mounts the very same pair
+      # (msq-core docker-compose.yml) so avatars are shared between them.
+      - type: bind
+        source: ${BLOB_HOST_PATH:-./data/blobs}
+        target: /data/blobs
+        bind:
+          create_host_path: true
     expose:
       - "${HR_SERVICE_PORT}"
     depends_on:
