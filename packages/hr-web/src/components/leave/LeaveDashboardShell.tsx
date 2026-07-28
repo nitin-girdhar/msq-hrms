@@ -25,6 +25,8 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [applyOpen, setApplyOpen] = useState(false);
+  // The pending request being amended; null means the modal is in apply mode.
+  const [editing, setEditing] = useState<LeaveRequestView | null>(null);
   const [cancelBusyId, setCancelBusyId] = useState<string | null>(null);
 
   // One call: /leave/balances carries everything an employee may see — the number
@@ -51,9 +53,22 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
   useEffect(() => { loadRequests(); }, [loadRequests]);
 
   const handleApplied = () => {
-    setNotice('Leave request submitted.');
+    // Fires for both modes; `editing` is still set when the modal saved an edit.
+    setNotice(editing ? 'Leave request updated.' : 'Leave request submitted.');
     loadStatic();
     loadRequests();
+  };
+
+  const handleEdit = (req: LeaveRequestView) => {
+    setNotice(null);
+    setError(null);
+    setEditing(req);
+    setApplyOpen(true);
+  };
+
+  const closeModal = () => {
+    setApplyOpen(false);
+    setEditing(null);
   };
 
   const handleCancel = async (req: LeaveRequestView) => {
@@ -79,7 +94,7 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
         subtitle={`Balances, requests and approvals for ${actor.name || actor.email}.`}
         tabs={<LeaveTabs hrRank={hrRank} actor={actor} />}
         actions={
-          <Button variant="primary" onClick={() => { setApplyOpen(true); setNotice(null); }}>
+          <Button variant="primary" onClick={() => { setEditing(null); setApplyOpen(true); setNotice(null); }}>
             Apply leave
           </Button>
         }
@@ -109,16 +124,17 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
           {loading ? (
             <div className="flex items-center justify-center py-12 text-sm text-[#94A3B8]">Loading…</div>
           ) : (
-            <MyRequestsTable items={requests} onCancel={handleCancel} busyId={cancelBusyId} />
+            <MyRequestsTable items={requests} onEdit={handleEdit} onCancel={handleCancel} busyId={cancelBusyId} />
           )}
         </PageSection>
       </PageBody>
 
       <ApplyLeaveModal
         open={applyOpen}
-        onClose={() => setApplyOpen(false)}
+        onClose={closeModal}
         balances={balances}
         onApplied={handleApplied}
+        editing={editing}
       />
     </div>
   );

@@ -1001,10 +1001,18 @@ export async function listShifts(ctx: AttendanceCtx) {
 }
 
 /**
- * Replace a shift's segment set wholesale: soft-delete what is there, insert the
- * new rows. Validated against the window the shift will actually have after this
+ * Replace a shift's segment set wholesale: retire what is there, write the new
+ * rows. Validated against the window the shift will actually have after this
  * request, since updateShift is a partial update that may be changing it in the
  * same call.
+ *
+ * Retiring means is_active = FALSE, NOT is_deleted = TRUE. The RLS policies on
+ * hr.shift_segments carry `NOT is_deleted` in their USING clause, so an UPDATE
+ * that sets is_deleted produces a row the policy no longer admits and Postgres
+ * rejects the statement outright ("new row violates row-level security policy")
+ * — soft delete is simply not available to an app-tier role on this table.
+ * is_active is the flag the policy leaves free, and both readers (loadSegments
+ * and listShifts) already require it.
  */
 async function replaceSegments(
   tx: DrizzleTx,
@@ -1018,15 +1026,20 @@ async function replaceSegments(
   if (problem) throw new BadRequestError(problem);
 
   await tx.execute(sql`
-    UPDATE hr.shift_segments SET is_deleted = TRUE, is_active = FALSE, deleted_at = CLOCK_TIMESTAMP(),
-      deleted_by = ${ctx.user_id}, updated_at = CLOCK_TIMESTAMP()
-    WHERE shift_id = ${shiftId} AND org_id = ${ctx.org_id} AND NOT is_deleted
+    UPDATE hr.shift_segments SET is_active = FALSE, updated_at = CLOCK_TIMESTAMP()
+    WHERE shift_id = ${shiftId} AND org_id = ${ctx.org_id} AND NOT is_deleted AND is_active
   `);
 
+  // A retired row keeps its (shift_id, seq) slot — uix_shift_segments_shift_seq
+  // is partial on NOT is_deleted, not on is_active — so a seq that comes back is
+  // revived in place instead of colliding with its own retired predecessor.
   for (const seg of segments) {
     await tx.execute(sql`
       INSERT INTO hr.shift_segments (shift_id, org_id, seq, start_time, end_time, created_by)
       VALUES (${shiftId}, ${ctx.org_id}, ${seg.seq}, ${seg.start_time}, ${seg.end_time}, ${ctx.user_id})
+      ON CONFLICT (shift_id, seq) WHERE NOT is_deleted DO UPDATE
+        SET start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time,
+            is_active = TRUE, updated_at = CLOCK_TIMESTAMP()
     `);
   }
 }
@@ -1100,11 +1113,11 @@ export async function updateShift(ctx: AttendanceCtx, id: string, data: UpdateSh
       );
     } else if (data.is_split === false) {
       // Turning split off retires the segments so a later re-enable can't
-      // resurrect a stale set that no longer fits the window.
+      // resurrect a stale set that no longer fits the window. is_active rather
+      // than is_deleted, for the RLS reason spelled out on replaceSegments.
       await tx.execute(sql`
-        UPDATE hr.shift_segments SET is_deleted = TRUE, is_active = FALSE, deleted_at = CLOCK_TIMESTAMP(),
-          deleted_by = ${ctx.user_id}, updated_at = CLOCK_TIMESTAMP()
-        WHERE shift_id = ${id} AND org_id = ${ctx.org_id} AND NOT is_deleted
+        UPDATE hr.shift_segments SET is_active = FALSE, updated_at = CLOCK_TIMESTAMP()
+        WHERE shift_id = ${id} AND org_id = ${ctx.org_id} AND NOT is_deleted AND is_active
       `);
     }
   });

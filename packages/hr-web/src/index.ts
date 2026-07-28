@@ -10,7 +10,7 @@ export { default as AttendanceDashboardShell } from './components/attendance/Att
 export { default as AttendanceTeamShell } from './components/attendance/AttendanceTeamShell';
 export { default as AttendanceAdminShell } from './components/attendance/AttendanceAdminShell';
 
-export { canManageLeaveAdmin } from './lib/leave/format';
+export { canDecideLeave, canManageLeaveAdmin } from './lib/leave/format';
 export { canManageAttendanceAdmin } from './lib/attendance/format';
 export { getHrRank, type HrRank } from './lib/hr-rank';
 

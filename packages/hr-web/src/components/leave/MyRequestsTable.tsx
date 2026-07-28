@@ -1,15 +1,16 @@
 import { Button } from '@platform/ui-kit';
 import type { LeaveRequestView } from '../../lib/leave/types';
-import { formatDateRange, formatDays, formatDateTime, canCancelRequest } from '../../lib/leave/format';
+import { formatDateRange, formatDays, formatDateTime, canCancelRequest, canEditRequest } from '../../lib/leave/format';
 import StatusChip from './StatusChip';
 
 interface Props {
   items: LeaveRequestView[];
+  onEdit: (req: LeaveRequestView) => void;
   onCancel: (req: LeaveRequestView) => void;
   busyId?: string | null;
 }
 
-export default function MyRequestsTable({ items, onCancel, busyId }: Props) {
+export default function MyRequestsTable({ items, onEdit, onCancel, busyId }: Props) {
   if (items.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-[#E2E8F0] bg-white px-4 py-8 text-center text-sm text-[#94A3B8]">
@@ -44,14 +45,22 @@ export default function MyRequestsTable({ items, onCancel, busyId }: Props) {
                 <StatusChip status={r.status_name} label={r.status_label} />
               </td>
               <td className="px-4 py-3 text-[11px] text-[#94A3B8]">{formatDateTime(r.created_at)}</td>
-              <td className="px-4 py-3 text-right">
-                {canCancelRequest(r.status_name, r.start_date) ? (
-                  <Button variant="danger" onClick={() => onCancel(r)} disabled={busyId === r.id}>
-                    {busyId === r.id ? 'Cancelling…' : 'Cancel'}
-                  </Button>
-                ) : (
-                  <span className="text-xs text-[#CBD5E1]">—</span>
-                )}
+              <td className="px-4 py-3">
+                <div className="flex justify-end gap-2">
+                  {canEditRequest(r.status_name) && (
+                    <Button variant="secondary" onClick={() => onEdit(r)} disabled={busyId === r.id}>
+                      Edit
+                    </Button>
+                  )}
+                  {canCancelRequest(r.status_name, r.start_date) && (
+                    <Button variant="danger" onClick={() => onCancel(r)} disabled={busyId === r.id}>
+                      {busyId === r.id ? 'Cancelling…' : 'Cancel'}
+                    </Button>
+                  )}
+                  {!canEditRequest(r.status_name) && !canCancelRequest(r.status_name, r.start_date) && (
+                    <span className="text-xs text-[#CBD5E1]">—</span>
+                  )}
+                </div>
               </td>
             </tr>
           ))}

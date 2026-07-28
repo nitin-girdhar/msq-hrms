@@ -17,6 +17,7 @@ import * as repo from './leave.repository.js';
 import type { LeaveCtx } from './leave.repository.js';
 import type {
   ApplyLeaveRequestInput,
+  UpdateLeaveRequestInput,
   PreviewLeaveRequestInput,
   ListLeaveRequestsInput,
   ListBalancesInput,
@@ -126,6 +127,30 @@ export async function rejectLeave(ctx: LeaveCtx, id: string, comment: string) {
     subject_user_id: result.requester_id,
     org_id: ctx.org_id,
     new_value: { request_id: id },
+  });
+  return result;
+}
+
+export async function updateLeaveRequest(ctx: LeaveCtx, id: string, data: UpdateLeaveRequestInput) {
+  const result = await repo.updateLeaveRequest(ctx, id, data);
+  // The chain was rebuilt, so whoever holds level 1 now has a request waiting —
+  // including the same approver, whose earlier view of it is out of date.
+  if (result.level1_approver_id) {
+    void publishLeaveEvent({
+      type: 'leave:approval_pending',
+      request_id: id,
+      recipient_id: result.level1_approver_id,
+      org_id: ctx.org_id,
+      tenant_id: ctx.tenant_id,
+      actor_id: ctx.user_id,
+    });
+  }
+  void logActivity({
+    action_type: 'leave_updated',
+    performed_by: ctx.user_id,
+    subject_user_id: ctx.user_id,
+    org_id: ctx.org_id,
+    new_value: { request_id: id, days_count: result.days_count },
   });
   return result;
 }

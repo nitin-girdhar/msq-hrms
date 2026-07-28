@@ -7,6 +7,7 @@ import { CAPABILITY } from '@platform/rbac';
 import { LeaveController } from './leave.controller.js';
 import {
   applyLeaveRequestSchema,
+  updateLeaveRequestSchema,
   previewLeaveRequestSchema,
   listLeaveRequestsSchema,
   approveLeaveRequestSchema,
@@ -45,6 +46,9 @@ export async function leaveRouter(app: FastifyInstance) {
   app.get('/leave/requests/preview', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_REQUEST_CREATE), validate({ query: previewLeaveRequestSchema })] }, ctrl.preview);
   app.get('/leave/requests', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_VIEW), validate({ query: listLeaveRequestsSchema })] }, ctrl.listMine);
   app.get('/leave/requests/team', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_VIEW), validate({ query: listLeaveRequestsSchema })] }, ctrl.listTeam);
+  // Amending your own still-pending request. Gated on the same capability as
+  // applying: whoever may raise a request may correct it before it is decided.
+  app.patch('/leave/requests/:id', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_REQUEST_CREATE, 'You do not have permission to edit leave requests'), validate({ body: updateLeaveRequestSchema })] }, ctrl.update);
   app.post('/leave/requests/:id/approve', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_APPROVE, 'You do not have permission to approve leave'), validate({ body: approveLeaveRequestSchema })] }, ctrl.approve);
   app.post('/leave/requests/:id/reject', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_REJECT, 'You do not have permission to reject leave'), validate({ body: rejectLeaveRequestSchema })] }, ctrl.reject);
   app.post('/leave/requests/:id/cancel', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_REQUEST_CANCEL, 'You do not have permission to cancel leave'), validate({ body: cancelLeaveRequestSchema })] }, ctrl.cancel);

@@ -1,5 +1,6 @@
 export {
   applyLeaveRequestSchema,
+  updateLeaveRequestSchema,
   previewLeaveRequestSchema,
   listLeaveRequestsSchema,
   approveLeaveRequestSchema,
@@ -20,6 +21,7 @@ export {
 } from '@hr/validation';
 export type {
   ApplyLeaveRequestInput,
+  UpdateLeaveRequestInput,
   PreviewLeaveRequestInput,
   ListLeaveRequestsInput,
   ApproveLeaveRequestInput,

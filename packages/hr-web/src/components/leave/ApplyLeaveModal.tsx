@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '@platform/ui-kit';
 import { leave as leaveApi } from '../../lib/api/client';
-import type { LeaveBalance, LeavePreview, HalfDay } from '../../lib/leave/types';
+import type { LeaveBalance, LeavePreview, HalfDay, LeaveRequestView } from '../../lib/leave/types';
 import { formatDays } from '../../lib/leave/format';
 
 interface Props {
@@ -11,6 +11,15 @@ interface Props {
   onClose: () => void;
   balances: LeaveBalance[];
   onApplied: () => void;
+  /**
+   * The pending request being amended, or null to apply for new leave.
+   *
+   * Editing reuses this form rather than a parallel one: the server re-validates
+   * an amendment against exactly the rules it applies to a new request, so a
+   * second form with its own subset of the fields could offer edits the server
+   * would then refuse.
+   */
+  editing?: LeaveRequestView | null;
 }
 
 const HALF_OPTIONS: { value: HalfDay; label: string }[] = [
@@ -24,7 +33,7 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export default function ApplyLeaveModal({ open, onClose, balances, onApplied }: Props) {
+export default function ApplyLeaveModal({ open, onClose, balances, onApplied, editing = null }: Props) {
   // Only types with a policy in force are bookable — a residual balance from a
   // withdrawn policy still shows on the cards but cannot be applied against.
   // Effective-dating lives on the server now (resolveEffectivePolicy), so this
@@ -56,6 +65,13 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied }: 
   const allowHalf = selected?.allow_half_day ?? false;
   const balance = selected?.balance;
 
+  // New leave is booked from today onwards. An existing request may already
+  // start earlier (it was raised before today), and clamping the input to today
+  // would make its own current value unreachable — so the floor drops to the
+  // request's own start date while editing.
+  const dateFloor =
+    editing && editing.start_date < todayIso() ? editing.start_date : todayIso();
+
   const reset = () => {
     setLeaveTypeName('');
     setStartDate('');
@@ -73,6 +89,27 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied }: 
     reset();
     onClose();
   };
+
+  // Load the request being edited into the form, and clear it again on the way
+  // back to apply mode so a previous edit never leaks into a fresh request.
+  useEffect(() => {
+    if (!open) return;
+    if (!editing) {
+      reset();
+      return;
+    }
+    setLeaveTypeName(editing.leave_type_name);
+    setStartDate(editing.start_date);
+    setEndDate(editing.end_date);
+    setStartHalf(editing.start_half);
+    setEndHalf(editing.end_half);
+    setReason(editing.reason ?? '');
+    setDocumentUrl(editing.document_url ?? '');
+    setError(null);
+    // Identity, not the object: the list is refetched after every mutation, so a
+    // new object for the same request must not clobber in-progress typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editing?.id]);
 
   // Live preview whenever type + a valid date range are set.
   useEffect(() => {
@@ -123,21 +160,32 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied }: 
     e.preventDefault();
     setError(null);
     setSubmitting(true);
+    const body = {
+      leave_type_name: leaveTypeName,
+      start_date: startDate,
+      end_date: endDate,
+      start_half: allowHalf ? startHalf : 'full',
+      end_half: allowHalf ? endHalf : 'full',
+      reason: reason.trim() || undefined,
+      document_url: documentUrl.trim() || undefined,
+    };
     try {
-      await leaveApi.apply({
-        leave_type_name: leaveTypeName,
-        start_date: startDate,
-        end_date: endDate,
-        start_half: allowHalf ? startHalf : 'full',
-        end_half: allowHalf ? endHalf : 'full',
-        reason: reason.trim() || undefined,
-        document_url: documentUrl.trim() || undefined,
-      });
+      if (editing) {
+        await leaveApi.update(editing.id, body);
+      } else {
+        await leaveApi.apply(body);
+      }
       reset();
       onApplied();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to apply for leave.');
+      setError(
+        err instanceof Error
+          ? err.message
+          : editing
+            ? 'Failed to update the leave request.'
+            : 'Failed to apply for leave.',
+      );
     } finally {
       setSubmitting(false);
     }
@@ -147,7 +195,13 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied }: 
     'rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#0F172A] shadow-sm focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20 disabled:cursor-not-allowed disabled:bg-[#F8FAFC]';
 
   return (
-    <Modal open={open} onClose={handleClose} title="Apply for leave" locked={submitting} maxWidth="max-w-lg">
+    <Modal
+      open={open}
+      onClose={handleClose}
+      title={editing ? 'Edit leave request' : 'Apply for leave'}
+      locked={submitting}
+      maxWidth="max-w-lg"
+    >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
         {error && (
           <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
@@ -187,7 +241,7 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied }: 
                   id="al-start"
                   type="date"
                   value={startDate}
-                  min={todayIso()}
+                  min={dateFloor}
                   onChange={(e) => {
                     setStartDate(e.target.value);
                     if (endDate && e.target.value > endDate) setEndDate(e.target.value);
@@ -202,7 +256,7 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied }: 
                   id="al-end"
                   type="date"
                   value={endDate}
-                  min={startDate || todayIso()}
+                  min={startDate || dateFloor}
                   onChange={(e) => setEndDate(e.target.value)}
                   disabled={submitting}
                   className={inputCls}
@@ -290,7 +344,9 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied }: 
               <button type="submit" disabled={blockSubmit} aria-busy={submitting}
                 className="inline-flex items-center gap-2 rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:cursor-not-allowed disabled:opacity-60">
                 {submitting && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />}
-                {submitting ? 'Submitting…' : 'Submit request'}
+                {submitting
+                  ? (editing ? 'Saving…' : 'Submitting…')
+                  : (editing ? 'Save changes' : 'Submit request')}
               </button>
             </div>
           </>

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { SessionUser } from '@platform/types';
 import { Alert, PageBody, PageHeader, PageSection, PhotoUploadModal, users as usersApi } from '@platform/ui-kit';
 import { attendance as attendanceApi, shiftAssignments as shiftAssignmentsApi } from '../../lib/api/client';
-import type { AttendanceDayRow, AttendanceRules, FaceSelfContext, PunchResult, RegularizationView, ShiftAssignmentView, TodayPunchState } from '../../lib/attendance/types';
+import type { AttendanceDayRow, AttendanceRules, DayEventView, FaceSelfContext, PunchResult, RegularizationView, ShiftAssignmentView, TodayPunchState } from '../../lib/attendance/types';
 import { todayIso } from '../../lib/attendance/format';
 import type { HrRank } from '../../lib/hr-rank';
 import AttendanceTabs from './AttendanceTabs';
@@ -25,6 +25,9 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
   const [todayRow, setTodayRow] = useState<AttendanceDayRow | undefined>(undefined);
   const [shift, setShift] = useState<ShiftAssignmentView | undefined>(undefined);
   const [punchState, setPunchState] = useState<TodayPunchState | undefined>(undefined);
+  // Today's individual punches. The day row only carries first_in/last_out, which
+  // on a split shift describe no single slot — the Today card pairs these instead.
+  const [todayEvents, setTodayEvents] = useState<DayEventView[]>([]);
   const [regularizations, setRegularizations] = useState<RegularizationView[]>([]);
   const [regLoading, setRegLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +57,14 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
       .todayState()
       .then((res) => setPunchState(res.data))
       .catch(() => setPunchState(undefined));
-  }, [orgTz]);
+    // Per-slot times on the Today card. A failure here (e.g. a role without
+    // hr.attendance.photo.view) must leave the card standing, so it degrades to
+    // no slot list rather than an error — same treatment as in DayDetailPopover.
+    attendanceApi
+      .dayEvents({ user_id: actor.id, date: todayIso(orgTz) })
+      .then((res) => setTodayEvents(res.data))
+      .catch(() => setTodayEvents([]));
+  }, [actor.id, orgTz]);
 
   const loadShift = useCallback(() => {
     shiftAssignmentsApi
@@ -174,7 +184,7 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
         {notice && <Alert tone="success">{notice}</Alert>}
         {error && <Alert tone="error">{error}</Alert>}
 
-        <TodayCard todayRow={todayRow} shift={shift} punchState={punchState} onPunch={startPunch} busy={punchMode !== null || gateBusy} />
+        <TodayCard todayRow={todayRow} shift={shift} punchState={punchState} todayEvents={todayEvents} onPunch={startPunch} busy={punchMode !== null || gateBusy} />
 
         <PageSection title="My month">
           <MyMonthCalendar
@@ -209,6 +219,7 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
       <DayDetailPopover
         date={detailDate}
         row={detailRow}
+        userId={actor.id}
         onClose={() => setDetailDate(null)}
         onRequestRegularization={(date) => { setDetailDate(null); setRegFormDate(date); }}
       />

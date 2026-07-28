@@ -4,6 +4,7 @@ import * as service from './leave.service.js';
 import type { LeaveCtx } from './leave.repository.js';
 import type {
   ApplyLeaveRequestInput,
+  UpdateLeaveRequestInput,
   PreviewLeaveRequestInput,
   ListLeaveRequestsInput,
   ListBalancesInput,
@@ -65,6 +66,12 @@ export class LeaveController {
     const { id } = request.params as { id: string };
     const { comment } = request.body as RejectLeaveRequestInput;
     const result = await service.rejectLeave(ctxOf(request), id, comment);
+    return reply.send({ success: true, data: result });
+  };
+
+  update = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = request.params as { id: string };
+    const result = await service.updateLeaveRequest(ctxOf(request), id, request.body as UpdateLeaveRequestInput);
     return reply.send({ success: true, data: result });
   };
 

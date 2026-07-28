@@ -28,6 +28,7 @@ import { resolveApprovers } from '../../../lib/leave/resolve-approvers.js';
 import { resolveEffectivePolicy, resolveCycleStartMonth } from '../../../lib/leave/policy.js';
 import type {
   ApplyLeaveRequestInput,
+  UpdateLeaveRequestInput,
   PreviewLeaveRequestInput,
   ListLeaveRequestsInput,
   ListBalancesInput,
@@ -134,79 +135,105 @@ export interface ApplyResult {
   level1_approver_id: string | null;
 }
 
+/**
+ * Every rule a submitted request must satisfy, and the server-computed values
+ * that fall out of checking them.
+ *
+ * Shared by applyLeave and updateLeaveRequest so an amended request is held to
+ * exactly the rules a new one is — an edit that skipped the balance or
+ * consecutive-day check would be a way to smuggle in a request that apply would
+ * have refused.
+ *
+ * `excludeRequestId` is the row being amended: it must not count as an overlap
+ * with itself.
+ */
+async function validateRequestInput(
+  tx: DrizzleTx,
+  ctx: LeaveCtx,
+  data: ApplyLeaveRequestInput,
+  excludeRequestId: string | null,
+): Promise<{ leaveTypeId: string; approvalLevels: number; daysCount: number }> {
+  const leaveType = await resolveLeaveType(tx, ctx.tenant_id, data.leave_type_name);
+
+  // Effective policy as of the request start date.
+  const policy = await resolveEffectivePolicy(tx, ctx.tenant_id, ctx.org_id, leaveType.id, data.start_date);
+  if (!policy) throw new BadRequestError(`No active leave policy for ${data.leave_type_name}`);
+
+  // Half-day allowed?
+  const usesHalf = data.start_half !== 'full' || data.end_half !== 'full';
+  if (usesHalf && !policy.allow_half_day) {
+    throw new BadRequestError('This leave type does not allow half-days');
+  }
+
+  // Minimum notice.
+  if (policy.min_notice_days > 0) {
+    const noticeDays = Math.floor(
+      (Date.parse(data.start_date) - Date.parse(todayIso())) / 86_400_000,
+    );
+    if (noticeDays < policy.min_notice_days) {
+      throw new BadRequestError(`This leave requires at least ${policy.min_notice_days} day(s) notice`);
+    }
+  }
+
+  // Server-computed days_count (client value, if any, is ignored).
+  const holidays = await orgHolidaysBetween(tx, ctx.org_id, data.start_date, data.end_date);
+  const offs = await weeklyOffPattern(tx, ctx.org_id, ctx.user_id);
+  const daysCount = computeLeaveDays(
+    data.start_date,
+    data.end_date,
+    data.start_half as HalfDay,
+    data.end_half as HalfDay,
+    holidays,
+    offs,
+  );
+  if (daysCount <= 0) {
+    throw new BadRequestError('The requested dates contain no working days');
+  }
+
+  // Max consecutive days.
+  if (policy.max_consecutive_days != null && daysCount > policy.max_consecutive_days) {
+    throw new BadRequestError(`This leave type allows at most ${policy.max_consecutive_days} consecutive day(s)`);
+  }
+
+  // Document requirement.
+  if (
+    policy.requires_document_after_days != null &&
+    daysCount > policy.requires_document_after_days &&
+    !data.document_url
+  ) {
+    throw new BadRequestError(
+      `A supporting document is required for ${data.leave_type_name} longer than ${policy.requires_document_after_days} day(s)`,
+    );
+  }
+
+  // Sufficient balance (loss_of_pay is exempt — it goes negative by design).
+  // A pending request consumes nothing from the ledger (consumption happens on
+  // approval), so on an edit this compares against the same balance apply saw.
+  if (leaveType.name !== 'loss_of_pay') {
+    const balance = await currentBalance(tx, ctx.org_id, ctx.user_id, leaveType.id);
+    if (balance < daysCount) {
+      throw new BadRequestError(`Insufficient ${data.leave_type_name} balance: have ${balance}, need ${daysCount}`);
+    }
+  }
+
+  // Overlap guard (clean error before hitting the exclusion constraint).
+  const selfClause = excludeRequestId ? sql`AND id <> ${excludeRequestId}` : sql``;
+  const overlap = (await tx.execute(sql`
+    SELECT 1 FROM hr.leave_requests
+    WHERE user_id = ${ctx.user_id} AND is_open AND NOT is_deleted ${selfClause}
+      AND daterange(start_date, end_date, '[]') && daterange(${data.start_date}::date, ${data.end_date}::date, '[]')
+    LIMIT 1
+  `)) as unknown as Row[];
+  if (overlap.length > 0) {
+    throw new ConflictError('You already have an overlapping leave request');
+  }
+
+  return { leaveTypeId: leaveType.id, approvalLevels: policy.approval_levels, daysCount };
+}
+
 export async function applyLeave(ctx: LeaveCtx, data: ApplyLeaveRequestInput): Promise<ApplyResult> {
   return serviceTxWithContext(ctx, data.reason ?? null, async (tx) => {
-    const leaveType = await resolveLeaveType(tx, ctx.tenant_id, data.leave_type_name);
-
-    // Effective policy as of the request start date.
-    const policy = await resolveEffectivePolicy(tx, ctx.tenant_id, ctx.org_id, leaveType.id, data.start_date);
-    if (!policy) throw new BadRequestError(`No active leave policy for ${data.leave_type_name}`);
-
-    // Half-day allowed?
-    const usesHalf = data.start_half !== 'full' || data.end_half !== 'full';
-    if (usesHalf && !policy.allow_half_day) {
-      throw new BadRequestError('This leave type does not allow half-days');
-    }
-
-    // Minimum notice.
-    if (policy.min_notice_days > 0) {
-      const noticeDays = Math.floor(
-        (Date.parse(data.start_date) - Date.parse(todayIso())) / 86_400_000,
-      );
-      if (noticeDays < policy.min_notice_days) {
-        throw new BadRequestError(`This leave requires at least ${policy.min_notice_days} day(s) notice`);
-      }
-    }
-
-    // Server-computed days_count (client value, if any, is ignored).
-    const holidays = await orgHolidaysBetween(tx, ctx.org_id, data.start_date, data.end_date);
-    const offs = await weeklyOffPattern(tx, ctx.org_id, ctx.user_id);
-    const daysCount = computeLeaveDays(
-      data.start_date,
-      data.end_date,
-      data.start_half as HalfDay,
-      data.end_half as HalfDay,
-      holidays,
-      offs,
-    );
-    if (daysCount <= 0) {
-      throw new BadRequestError('The requested dates contain no working days');
-    }
-
-    // Max consecutive days.
-    if (policy.max_consecutive_days != null && daysCount > policy.max_consecutive_days) {
-      throw new BadRequestError(`This leave type allows at most ${policy.max_consecutive_days} consecutive day(s)`);
-    }
-
-    // Document requirement.
-    if (
-      policy.requires_document_after_days != null &&
-      daysCount > policy.requires_document_after_days &&
-      !data.document_url
-    ) {
-      throw new BadRequestError(
-        `A supporting document is required for ${data.leave_type_name} longer than ${policy.requires_document_after_days} day(s)`,
-      );
-    }
-
-    // Sufficient balance (loss_of_pay is exempt — it goes negative by design).
-    if (leaveType.name !== 'loss_of_pay') {
-      const balance = await currentBalance(tx, ctx.org_id, ctx.user_id, leaveType.id);
-      if (balance < daysCount) {
-        throw new BadRequestError(`Insufficient ${data.leave_type_name} balance: have ${balance}, need ${daysCount}`);
-      }
-    }
-
-    // Overlap guard (clean error before hitting the exclusion constraint).
-    const overlap = (await tx.execute(sql`
-      SELECT 1 FROM hr.leave_requests
-      WHERE user_id = ${ctx.user_id} AND is_open AND NOT is_deleted
-        AND daterange(start_date, end_date, '[]') && daterange(${data.start_date}::date, ${data.end_date}::date, '[]')
-      LIMIT 1
-    `)) as unknown as Row[];
-    if (overlap.length > 0) {
-      throw new ConflictError('You already have an overlapping leave request');
-    }
+    const { leaveTypeId, approvalLevels, daysCount } = await validateRequestInput(tx, ctx, data, null);
 
     const pendingStatusId = await resolveStatusId(tx, 'pending');
 
@@ -215,7 +242,7 @@ export async function applyLeave(ctx: LeaveCtx, data: ApplyLeaveRequestInput): P
         (user_id, org_id, leave_type_id, start_date, end_date, start_half, end_half,
          days_count, reason, status_id, document_url, created_by)
       VALUES
-        (${ctx.user_id}, ${ctx.org_id}, ${leaveType.id}, ${data.start_date}, ${data.end_date},
+        (${ctx.user_id}, ${ctx.org_id}, ${leaveTypeId}, ${data.start_date}, ${data.end_date},
          ${data.start_half}, ${data.end_half}, ${daysCount}, ${data.reason ?? null},
          ${pendingStatusId}, ${data.document_url ?? null}, ${ctx.user_id})
       RETURNING id::text
@@ -223,7 +250,7 @@ export async function applyLeave(ctx: LeaveCtx, data: ApplyLeaveRequestInput): P
     const requestId = inserted[0]!.id;
 
     // Approval chain from the effective policy's depth.
-    const approvers = await resolveApprovers(tx, ctx.org_id, ctx.user_id, policy.approval_levels);
+    const approvers = await resolveApprovers(tx, ctx.org_id, ctx.user_id, approvalLevels);
     for (const a of approvers) {
       await tx.execute(sql`
         INSERT INTO hr.leave_request_approvals (leave_request_id, org_id, level, approver_id)
@@ -525,6 +552,56 @@ export async function rejectLeave(
 // ═════════════════════════════════════════════════════════════════════════════
 // CANCEL (owner)
 // ═════════════════════════════════════════════════════════════════════════════
+/**
+ * Amend a request that is still pending.
+ *
+ * Only the requester, and only while pending: once a decision exists the
+ * request is a record of what was decided, and the remedy is cancel-and-reapply
+ * (or, for dates already past, a regularization).
+ *
+ * The approval chain is REBUILT, not preserved. An edit can change the leave
+ * type — and with it the policy's approval depth — and any decision already
+ * recorded at level 1 of a multi-level chain was a decision about the OLD dates.
+ * Carrying those rows forward would let an approved level stand for a request
+ * nobody approved, so every level is dropped and re-resolved, putting the
+ * request back at the start of its chain.
+ */
+export async function updateLeaveRequest(
+  ctx: LeaveCtx,
+  id: string,
+  data: UpdateLeaveRequestInput,
+): Promise<{ days_count: number; level1_approver_id: string | null }> {
+  return serviceTxWithContext(ctx, data.reason ?? null, async (tx) => {
+    const req = await loadRequestForAction(tx, id);
+    if (!req) throw new NotFoundError('Leave request not found');
+    if (req.user_id !== ctx.user_id) throw new ForbiddenError('You can only edit your own leave requests');
+    if (req.status_name !== 'pending') {
+      throw new ConflictError(`Cannot edit a request that is ${req.status_name}`);
+    }
+
+    const { leaveTypeId, approvalLevels, daysCount } = await validateRequestInput(tx, ctx, data, id);
+
+    await tx.execute(sql`
+      UPDATE hr.leave_requests
+      SET leave_type_id = ${leaveTypeId}, start_date = ${data.start_date}, end_date = ${data.end_date},
+          start_half = ${data.start_half}, end_half = ${data.end_half}, days_count = ${daysCount},
+          reason = ${data.reason ?? null}, document_url = ${data.document_url ?? null}
+      WHERE id = ${id}
+    `);
+
+    await tx.execute(sql`DELETE FROM hr.leave_request_approvals WHERE leave_request_id = ${id}`);
+    const approvers = await resolveApprovers(tx, ctx.org_id, ctx.user_id, approvalLevels);
+    for (const a of approvers) {
+      await tx.execute(sql`
+        INSERT INTO hr.leave_request_approvals (leave_request_id, org_id, level, approver_id)
+        VALUES (${id}, ${ctx.org_id}, ${a.level}, ${a.approverId})
+      `);
+    }
+
+    return { days_count: daysCount, level1_approver_id: approvers[0]?.approverId ?? null };
+  });
+}
+
 export async function cancelLeave(ctx: LeaveCtx, id: string, comment: string | null): Promise<{ reversed: boolean }> {
   return serviceTxWithContext(ctx, comment, async (tx) => {
     const req = await loadRequestForAction(tx, id);

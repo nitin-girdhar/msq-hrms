@@ -19,6 +19,19 @@ export function canManageLeaveAdmin(actor: CapabilityHolder): boolean {
   return can(actor, CAPABILITY.HR_LEAVE_ADMIN);
 }
 
+/**
+ * Who may act on someone else's leave request — i.e. who the Approvals tab is
+ * for at all.
+ *
+ * Approve and reject are separate grants, so this asks for either: a role that
+ * can only reject still has a decision to make. Someone with neither can do
+ * nothing on that page — the queue is empty by construction and every action is
+ * refused — so the tab is hidden rather than shown as a dead end.
+ */
+export function canDecideLeave(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_LEAVE_APPROVE) || can(actor, CAPABILITY.HR_LEAVE_REJECT);
+}
+
 /** A tenant admin may additionally write tenant-wide policies/settings. */
 export function canManageTenantLeave(rank: number): boolean {
   return rank >= ANCHOR_RANK.TENANT_ADMIN;
@@ -88,6 +101,15 @@ export const LEAVE_STATUS_FILTERS: { value: string; label: string }[] = [
 ];
 
 /** A request the owner can still cancel: pending, or a future-dated approved one. */
+/**
+ * Only a still-pending request can be amended. Once a decision exists the
+ * request is the record of what was decided — mirrors the server, which refuses
+ * an edit in any other state.
+ */
+export function canEditRequest(status: LeaveStatusName): boolean {
+  return status === 'pending';
+}
+
 export function canCancelRequest(
   status: LeaveStatusName,
   startDate: string,

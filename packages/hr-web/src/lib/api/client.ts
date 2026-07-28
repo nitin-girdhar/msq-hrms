@@ -131,6 +131,14 @@ export const leave = {
       { method: 'POST', body: JSON.stringify(body) },
     ),
 
+  // Amend a request that is still pending. Whole-request body, not a patch of
+  // changed fields — the server re-validates the request as a unit.
+  update: (id: string, body: ApplyLeaveBody) =>
+    request<Envelope<{ days_count: number; level1_approver_id: string | null }>>(
+      `/hr/leave/requests/${id}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    ),
+
   approve: (id: string, comment?: string) =>
     request<Envelope<unknown>>(`/hr/leave/requests/${id}/approve`, {
       method: 'POST',

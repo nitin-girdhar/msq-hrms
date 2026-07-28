@@ -3,7 +3,7 @@
 import type { SessionUser } from '@platform/types';
 import { PageTabs, type PageTab } from '@platform/ui-kit';
 import type { HrRank } from '../../lib/hr-rank';
-import { canManageLeaveAdmin } from '../../lib/leave/format';
+import { canDecideLeave, canManageLeaveAdmin } from '../../lib/leave/format';
 
 interface Props {
   // The caller's resolved rank on the unified iam ladder. See lib/hr-rank.ts.
@@ -16,15 +16,16 @@ interface Props {
 // (rendered by HrModuleShell) stays untouched; visibility of each tab mirrors
 // the same rank/role gating the CRM UI uses (see src/config/navigation.ts).
 export default function LeaveTabs({ hrRank, actor }: Props) {
-  const tabs: PageTab[] = [
-    { href: '/leave', label: 'Dashboard', exact: true },
-    // Always shown: visibility of pending items is enforced by the backend's
-    // own query scoping (you only ever see requests you're the resolved
-    // approver for, your direct reports, or — with HR manager+/admin rank —
-    // the full org queue), not by a platform-rank gate here. See
-    // hr-service's leave.service.ts#listTeamRequests.
-    { href: '/leave/approvals', label: 'Approvals' },
-  ];
+  const tabs: PageTab[] = [{ href: '/leave', label: 'Dashboard', exact: true }];
+  // WHICH pending items an approver sees is the backend's business — its query
+  // scopes to the requests you are the resolved approver for, your direct
+  // reports, or (with HR manager+/admin rank) the whole org. WHETHER the tab
+  // exists is a capability question: without approve or reject there is nothing
+  // to decide, and the page renders an always-empty queue over a team calendar
+  // that 403s.
+  if (canDecideLeave(actor)) {
+    tabs.push({ href: '/leave/approvals', label: 'Approvals' });
+  }
   if (canManageLeaveAdmin(actor)) {
     tabs.push({ href: '/leave/admin', label: 'Admin' });
   }

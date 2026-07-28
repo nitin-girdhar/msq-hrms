@@ -16,6 +16,21 @@ export const applyLeaveRequestSchema = z.object({
   document_url: z.string().url().max(2000).optional(),
 });
 
+// Amending a request that is still pending. The full set is required, not a
+// partial patch: every rule the server re-checks (working days, balance,
+// consecutive-day cap, document requirement) is a function of the WHOLE request,
+// so a half-specified edit could not be validated coherently. The apply form
+// sends back what it loaded, changed or not.
+export const updateLeaveRequestSchema = z.object({
+  leave_type_name: z.string().min(1),
+  start_date: isoDate,
+  end_date: isoDate,
+  start_half: halfDay.default('full'),
+  end_half: halfDay.default('full'),
+  reason: z.string().max(1000).optional(),
+  document_url: z.string().url().max(2000).optional(),
+});
+
 // Read-only working-days preview for the apply form. Same inputs as apply
 // (minus reason/document) — reuses computeLeaveDays and the apply validations
 // but commits nothing and returns warnings instead of throwing.
@@ -148,6 +163,7 @@ export const updateLeaveSettingsSchema = z.object({
 });
 
 export type ApplyLeaveRequestInput = z.infer<typeof applyLeaveRequestSchema>;
+export type UpdateLeaveRequestInput = z.infer<typeof updateLeaveRequestSchema>;
 export type PreviewLeaveRequestInput = z.infer<typeof previewLeaveRequestSchema>;
 export type ListLeaveRequestsInput = z.infer<typeof listLeaveRequestsSchema>;
 export type ApproveLeaveRequestInput = z.infer<typeof approveLeaveRequestSchema>;
