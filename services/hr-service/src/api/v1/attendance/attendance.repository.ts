@@ -20,6 +20,7 @@ import { withRoleTx, withServiceTx, type RoleTxContext, type DrizzleTx } from '@
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../../lib/errors.js';
 import { haversineMeters } from '../../../lib/geo/haversine.js';
 import {
+  addDays,
   localDateOf,
   localTimeMinutes,
   parseTimeToMinutes,
@@ -29,6 +30,7 @@ import {
 } from '../../../lib/attendance/time.js';
 import { DEFAULT_THRESHOLDS, thresholdsFrom, type ShiftThresholds } from '../../../lib/attendance/resolve.js';
 import { matchSegment, validateSegments, type ShiftSegment } from '../../../lib/attendance/segments.js';
+import { punchEligibility } from '../../../lib/attendance/punch-eligibility.js';
 import {
   computeDayResolution,
   deriveFromEvents,
@@ -425,34 +427,35 @@ export async function punch(
     const ci = counts[0]?.ci ?? 0;
     const co = counts[0]?.co ?? 0;
 
-    // An open check-in normally blocks another one. A SPLIT shift is exempt: an
-    // employee who forgot to punch out of segment 1 must still be able to punch
-    // segment 2, rather than being locked out for the rest of the day. The
-    // abandoned session then contributes zero minutes and the day is flagged
-    // has_open_session for regularization (see summarizeSessions).
-    if (eventType === 'check_in' && ci > co && !prep.shift?.is_split) {
-      throw new ConflictError('You are already checked in (an open check-in exists for today)', {
-        code: 'ALREADY_CHECKED_IN',
+    // The gates themselves live in lib/attendance/punch-eligibility so that the
+    // dashboard's GET /attendance/today-state reports exactly what this enforces.
+    // Duplicating them client-side is what made a split shift read "Completed for
+    // today" after segment 1 while this code would still have accepted segment 2.
+    const eligibility = punchEligibility(
+      { checkIns: ci, checkOuts: co },
+      {
+        hasShift: !!prep.shift,
+        isSplit: prep.shift?.is_split ?? false,
+        segmentCount: prep.segmentCount,
+      },
+    );
+
+    if (eventType === 'check_in' && !eligibility.canCheckIn) {
+      const message =
+        eligibility.checkInBlockedBy === 'ALREADY_CHECKED_IN'
+          ? 'You are already checked in (an open check-in exists for today)'
+          : eligibility.checkInBlockedBy === 'SEGMENT_LIMIT_REACHED'
+            ? 'You have already punched every segment of your shift for today'
+            : 'You have already completed a check-in and check-out for today';
+      throw new ConflictError(message, {
+        code: eligibility.checkInBlockedBy!,
+        ...(eligibility.checkInBlockedBy === 'SEGMENT_LIMIT_REACHED'
+          ? { segments: prep.segmentCount }
+          : {}),
       });
     }
-    if (eventType === 'check_out' && ci <= co) {
+    if (eventType === 'check_out' && !eligibility.canCheckOut) {
       throw new ConflictError('No open check-in to check out from', { code: 'NO_OPEN_CHECK_IN' });
-    }
-    // Repeated in/out pairs are the point of a split shift, but they must stay
-    // exceptional for everyone else: without this, the sum-of-sessions formula
-    // would let a regular-shift employee punch an unbounded number of times.
-    // No assigned shift → no basis to judge, so the gate does not apply.
-    if (eventType === 'check_in' && ci > 0 && prep.shift && !prep.shift.is_split) {
-      throw new ConflictError('You have already completed a check-in and check-out for today', {
-        code: 'ALREADY_COMPLETED_TODAY',
-      });
-    }
-    // A split shift may punch at most once per declared segment.
-    if (eventType === 'check_in' && prep.shift?.is_split && prep.segmentCount > 0 && ci >= prep.segmentCount) {
-      throw new ConflictError('You have already punched every segment of your shift for today', {
-        code: 'SEGMENT_LIMIT_REACHED',
-        segments: prep.segmentCount,
-      });
     }
 
     const inserted = (await tx.execute(sql`
@@ -609,6 +612,113 @@ export async function upsertRules(ctx: AttendanceCtx, data: AttendanceRulesAdmin
 // ═════════════════════════════════════════════════════════════════════════════
 // ME — own attendance for a month + holiday/weekly-off overlay
 // ═════════════════════════════════════════════════════════════════════════════
+/**
+ * Re-resolve a date range that has ALREADY been resolved.
+ *
+ * The nightly job deliberately cannot do this: it skips any date with an
+ * existing hr.attendance_days row and passes overwrite:false, so once someone
+ * has punched, their day is frozen against later configuration changes. That is
+ * the right default, but it means assigning or correcting a shift never
+ * reclassifies the days it should now apply to.
+ *
+ * Uses overwrite:true, which by construction leaves rows whose resolution_source
+ * is 'regularization' untouched — an approved manual correction always outranks
+ * a recompute.
+ *
+ * Unlike the job, today IS in range: the whole point is to reclassify a day the
+ * employee has already punched under a shift that was assigned after the fact.
+ */
+export async function recomputeAttendance(
+  ctx: AttendanceCtx,
+  args: { user_id?: string | undefined; from: string; to: string },
+) {
+  return withServiceTx(async (tx) => {
+    const userClause = args.user_id ? sql`AND ep.user_id = ${args.user_id}` : sql``;
+    const employees = (await tx.execute(sql`
+      SELECT ep.user_id::text, ep.org_id::text, ep.tenant_id::text, o.timezone,
+             ep.weekly_off_pattern AS weekly_off_pattern
+      FROM hr.employee_profiles ep
+      JOIN entity.organizations o ON o.id = ep.org_id
+      WHERE ep.org_id = ${ctx.org_id} AND ep.is_active AND NOT ep.is_deleted ${userClause}
+    `)) as unknown as DayEmployee[];
+
+    const thresholdRows = (await tx.execute(sql`
+      SELECT min_half_day_minutes, min_full_day_minutes
+      FROM hr.attendance_rules WHERE org_id = ${ctx.org_id} AND NOT is_deleted LIMIT 1
+    `)) as unknown as Array<{ min_half_day_minutes: number; min_full_day_minutes: number }>;
+    const thresholds = thresholdRows[0]
+      ? {
+          minHalfDayMinutes: thresholdRows[0].min_half_day_minutes,
+          minFullDayMinutes: thresholdRows[0].min_full_day_minutes,
+        }
+      : undefined;
+
+    let daysProcessed = 0;
+    const statuses: Record<string, number> = {};
+
+    for (const emp of employees) {
+      for (let d = args.from; d <= args.to; d = addDays(d, 1)) {
+        const r = await computeDayResolution(tx, emp, d, thresholds);
+        await upsertResolvedDay(tx, emp, d, r, { overwrite: true });
+        daysProcessed += 1;
+        statuses[r.status] = (statuses[r.status] ?? 0) + 1;
+      }
+    }
+
+    return {
+      employees_processed: employees.length,
+      days_processed: daysProcessed,
+      statuses,
+    };
+  });
+}
+
+/**
+ * Today's punch state for the caller: what the next punch may be, and how far
+ * through a split shift's segments they are.
+ *
+ * Derived from the SAME inputs the punch path uses (org timezone, the shift
+ * effective today, its declared segments, and the per-work-date event counts)
+ * and gated by the SAME punchEligibility rule, so the button the dashboard
+ * renders always matches what checkIn/checkOut would actually accept.
+ */
+export async function getTodayPunchState(ctx: AttendanceCtx) {
+  return serviceTxWithContext(ctx, async (tx) => {
+    const org = await loadOrg(tx, ctx.org_id);
+    const now = new Date();
+    const localToday = localDateOf(now, org.timezone);
+    const shift = await currentShift(tx, ctx.org_id, ctx.user_id, localToday);
+    const shiftStartMin = shift ? parseTimeToMinutes(shift.start_time) : 0;
+    const isNight = shift?.is_night_shift ?? false;
+    const workDate = workDateOf(now, org.timezone, isNight, shiftStartMin);
+    const segments = shift ? await loadSegments(tx, shift.id) : [];
+
+    const checkIns = await countPunches(tx, ctx, workDate, org.timezone, isNight, shiftStartMin, 'check_in');
+    const checkOuts = await countPunches(tx, ctx, workDate, org.timezone, isNight, shiftStartMin, 'check_out');
+
+    const e = punchEligibility(
+      { checkIns, checkOuts },
+      { hasShift: !!shift, isSplit: shift?.is_split ?? false, segmentCount: segments.length },
+    );
+
+    return {
+      work_date: workDate,
+      shift_id: shift?.id ?? null,
+      shift_name: shift?.name ?? null,
+      is_split: shift?.is_split ?? false,
+      segments: segments.map((s) => ({ seq: s.seq, start_time: s.start_time, end_time: s.end_time })),
+      check_ins: checkIns,
+      check_outs: checkOuts,
+      can_check_in: e.canCheckIn,
+      can_check_out: e.canCheckOut,
+      check_in_blocked_by: e.checkInBlockedBy,
+      has_open_session: e.hasOpenSession,
+      segments_punched: e.segmentsPunched,
+      segments_total: e.segmentsTotal,
+    };
+  });
+}
+
 export async function getMyMonth(ctx: AttendanceCtx, month: string) {
   return withRoleTx(ctx, async (tx) => {
     const first = `${month}-01`;

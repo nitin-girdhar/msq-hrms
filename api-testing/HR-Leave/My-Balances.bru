@@ -5,11 +5,36 @@ meta {
 }
 
 get {
-  url: {{baseUrl}}/hr/leave/balances
+  url: {{baseUrl}}/hr/leave/balances?as_of=2026-07-28
   body: none
   auth: none
 }
 
+params:query {
+  as_of: 2026-07-28
+}
+
 headers {
   Cookie: auth_token={{authToken}}
+}
+
+docs {
+  The caller's balance per leave type as on a date. This is the ENTIRE
+  employee-facing leave payload — every row is exactly:
+
+    leave_type_id, leave_type_name, leave_type_label, is_paid,
+    balance, allow_half_day, has_policy
+
+  and nothing else. Accrual frequency and amount, max balance, carry-forward
+  caps, notice rules and approval depth are admin data behind
+  hr.leave.admin.policies.view (GET /hr/leave/policies); the per-request limits an
+  applicant needs arrive from GET /hr/leave/requests/preview.
+
+  has_policy = false means a residual balance from a policy that was withdrawn:
+  still shown, no longer bookable.
+
+  as_of is optional. It always dates the effective POLICY. It bounds the ledger
+  sum ONLY when passed explicitly — approved leave is written to the ledger with
+  effective_date = start_date (usually future) and the sufficiency check sums the
+  ledger unbounded, so the default must match it. Drop the param for "right now".
 }

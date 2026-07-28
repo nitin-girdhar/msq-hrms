@@ -1,0 +1,27 @@
+meta {
+  name: Day Events (all punches)
+  type: http
+  seq: 30
+}
+
+get {
+  url: {{baseUrl}}/hr/attendance/events?user_id={{targetUserId}}&date=2026-07-15
+  body: none
+  auth: none
+}
+
+params:query {
+  user_id: {{targetUserId}}
+  date: 2026-07-15
+}
+
+headers {
+  Cookie: auth_token={{authToken}}
+}
+
+docs {
+  Every punch of one employee's work date. The team view carries only the day's
+  first check-in and last check-out, which hides a split shift's middle punches —
+  this is the only way to reach them and their selfies. Gated by
+  hr.attendance.photo.view, the same capability as the photos it leads to.
+}

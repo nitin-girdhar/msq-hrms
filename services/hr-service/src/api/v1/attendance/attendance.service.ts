@@ -23,6 +23,7 @@ import type {
   UpdateShiftInput,
   CreateShiftAssignmentInput,
   UpdateShiftAssignmentInput,
+  RecomputeAttendanceInput,
   CreateRegularizationInput,
   ListRegularizationsInput,
   FaceEnrollInput,
@@ -132,6 +133,12 @@ export async function getMyMonth(ctx: AttendanceCtx, month: string) {
   return repo.getMyMonth(ctx, month);
 }
 
+// Self-scoped, like getMyMonth: it reports only the caller's own punch state,
+// so it carries no authority beyond HR_ATTENDANCE_VIEW.
+export async function getTodayPunchState(ctx: AttendanceCtx) {
+  return repo.getTodayPunchState(ctx);
+}
+
 export async function getTeam(ctx: AttendanceCtx, date: string) {
   if (!canViewTeamAttendance(ctx)) {
     throw new ForbiddenError('Insufficient rank to view the team attendance view');
@@ -227,6 +234,32 @@ export async function createShiftAssignment(ctx: AttendanceCtx, data: CreateShif
 export async function updateShiftAssignment(ctx: AttendanceCtx, id: string, data: UpdateShiftAssignmentInput) {
   assertCanManageShifts(ctx);
   await repo.updateShiftAssignment(ctx, id, data);
+}
+
+/**
+ * Re-resolve already-resolved attendance days — the manual counterpart to the
+ * nightly job, for when a shift assignment changed after the fact.
+ *
+ * Same authority as shift management: whoever can change the shift that drives a
+ * day's classification is who may re-apply it. Audited, because it rewrites
+ * historical attendance rows.
+ */
+export async function recomputeAttendance(ctx: AttendanceCtx, data: RecomputeAttendanceInput) {
+  assertCanManageShifts(ctx);
+  const result = await repo.recomputeAttendance(ctx, data);
+  void logActivity({
+    action_type: 'attendance_recomputed',
+    performed_by: ctx.user_id,
+    subject_user_id: data.user_id ?? ctx.user_id,
+    org_id: ctx.org_id,
+    new_value: {
+      scope: data.user_id ? 'single_employee' : 'org',
+      from: data.from,
+      to: data.to,
+      ...result,
+    },
+  });
+  return result;
 }
 
 // ── Regularizations ───────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ import {
   approveLeaveRequestSchema,
   rejectLeaveRequestSchema,
   cancelLeaveRequestSchema,
+  listBalancesSchema,
   listLedgerSchema,
   createAdjustmentSchema,
   listPoliciesSchema,
@@ -49,12 +50,19 @@ export async function leaveRouter(app: FastifyInstance) {
   app.post('/leave/requests/:id/cancel', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_REQUEST_CANCEL, 'You do not have permission to cancel leave'), validate({ body: cancelLeaveRequestSchema })] }, ctrl.cancel);
 
   // ── Balances & ledger ─────────────────────────────────────────────────────
-  app.get('/leave/balances', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_VIEW)] }, ctrl.balances);
-  app.get('/leave/balances/:userId', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_VIEW)] }, ctrl.balancesForUser);
+  // Balance per leave type as on ?as_of= (default today). This is the ENTIRE
+  // employee-facing leave payload — the number, not the policy that produced it.
+  app.get('/leave/balances', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_VIEW), validate({ query: listBalancesSchema })] }, ctrl.balances);
+  app.get('/leave/balances/:userId', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_VIEW), validate({ query: listBalancesSchema })] }, ctrl.balancesForUser);
   app.get('/leave/ledger', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_VIEW), validate({ query: listLedgerSchema })] }, ctrl.ledger);
   app.post('/leave/adjustments', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_ADMIN_ADJUSTMENT_CREATE, 'You do not have permission to adjust leave balances'), validate({ body: createAdjustmentSchema })] }, ctrl.adjustment);
 
   // ── Policies ────────────────────────────────────────────────────────────────
+  // Admin-only, and it must stay that way: every row carries accrual frequency and
+  // amount, max balance, carry-forward caps, notice rules and approval depth, for
+  // every past, future and inactive revision. An employee needs none of it — the
+  // dashboard reads /leave/balances?as_of=, and the per-request limits reach the
+  // apply form just-in-time through /leave/requests/preview.
   app.get('/leave/policies', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_ADMIN_POLICIES_VIEW), validate({ query: listPoliciesSchema })] }, ctrl.listPolicies);
   app.post('/leave/policies', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_ADMIN_POLICIES_MANAGE, 'You do not have permission to manage leave policies'), validate({ body: createPolicySchema })] }, ctrl.createPolicy);
   app.patch('/leave/policies/:id', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_ADMIN_POLICIES_MANAGE, 'You do not have permission to manage leave policies'), validate({ body: updatePolicySchema })] }, ctrl.updatePolicy);

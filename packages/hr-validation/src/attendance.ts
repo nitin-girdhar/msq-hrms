@@ -203,6 +203,36 @@ export const updateShiftAssignmentSchema = z.object({
   is_active: z.boolean().optional(),
 });
 
+// ── Recompute ───────────────────────────────────────────────────────────────
+// Re-resolve already-resolved days. Needed because the nightly job only fills
+// days that have NO row yet, so changing a shift assignment never re-classified
+// the days the employee had already punched.
+export const MAX_RECOMPUTE_DAYS = 92;
+
+export const recomputeAttendanceSchema = z
+  .object({
+    // Omitted → every active employee in the org.
+    user_id: z.string().uuid().optional(),
+    from: dateString,
+    to: dateString,
+  })
+  .superRefine((d, ctx) => {
+    if (d.from > d.to) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: '"from" must be on or before "to"', path: ['to'] });
+      return;
+    }
+    // A whole-org recompute is O(employees × days); cap the window so a typo
+    // cannot start a run that holds a transaction open for hours.
+    const days = Math.round((Date.parse(d.to) - Date.parse(d.from)) / 86_400_000) + 1;
+    if (days > MAX_RECOMPUTE_DAYS) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Range too large: ${days} days (max ${MAX_RECOMPUTE_DAYS})`,
+        path: ['to'],
+      });
+    }
+  });
+
 // ── Regularizations ─────────────────────────────────────────────────────────
 export const createRegularizationSchema = z.object({
   work_date: dateString,
@@ -286,6 +316,7 @@ export type CreateShiftInput = z.infer<typeof createShiftSchema>;
 export type UpdateShiftInput = z.infer<typeof updateShiftSchema>;
 export type CreateShiftAssignmentInput = z.infer<typeof createShiftAssignmentSchema>;
 export type UpdateShiftAssignmentInput = z.infer<typeof updateShiftAssignmentSchema>;
+export type RecomputeAttendanceInput = z.infer<typeof recomputeAttendanceSchema>;
 export type CreateRegularizationInput = z.infer<typeof createRegularizationSchema>;
 export type ApproveRegularizationInput = z.infer<typeof approveRegularizationSchema>;
 export type RejectRegularizationInput = z.infer<typeof rejectRegularizationSchema>;

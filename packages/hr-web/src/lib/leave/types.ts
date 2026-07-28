@@ -13,14 +13,20 @@ export type LeaveStatusName =
   | 'cancelled'
   | 'withdrawn';
 
+// The whole employee-facing leave payload: the balance per type as on a date,
+// and the two facts the apply form needs about it. Everything else the server
+// knows about a leave policy — accrual, carry-forward, caps, approval depth —
+// stays behind hr.leave.admin.policies.view and never reaches this app.
 export interface LeaveBalance {
-  user_id: string;
-  org_id: string;
   leave_type_id: string;
   leave_type_name: string;
   leave_type_label: string;
   is_paid: boolean;
   balance: number;
+  allow_half_day: boolean;
+  // False for a type that only carries a residual balance from a withdrawn
+  // policy: still worth showing, no longer bookable.
+  has_policy: boolean;
 }
 
 export interface LeaveRequestView {

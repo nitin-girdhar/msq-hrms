@@ -13,3 +13,11 @@ get {
 headers {
   Cookie: auth_token={{authToken}}
 }
+
+docs {
+  ADMIN ONLY — needs hr.leave.admin.policies.view (hr_admin, hr_manager, hr_head,
+  org_admin, tenant_admin). Expect 403 as an ordinary employee: every row carries
+  accrual config, caps and approval depth for every revision, past and future.
+
+  Employees get their leave data from GET /hr/leave/balances instead.
+}

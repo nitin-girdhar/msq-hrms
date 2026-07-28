@@ -49,6 +49,13 @@ export const cancelLeaveRequestSchema = z.object({
 
 // ── Balances & ledger ───────────────────────────────────────────────────────
 
+// Balance per leave type "as on" a date. as_of drives which leave POLICY is
+// effective (see resolveEffectivePolicy); it bounds the ledger sum only when
+// the caller passes it explicitly — see listOwnBalances for why.
+export const listBalancesSchema = z.object({
+  as_of: isoDate.optional(),
+});
+
 export const listLedgerSchema = z.object({
   userId: z.string().uuid().optional(),
   page: z.coerce.number().int().positive().default(1),
@@ -146,6 +153,7 @@ export type ListLeaveRequestsInput = z.infer<typeof listLeaveRequestsSchema>;
 export type ApproveLeaveRequestInput = z.infer<typeof approveLeaveRequestSchema>;
 export type RejectLeaveRequestInput = z.infer<typeof rejectLeaveRequestSchema>;
 export type CancelLeaveRequestInput = z.infer<typeof cancelLeaveRequestSchema>;
+export type ListBalancesInput = z.infer<typeof listBalancesSchema>;
 export type ListLedgerInput = z.infer<typeof listLedgerSchema>;
 export type CreateAdjustmentInput = z.infer<typeof createAdjustmentSchema>;
 export type ListPoliciesInput = z.infer<typeof listPoliciesSchema>;

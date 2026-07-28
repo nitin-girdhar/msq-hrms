@@ -13,6 +13,7 @@ import {
   updateShiftSchema,
   createShiftAssignmentSchema,
   updateShiftAssignmentSchema,
+  recomputeAttendanceSchema,
   createRegularizationSchema,
   approveRegularizationSchema,
   rejectRegularizationSchema,
@@ -43,6 +44,9 @@ export async function attendanceRouter(app: FastifyInstance) {
 
   // ── Me / Team ─────────────────────────────────────────────────────────────────
   app.get('/attendance/me', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_VIEW), validate({ query: attendanceMeQuerySchema })] }, ctrl.me);
+  // Self-scoped: what the caller's next punch may be today. Same capability as
+  // /attendance/me because it exposes nothing beyond the caller's own day.
+  app.get('/attendance/today-state', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_VIEW)] }, ctrl.todayState);
   app.get('/attendance/team', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_VIEW_TEAM, 'You do not have permission to view team attendance'), validate({ query: attendanceTeamQuerySchema })] }, ctrl.team);
   // Counts-only form of /attendance/team, for the cross-product "my day" tiles.
   app.get('/attendance/today-summary', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_VIEW), validate({ query: attendanceTeamQuerySchema })] }, ctrl.todaySummary);
@@ -86,4 +90,9 @@ export async function attendanceRouter(app: FastifyInstance) {
   app.get('/shift-assignments', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_ADMIN_ASSIGNMENTS_VIEW)] }, ctrl.listShiftAssignments);
   app.post('/shift-assignments', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_ADMIN_ASSIGNMENTS_MANAGE, 'You do not have permission to assign shifts'), validate({ body: createShiftAssignmentSchema })] }, ctrl.createShiftAssignment);
   app.patch('/shift-assignments/:id', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_ADMIN_ASSIGNMENTS_MANAGE, 'You do not have permission to assign shifts'), validate({ body: updateShiftAssignmentSchema })] }, ctrl.updateShiftAssignment);
+
+  // Re-resolve already-resolved days after a shift assignment changed. The
+  // nightly job cannot do this (it only fills days with no row yet), so this is
+  // the only way to reclassify a day the employee has already punched.
+  app.post('/attendance/recompute', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_ADMIN_ASSIGNMENTS_MANAGE, 'You do not have permission to recompute attendance'), validate({ body: recomputeAttendanceSchema })] }, ctrl.recomputeAttendance);
 }

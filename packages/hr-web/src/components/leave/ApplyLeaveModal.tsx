@@ -3,13 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '@platform/ui-kit';
 import { leave as leaveApi } from '../../lib/api/client';
-import type { LeaveBalance, LeavePolicyView, LeavePreview, HalfDay } from '../../lib/leave/types';
+import type { LeaveBalance, LeavePreview, HalfDay } from '../../lib/leave/types';
 import { formatDays } from '../../lib/leave/format';
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  policies: LeavePolicyView[];
   balances: LeaveBalance[];
   onApplied: () => void;
 }
@@ -20,34 +19,23 @@ const HALF_OPTIONS: { value: HalfDay; label: string }[] = [
   { value: 'second_half', label: 'Second half' },
 ];
 
+// Floor for the date inputs — leave is applied for today or later.
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-// Effective policy per leave type as of today: org-specific wins over tenant-wide,
-// latest applicable_from ≤ today. The policies list is already ordered
-// (org_id NOT NULL first, then applicable_from DESC), so the first active row per
-// type with applicable_from ≤ today is effective.
-function effectivePoliciesByType(policies: LeavePolicyView[]): Map<string, LeavePolicyView> {
-  const today = todayIso();
-  const map = new Map<string, LeavePolicyView>();
-  for (const p of policies) {
-    if (!p.is_active) continue;
-    if (p.applicable_from > today) continue;
-    if (!map.has(p.leave_type_name)) map.set(p.leave_type_name, p);
-  }
-  return map;
-}
-
-export default function ApplyLeaveModal({ open, onClose, policies, balances, onApplied }: Props) {
-  const effectiveByType = useMemo(() => effectivePoliciesByType(policies), [policies]);
+export default function ApplyLeaveModal({ open, onClose, balances, onApplied }: Props) {
+  // Only types with a policy in force are bookable — a residual balance from a
+  // withdrawn policy still shows on the cards but cannot be applied against.
+  // Effective-dating lives on the server now (resolveEffectivePolicy), so this
+  // component no longer replicates the org-beats-tenant / latest-applicable_from
+  // rule against the full policy list.
   const typeOptions = useMemo(
     () =>
-      Array.from(effectiveByType.values()).map((p) => ({
-        name: p.leave_type_name,
-        label: p.leave_type_label,
-      })),
-    [effectiveByType],
+      balances
+        .filter((b) => b.has_policy)
+        .map((b) => ({ name: b.leave_type_name, label: b.leave_type_label })),
+    [balances],
   );
 
   const [leaveTypeName, setLeaveTypeName] = useState('');
@@ -64,9 +52,9 @@ export default function ApplyLeaveModal({ open, onClose, policies, balances, onA
 
   const reqRef = useRef(0);
 
-  const effectivePolicy = leaveTypeName ? effectiveByType.get(leaveTypeName) : undefined;
-  const allowHalf = effectivePolicy?.allow_half_day ?? false;
-  const balance = balances.find((b) => b.leave_type_name === leaveTypeName)?.balance;
+  const selected = balances.find((b) => b.leave_type_name === leaveTypeName);
+  const allowHalf = selected?.allow_half_day ?? false;
+  const balance = selected?.balance;
 
   const reset = () => {
     setLeaveTypeName('');

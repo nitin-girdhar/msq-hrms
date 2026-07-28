@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { SessionUser } from '@platform/types';
 import { Alert, PageBody, PageHeader, PageSection, PhotoUploadModal, users as usersApi } from '@platform/ui-kit';
 import { attendance as attendanceApi, shiftAssignments as shiftAssignmentsApi } from '../../lib/api/client';
-import type { AttendanceDayRow, AttendanceRules, FaceSelfContext, PunchResult, RegularizationView, ShiftAssignmentView } from '../../lib/attendance/types';
+import type { AttendanceDayRow, AttendanceRules, FaceSelfContext, PunchResult, RegularizationView, ShiftAssignmentView, TodayPunchState } from '../../lib/attendance/types';
 import { todayIso } from '../../lib/attendance/format';
 import type { HrRank } from '../../lib/hr-rank';
 import AttendanceTabs from './AttendanceTabs';
@@ -24,6 +24,7 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
   const [rules, setRules] = useState<AttendanceRules | null>(null);
   const [todayRow, setTodayRow] = useState<AttendanceDayRow | undefined>(undefined);
   const [shift, setShift] = useState<ShiftAssignmentView | undefined>(undefined);
+  const [punchState, setPunchState] = useState<TodayPunchState | undefined>(undefined);
   const [regularizations, setRegularizations] = useState<RegularizationView[]>([]);
   const [regLoading, setRegLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +48,12 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
       .me()
       .then((res) => setTodayRow(res.data.days.find((d) => d.work_date === todayIso(orgTz))))
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load today’s status.'));
+    // Drives the punch button. Kept separate from the month load because it is
+    // the server's own gate decision, not something derivable from the day row.
+    attendanceApi
+      .todayState()
+      .then((res) => setPunchState(res.data))
+      .catch(() => setPunchState(undefined));
   }, [orgTz]);
 
   const loadShift = useCallback(() => {
@@ -167,7 +174,7 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
         {notice && <Alert tone="success">{notice}</Alert>}
         {error && <Alert tone="error">{error}</Alert>}
 
-        <TodayCard todayRow={todayRow} shift={shift} onPunch={startPunch} busy={punchMode !== null || gateBusy} />
+        <TodayCard todayRow={todayRow} shift={shift} punchState={punchState} onPunch={startPunch} busy={punchMode !== null || gateBusy} />
 
         <PageSection title="My month">
           <MyMonthCalendar

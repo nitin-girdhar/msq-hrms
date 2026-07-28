@@ -182,6 +182,34 @@ export interface ShiftView {
   is_active: boolean;
 }
 
+/**
+ * Server-computed answer to "what may I punch right now?".
+ *
+ * The dashboard must NOT re-derive this from a day row's first_in/last_out: that
+ * pair describes one session, so a split shift looked finished the moment its
+ * first segment closed. These flags come from the same rule the punch endpoint
+ * enforces.
+ */
+export interface TodayPunchState {
+  work_date: string;
+  shift_id: string | null;
+  shift_name: string | null;
+  is_split: boolean;
+  segments: ShiftSegmentView[];
+  check_ins: number;
+  check_outs: number;
+  can_check_in: boolean;
+  can_check_out: boolean;
+  check_in_blocked_by:
+    | 'ALREADY_CHECKED_IN'
+    | 'ALREADY_COMPLETED_TODAY'
+    | 'SEGMENT_LIMIT_REACHED'
+    | null;
+  has_open_session: boolean;
+  segments_punched: number;
+  segments_total: number;
+}
+
 export interface ShiftAssignmentView {
   id: string;
   user_id: string;

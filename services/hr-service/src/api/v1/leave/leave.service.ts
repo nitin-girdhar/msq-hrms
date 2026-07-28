@@ -19,6 +19,7 @@ import type {
   ApplyLeaveRequestInput,
   PreviewLeaveRequestInput,
   ListLeaveRequestsInput,
+  ListBalancesInput,
   CreateAdjustmentInput,
   CreatePolicyInput,
   UpdatePolicyInput,
@@ -142,8 +143,8 @@ export async function cancelLeave(ctx: LeaveCtx, id: string, comment: string | n
 }
 
 // ── Balances & ledger ───────────────────────────────────────────────────────
-export async function listOwnBalances(ctx: LeaveCtx) {
-  return repo.listOwnBalances(ctx);
+export async function listOwnBalances(ctx: LeaveCtx, filters: ListBalancesInput) {
+  return repo.listOwnBalances(ctx, filters);
 }
 
 async function assertCanViewUser(ctx: LeaveCtx, targetUserId: string) {
@@ -153,9 +154,9 @@ async function assertCanViewUser(ctx: LeaveCtx, targetUserId: string) {
   throw new ForbiddenError('Not authorized to view this user’s leave');
 }
 
-export async function getUserBalances(ctx: LeaveCtx, targetUserId: string) {
+export async function getUserBalances(ctx: LeaveCtx, targetUserId: string, filters: ListBalancesInput) {
   await assertCanViewUser(ctx, targetUserId);
-  return repo.getUserBalances(ctx, targetUserId);
+  return repo.getUserBalances(ctx, targetUserId, filters);
 }
 
 export async function listLedger(ctx: LeaveCtx, targetUserId: string, page: number, limit: number) {

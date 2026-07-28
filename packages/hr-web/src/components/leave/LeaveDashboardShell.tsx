@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { SessionUser } from '@platform/types';
 import { Alert, Button, PageBody, PageHeader, PageSection } from '@platform/ui-kit';
 import { leave as leaveApi } from '../../lib/api/client';
-import type { LeaveBalance, LeavePolicyView, LeaveRequestView } from '../../lib/leave/types';
+import type { LeaveBalance, LeaveRequestView } from '../../lib/leave/types';
 import { LEAVE_STATUS_FILTERS } from '../../lib/leave/format';
 import type { HrRank } from '../../lib/hr-rank';
 import LeaveTabs from './LeaveTabs';
@@ -19,7 +19,6 @@ interface Props {
 
 export default function LeaveDashboardShell({ actor, hrRank }: Props) {
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
-  const [policies, setPolicies] = useState<LeavePolicyView[]>([]);
   const [requests, setRequests] = useState<LeaveRequestView[]>([]);
   const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
@@ -28,12 +27,14 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
   const [applyOpen, setApplyOpen] = useState(false);
   const [cancelBusyId, setCancelBusyId] = useState<string | null>(null);
 
+  // One call: /leave/balances carries everything an employee may see — the number
+  // per leave type as of today, plus whether it is bookable and half-day-able.
+  // The apply modal used to be fed from the admin policy list, which is why this
+  // page 403'd for everyone below hr_manager.
   const loadStatic = useCallback(() => {
-    Promise.all([leaveApi.balances(), leaveApi.policies()])
-      .then(([bal, pol]) => {
-        setBalances(bal.data);
-        setPolicies(pol.data);
-      })
+    leaveApi
+      .balances()
+      .then((res) => setBalances(res.data))
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load leave data.'));
   }, []);
 
@@ -116,7 +117,6 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
       <ApplyLeaveModal
         open={applyOpen}
         onClose={() => setApplyOpen(false)}
-        policies={policies}
         balances={balances}
         onApplied={handleApplied}
       />

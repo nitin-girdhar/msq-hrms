@@ -11,6 +11,7 @@ import type {
   UpdateShiftInput,
   CreateShiftAssignmentInput,
   UpdateShiftAssignmentInput,
+  RecomputeAttendanceInput,
   CreateRegularizationInput,
   ApproveRegularizationInput,
   RejectRegularizationInput,
@@ -78,6 +79,11 @@ export class AttendanceController {
     return reply.send({ success: true, data });
   };
 
+  todayState = async (request: FastifyRequest, reply: FastifyReply) => {
+    const data = await service.getTodayPunchState(ctxOf(request));
+    return reply.send({ success: true, data });
+  };
+
   team = async (request: FastifyRequest, reply: FastifyReply) => {
     const { date } = request.query as AttendanceTeamQueryInput;
     const data = await service.getTeam(ctxOf(request), date ?? currentDate());
@@ -139,6 +145,11 @@ export class AttendanceController {
     const { id } = request.params as { id: string };
     await service.updateShiftAssignment(ctxOf(request), id, request.body as UpdateShiftAssignmentInput);
     return reply.status(204).send();
+  };
+
+  recomputeAttendance = async (request: FastifyRequest, reply: FastifyReply) => {
+    const result = await service.recomputeAttendance(ctxOf(request), request.body as RecomputeAttendanceInput);
+    return reply.send({ success: true, data: result });
   };
 
   // ── Regularizations ───────────────────────────────────────────────────────────

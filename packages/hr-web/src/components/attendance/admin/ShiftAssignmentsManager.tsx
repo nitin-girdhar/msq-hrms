@@ -7,6 +7,7 @@ import type { ShiftAssignmentView } from '../../../lib/attendance/types';
 import { formatDay } from '../../../lib/attendance/format';
 import { emptyBlockCls, stateBlockCls } from '../../../lib/ui';
 import ShiftAssignmentFormModal from './ShiftAssignmentFormModal';
+import RecomputeAttendanceModal from './RecomputeAttendanceModal';
 
 interface Props {
   onNotice: (msg: string) => void;
@@ -17,6 +18,10 @@ export default function ShiftAssignmentsManager({ onNotice }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  // The row being edited; undefined while the modal is in "create" mode.
+  const [editing, setEditing] = useState<ShiftAssignmentView | undefined>(undefined);
+  const [recomputing, setRecomputing] = useState<ShiftAssignmentView | undefined>(undefined);
+  const [recomputeOpen, setRecomputeOpen] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -33,7 +38,7 @@ export default function ShiftAssignmentsManager({ onNotice }: Props) {
     <PageSection
       title="Shift assignments"
       action={
-        <Button variant="primary" size="md" onClick={() => setFormOpen(true)}>
+        <Button variant="primary" size="md" onClick={() => { setEditing(undefined); setFormOpen(true); }}>
           Assign shift
         </Button>
       }
@@ -56,6 +61,7 @@ export default function ShiftAssignmentsManager({ onNotice }: Props) {
                 <th className="px-4 py-3">From</th>
                 <th className="px-4 py-3">To</th>
                 <th className="px-4 py-3">Active</th>
+                <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -70,6 +76,25 @@ export default function ShiftAssignmentsManager({ onNotice }: Props) {
                       {a.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => { setEditing(a); setFormOpen(true); }}
+                        className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-semibold text-[#0b6cbf] hover:bg-[#F8FAFC]"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setRecomputing(a); setRecomputeOpen(true); }}
+                        title="Re-apply shift rules to days already marked"
+                        className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-semibold text-[#475569] hover:bg-[#F8FAFC]"
+                      >
+                        Recompute
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -79,8 +104,16 @@ export default function ShiftAssignmentsManager({ onNotice }: Props) {
 
       <ShiftAssignmentFormModal
         open={formOpen}
-        onClose={() => setFormOpen(false)}
+        assignment={editing}
+        onClose={() => { setFormOpen(false); setEditing(undefined); }}
         onSaved={(msg) => { onNotice(msg); load(); }}
+      />
+
+      <RecomputeAttendanceModal
+        open={recomputeOpen}
+        assignment={recomputing}
+        onClose={() => { setRecomputeOpen(false); setRecomputing(undefined); }}
+        onSaved={(msg) => onNotice(msg)}
       />
     </PageSection>
   );

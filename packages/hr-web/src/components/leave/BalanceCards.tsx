@@ -8,7 +8,7 @@ export default function BalanceCards({ balances }: Props) {
   if (balances.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-[#E2E8F0] bg-white px-4 py-6 text-center text-sm text-[#94A3B8]">
-        No leave balances yet. Balances appear once a policy and accrual are configured for your org.
+        No leave balances yet. Balances appear once a leave policy is configured for your org.
       </p>
     );
   }

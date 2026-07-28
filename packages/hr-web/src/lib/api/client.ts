@@ -21,6 +21,7 @@ import type {
   AttendanceRules,
   PunchResult,
   MyMonthResponse,
+  TodayPunchState,
   TeamDayRow,
   ShiftView,
   ShiftSegmentView,
@@ -108,10 +109,12 @@ export interface CreateAdjustmentBody {
 }
 
 export const leave = {
-  balances: () => request<Envelope<LeaveBalance[]>>('/hr/leave/balances'),
+  // as_of dates the balance and the policy behind it; omit it for "right now".
+  balances: (params: { as_of?: string } = {}) =>
+    request<Envelope<LeaveBalance[]>>(`/hr/leave/balances${qs(params)}`),
 
-  balancesForUser: (userId: string) =>
-    request<Envelope<LeaveBalance[]>>(`/hr/leave/balances/${userId}`),
+  balancesForUser: (userId: string, params: { as_of?: string } = {}) =>
+    request<Envelope<LeaveBalance[]>>(`/hr/leave/balances/${userId}${qs(params)}`),
 
   myRequests: (params: ListRequestsParams = {}) =>
     request<ListEnvelope<LeaveRequestView>>(`/hr/leave/requests${qs(params)}`),
@@ -286,6 +289,11 @@ export const attendance = {
 
   me: (params: { month?: string } = {}) => request<Envelope<MyMonthResponse>>(`/hr/attendance/me${qs(params)}`),
 
+  // What the caller may punch right now. Authoritative — the same rule the
+  // check-in/check-out endpoints enforce, so the button never offers or refuses
+  // something the server would then disagree with.
+  todayState: () => request<Envelope<TodayPunchState>>('/hr/attendance/today-state'),
+
   team: (params: { date?: string } = {}) => request<Envelope<TeamDayRow[]>>(`/hr/attendance/team${qs(params)}`),
 
   photoUrl: (eventId: string) => `/api/hr/attendance/photos/${eventId}`,
@@ -399,4 +407,13 @@ export const shiftAssignments = {
 
   update: (id: string, body: Partial<CreateShiftAssignmentBody> & { is_active?: boolean }) =>
     request<void>(`/hr/shift-assignments/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  // Re-resolve days that were already resolved — the nightly job only fills days
+  // with no row yet, so this is what applies a newly-assigned shift to days the
+  // employee has already punched. Omit user_id for the whole org.
+  recompute: (body: { user_id?: string; from: string; to: string }) =>
+    request<Envelope<{ employees_processed: number; days_processed: number; statuses: Record<string, number> }>>(
+      '/hr/attendance/recompute',
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
 };

@@ -3,32 +3,37 @@
 import { useEffect, useState } from 'react';
 import { Modal } from '@platform/ui-kit';
 import { shiftAssignments as shiftAssignmentsApi, shifts as shiftsApi, hrEmployees } from '../../../lib/api/client';
-import type { ShiftView } from '../../../lib/attendance/types';
+import type { ShiftAssignmentView, ShiftView } from '../../../lib/attendance/types';
 import type { EmployeeProfileView } from '../../../lib/leave/types';
 
 interface Props {
   open: boolean;
+  /** Present → edit that assignment; absent → create a new one. */
+  assignment?: ShiftAssignmentView | undefined;
   onClose: () => void;
   onSaved: (msg: string) => void;
 }
 
-export default function ShiftAssignmentFormModal({ open, onClose, onSaved }: Props) {
+export default function ShiftAssignmentFormModal({ open, assignment, onClose, onSaved }: Props) {
+  const isEdit = !!assignment;
   const [employees, setEmployees] = useState<EmployeeProfileView[]>([]);
   const [shiftOptions, setShiftOptions] = useState<ShiftView[]>([]);
   const [userId, setUserId] = useState('');
   const [shiftId, setShiftId] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState('');
   const [effectiveTo, setEffectiveTo] = useState('');
+  const [isActive, setIsActive] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [loadingLookups, setLoadingLookups] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    setUserId('');
-    setShiftId('');
-    setEffectiveFrom(new Date().toISOString().slice(0, 10));
-    setEffectiveTo('');
+    setUserId(assignment?.user_id ?? '');
+    setShiftId(assignment?.shift_id ?? '');
+    setEffectiveFrom(assignment?.effective_from ?? new Date().toISOString().slice(0, 10));
+    setEffectiveTo(assignment?.effective_to ?? '');
+    setIsActive(assignment?.is_active ?? true);
     setError(null);
     setLoadingLookups(true);
     // Settle the two lookups independently: a failure on one must not blank the
@@ -58,16 +63,32 @@ export default function ShiftAssignmentFormModal({ open, onClose, onSaved }: Pro
     setError(null);
     setSubmitting(true);
     try {
-      await shiftAssignmentsApi.create({
-        user_id: userId,
-        shift_id: shiftId,
-        effective_from: effectiveFrom,
-        effective_to: effectiveTo || null,
-      });
-      onSaved('Shift assignment created.');
+      if (assignment) {
+        // user_id is deliberately absent: the API does not allow moving an
+        // assignment to a different employee. End this one and create another.
+        await shiftAssignmentsApi.update(assignment.id, {
+          shift_id: shiftId,
+          effective_from: effectiveFrom,
+          effective_to: effectiveTo || null,
+          is_active: isActive,
+        });
+        onSaved('Shift assignment updated.');
+      } else {
+        await shiftAssignmentsApi.create({
+          user_id: userId,
+          shift_id: shiftId,
+          effective_from: effectiveFrom,
+          effective_to: effectiveTo || null,
+        });
+        onSaved('Shift assignment created.');
+      }
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create the shift assignment.');
+      setError(
+        err instanceof Error
+          ? err.message
+          : `Failed to ${assignment ? 'update' : 'create'} the shift assignment.`,
+      );
     } finally {
       setSubmitting(false);
     }
@@ -77,7 +98,7 @@ export default function ShiftAssignmentFormModal({ open, onClose, onSaved }: Pro
     'rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#0F172A] shadow-sm focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20 disabled:cursor-not-allowed disabled:bg-[#F8FAFC]';
 
   return (
-    <Modal open={open} onClose={handleClose} title="Assign shift" locked={submitting} maxWidth="max-w-md">
+    <Modal open={open} onClose={handleClose} title={isEdit ? 'Edit shift assignment' : 'Assign shift'} locked={submitting} maxWidth="max-w-md">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
         {error && (
           <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>
@@ -85,11 +106,21 @@ export default function ShiftAssignmentFormModal({ open, onClose, onSaved }: Pro
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor="sa-user" className="text-xs font-semibold text-[#0F172A]">Employee *</label>
-          <select id="sa-user" value={userId} onChange={(e) => setUserId(e.target.value)} disabled={submitting || loadingLookups} className={inputCls}>
+          <select id="sa-user" value={userId} onChange={(e) => setUserId(e.target.value)} disabled={submitting || loadingLookups || isEdit} className={inputCls}>
             <option value="">{loadingLookups ? 'Loading…' : 'Select…'}</option>
+            {/* In edit mode the roster may not contain this user (inactive profile),
+                so fall back to the name the assignment row already carries. */}
+            {isEdit && !employees.some((e) => e.user_id === userId) && (
+              <option value={userId}>{assignment!.user_full_name}</option>
+            )}
             {employees.map((e) => <option key={e.user_id} value={e.user_id}>{e.full_name} ({e.email})</option>)}
           </select>
-          {!loadingLookups && !error && employees.length === 0 && (
+          {isEdit && (
+            <p className="text-[11px] text-[#64748B]">
+              The employee cannot be changed. End this assignment and create a new one instead.
+            </p>
+          )}
+          {!isEdit && !loadingLookups && !error && employees.length === 0 && (
             <p className="text-[11px] text-[#B45309]">
               No employee profiles in this branch yet — add them under Leave → Admin → Employees before assigning shifts.
             </p>
@@ -118,13 +149,26 @@ export default function ShiftAssignmentFormModal({ open, onClose, onSaved }: Pro
           </div>
         </div>
 
+        {isEdit && (
+          <label className="flex items-center gap-2 text-xs font-semibold text-[#0F172A]">
+            <input
+              type="checkbox"
+              checked={isActive}
+              onChange={(e) => setIsActive(e.target.checked)}
+              disabled={submitting}
+              className="h-4 w-4 rounded border-[#CBD5E1]"
+            />
+            Active
+          </label>
+        )}
+
         <div className="mt-1 flex justify-end gap-2">
           <button type="button" onClick={handleClose} disabled={submitting} className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60">
             Cancel
           </button>
           <button type="submit" disabled={blockSubmit} aria-busy={submitting} className="inline-flex items-center gap-2 rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:cursor-not-allowed disabled:opacity-60">
             {submitting && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />}
-            {submitting ? 'Saving…' : 'Assign'}
+            {submitting ? 'Saving…' : isEdit ? 'Save changes' : 'Assign'}
           </button>
         </div>
       </form>

@@ -1,0 +1,22 @@
+meta {
+  name: Today Punch State
+  type: http
+  seq: 29
+}
+
+get {
+  url: {{baseUrl}}/hr/attendance/today-state
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: auth_token={{authToken}}
+}
+
+docs {
+  Self-scoped: what the caller may punch right now, by the same rule the
+  check-in/check-out endpoints enforce — so the button never offers something the
+  server would then refuse. Same capability as /hr/attendance/me (it exposes
+  nothing beyond the caller's own day).
+}

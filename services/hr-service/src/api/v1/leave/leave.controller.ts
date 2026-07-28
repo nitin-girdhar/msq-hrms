@@ -6,6 +6,7 @@ import type {
   ApplyLeaveRequestInput,
   PreviewLeaveRequestInput,
   ListLeaveRequestsInput,
+  ListBalancesInput,
   ApproveLeaveRequestInput,
   RejectLeaveRequestInput,
   CancelLeaveRequestInput,
@@ -76,13 +77,13 @@ export class LeaveController {
 
   // ── Balances & ledger ─────────────────────────────────────────────────────
   balances = async (request: FastifyRequest, reply: FastifyReply) => {
-    const data = await service.listOwnBalances(ctxOf(request));
+    const data = await service.listOwnBalances(ctxOf(request), request.query as ListBalancesInput);
     return reply.send({ success: true, data });
   };
 
   balancesForUser = async (request: FastifyRequest, reply: FastifyReply) => {
     const { userId } = request.params as { userId: string };
-    const data = await service.getUserBalances(ctxOf(request), userId);
+    const data = await service.getUserBalances(ctxOf(request), userId, request.query as ListBalancesInput);
     return reply.send({ success: true, data });
   };
 

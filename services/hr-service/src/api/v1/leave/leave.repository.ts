@@ -30,6 +30,7 @@ import type {
   ApplyLeaveRequestInput,
   PreviewLeaveRequestInput,
   ListLeaveRequestsInput,
+  ListBalancesInput,
   CreateAdjustmentInput,
   CreatePolicyInput,
   UpdatePolicyInput,
@@ -623,16 +624,70 @@ export async function listOwnRequests(ctx: LeaveCtx, filters: ListLeaveRequestsI
   });
 }
 
-export async function listOwnBalances(ctx: LeaveCtx) {
+/**
+ * Balance per leave type as on a date — the whole employee-facing leave payload.
+ *
+ * Deliberately minimal: type, label, paid flag, the number, whether half-days
+ * are allowed, and whether a policy is in force. NOTHING about how the number is
+ * produced. Accrual frequency and amount, max balance, carry-forward caps,
+ * notice rules and approval depth stay behind hr.leave.admin.policies.view; the
+ * per-request limits an applicant actually needs (notice, document threshold,
+ * max consecutive days) arrive just-in-time from /leave/requests/preview.
+ *
+ * `asOf` always dates the POLICY (same rule as resolveEffectivePolicy, widened
+ * from one type to all of them). It bounds the ledger sum only when the caller
+ * asked for a specific date: approveLeave writes its consumption row with
+ * effective_date = start_date, i.e. usually in the future, while the
+ * authoritative sufficiency check `currentBalance()` above sums the ledger
+ * unbounded. Defaulting to `effective_date <= today` would therefore show more
+ * days on the cards than the apply flow will actually let the employee book.
+ */
+// Exported for balances-payload.test.ts, which asserts the SELECT list leaks no
+// policy internals — the actual guard on this module's privacy contract.
+export function balancesQuery(userId: string, orgId: string, tenantId: string, asOf: string, boundLedger: boolean) {
+  const ledgerBound = boundLedger ? sql`AND ll.effective_date <= ${asOf}` : sql``;
+  return sql`
+    WITH eff AS (
+      SELECT DISTINCT ON (p.leave_type_id) p.leave_type_id, p.allow_half_day
+      FROM hr.leave_policies p
+      WHERE p.tenant_id = ${tenantId}
+        AND p.is_active AND NOT p.is_deleted
+        AND p.applicable_from <= ${asOf}
+        AND (p.org_id = ${orgId} OR p.org_id IS NULL)
+      ORDER BY p.leave_type_id, (p.org_id IS NOT NULL) DESC, p.applicable_from DESC
+    ),
+    led AS (
+      SELECT ll.leave_type_id, SUM(ll.amount)::float8 AS balance
+      FROM hr.leave_ledger ll
+      WHERE ll.user_id = ${userId} AND ll.org_id = ${orgId}
+      ${ledgerBound}
+      GROUP BY ll.leave_type_id
+    )
+    SELECT lt.id::text                         AS leave_type_id,
+           lt.name                             AS leave_type_name,
+           lt.label                            AS leave_type_label,
+           lt.is_paid,
+           COALESCE(led.balance, 0)::float8    AS balance,
+           COALESCE(eff.allow_half_day, FALSE) AS allow_half_day,
+           (eff.leave_type_id IS NOT NULL)     AS has_policy
+    FROM hr.leave_types lt
+    LEFT JOIN eff ON eff.leave_type_id = lt.id
+    LEFT JOIN led ON led.leave_type_id = lt.id
+    WHERE lt.tenant_id = ${tenantId}
+      AND lt.is_active
+      -- A type is shown when it is bookable now (a policy is in force) or still
+      -- carries a residual balance from one that was withdrawn.
+      AND (eff.leave_type_id IS NOT NULL OR led.leave_type_id IS NOT NULL)
+    ORDER BY lt.sort_order NULLS LAST, lt.name
+  `;
+}
+
+export async function listOwnBalances(ctx: LeaveCtx, filters: ListBalancesInput) {
+  const asOf = filters.as_of ?? todayIso();
   return withRoleTx(ctx, async (tx) => {
-    return (await tx.execute(sql`
-      SELECT b.user_id::text, b.org_id::text, b.leave_type_id::text, b.leave_type_name, b.leave_type_label,
-             lt.is_paid, COALESCE(b.balance, 0)::float8 AS balance
-      FROM hr.vw_leave_balances b
-      JOIN hr.leave_types lt ON lt.id = b.leave_type_id
-      WHERE b.user_id = ${ctx.user_id} AND b.org_id = ${ctx.org_id}
-      ORDER BY b.leave_type_name
-    `)) as unknown as Row[];
+    return (await tx.execute(
+      balancesQuery(ctx.user_id, ctx.org_id, ctx.tenant_id, asOf, filters.as_of != null),
+    )) as unknown as Row[];
   });
 }
 
@@ -654,16 +709,15 @@ export async function canViewUserLeave(ctx: LeaveCtx, targetUserId: string): Pro
   });
 }
 
-export async function getUserBalances(ctx: LeaveCtx, targetUserId: string) {
+// Same payload for another employee (manager / HR view). Stays on the service tx:
+// under app_user the target's hr.leave_ledger rows are invisible by RLS. The
+// caller is authorized in the service layer by assertCanViewUser.
+export async function getUserBalances(ctx: LeaveCtx, targetUserId: string, filters: ListBalancesInput) {
+  const asOf = filters.as_of ?? todayIso();
   return withServiceTx(async (tx) => {
-    return (await tx.execute(sql`
-      SELECT b.user_id::text, b.org_id::text, b.leave_type_id::text, b.leave_type_name, b.leave_type_label,
-             lt.is_paid, COALESCE(b.balance, 0)::float8 AS balance
-      FROM hr.vw_leave_balances b
-      JOIN hr.leave_types lt ON lt.id = b.leave_type_id
-      WHERE b.user_id = ${targetUserId} AND b.org_id = ${ctx.org_id}
-      ORDER BY b.leave_type_name
-    `)) as unknown as Row[];
+    return (await tx.execute(
+      balancesQuery(targetUserId, ctx.org_id, ctx.tenant_id, asOf, filters.as_of != null),
+    )) as unknown as Row[];
   });
 }
 
