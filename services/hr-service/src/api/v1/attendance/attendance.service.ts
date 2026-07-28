@@ -54,7 +54,16 @@ export async function checkIn(ctx: AttendanceCtx, data: CheckInInput, meta: Punc
     performed_by: ctx.user_id,
     subject_user_id: ctx.user_id,
     org_id: ctx.org_id,
-    new_value: { event_id: result.event_id, work_date: result.work_date, is_wfh: result.is_wfh },
+    // The face result belongs in the trail: a suspected buddy-punch otherwise
+    // leaves no audit trace at punch time, only in the later review decision.
+    new_value: {
+      event_id: result.event_id,
+      work_date: result.work_date,
+      is_wfh: result.is_wfh,
+      face_match_score: result.face_match_score,
+      face_match_passed: result.face_match_passed,
+      face_review_status: result.face_review_status,
+    },
   });
   return result;
 }
@@ -67,7 +76,14 @@ export async function checkOut(ctx: AttendanceCtx, data: CheckOutInput, meta: Pu
     performed_by: ctx.user_id,
     subject_user_id: ctx.user_id,
     org_id: ctx.org_id,
-    new_value: { event_id: result.event_id, work_date: result.work_date, day_status: result.day_status },
+    new_value: {
+      event_id: result.event_id,
+      work_date: result.work_date,
+      day_status: result.day_status,
+      face_match_score: result.face_match_score,
+      face_match_passed: result.face_match_passed,
+      face_review_status: result.face_review_status,
+    },
   });
   return result;
 }
@@ -98,7 +114,15 @@ export async function updateRules(ctx: AttendanceCtx, data: AttendanceRulesAdmin
     action_type: 'attendance_rules_updated',
     performed_by: ctx.user_id,
     org_id: ctx.org_id,
-    new_value: { geofence_radius_meters: result.geofence_radius_meters, require_photo: result.require_photo },
+    // The day-classification thresholds decide whether a day counts as present,
+    // half or absent, so a change to them is as consequential as a payroll edit
+    // and belongs in the trail alongside the capture rules.
+    new_value: {
+      geofence_radius_meters: result.geofence_radius_meters,
+      require_photo: result.require_photo,
+      min_half_day_minutes: result.min_half_day_minutes,
+      min_full_day_minutes: result.min_full_day_minutes,
+    },
   });
   return result;
 }
@@ -124,6 +148,18 @@ export async function getTodaySummary(ctx: AttendanceCtx, date: string) {
   }
   const seeAllOrg = canManageAttendance(ctx);
   return repo.getTodaySummary(ctx, date, seeAllOrg);
+}
+
+// ── Day punch list (drives the per-punch photo drill-down) ──────────────────
+// Same authority as fetching a single punch photo below: own row always, an
+// attendance admin anywhere in the org, otherwise only your reporting subtree.
+export async function listDayEvents(ctx: AttendanceCtx, userId: string, date: string) {
+  if (userId !== ctx.user_id && !canManageAttendance(ctx)) {
+    if (!(await repo.canViewUserAttendance(ctx, userId))) {
+      throw new ForbiddenError('Not authorized to view this employee’s punches');
+    }
+  }
+  return repo.listDayEvents(ctx, userId, date);
 }
 
 // ── Photo (authenticated fetch) ─────────────────────────────────────────────

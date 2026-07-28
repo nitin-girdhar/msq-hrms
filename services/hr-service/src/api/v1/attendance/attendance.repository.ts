@@ -27,11 +27,14 @@ import {
   isLateArrival,
   isEarlyExit,
 } from '../../../lib/attendance/time.js';
-import { resolveEventStatus, DEFAULT_THRESHOLDS, type ShiftThresholds } from '../../../lib/attendance/resolve.js';
+import { DEFAULT_THRESHOLDS, thresholdsFrom, type ShiftThresholds } from '../../../lib/attendance/resolve.js';
+import { matchSegment, validateSegments, type ShiftSegment } from '../../../lib/attendance/segments.js';
 import {
   computeDayResolution,
+  deriveFromEvents,
   upsertResolvedDay,
   type DayEmployee,
+  type DayEventRow,
 } from '../../../lib/attendance/day-resolution.js';
 import { getPhotoStorage, detectImageExt } from '../../../lib/storage/photo-storage.js';
 import { getFaceDriver, FaceEnrollmentError } from '../../../lib/face/index.js';
@@ -78,6 +81,10 @@ export interface EffectiveRules {
   face_match_action: string;
   photo_change_cooldown_days: number;
   image_retention_days: number;
+  // Org-level day-classification fallback, used when the employee has NO shift
+  // assignment. An assigned shift's own thresholds always win (see thresholdsFrom).
+  min_half_day_minutes: number;
+  min_full_day_minutes: number;
   // The org's IANA timezone. Attendance work_date and shift boundaries are
   // computed in this zone server-side (see workDateOf), so the client must use
   // it to derive "today" — using the browser's UTC date mismatched the stored
@@ -96,8 +103,18 @@ const DEFAULT_RULES: EffectiveRules = {
   face_match_action: 'flag',
   photo_change_cooldown_days: 30,
   image_retention_days: 90,
+  min_half_day_minutes: DEFAULT_THRESHOLDS.minHalfDayMinutes,
+  min_full_day_minutes: DEFAULT_THRESHOLDS.minFullDayMinutes,
   timezone: 'Asia/Kolkata',
 };
+
+/** The org-level thresholds carried on the effective rules, in ShiftThresholds shape. */
+function orgThresholdsOf(rules: EffectiveRules): ShiftThresholds {
+  return {
+    minHalfDayMinutes: rules.min_half_day_minutes,
+    minFullDayMinutes: rules.min_full_day_minutes,
+  };
+}
 
 const RULES_TTL_MS = 60_000;
 const rulesCache = new Map<string, { rules: EffectiveRules; expiresAt: number }>();
@@ -109,7 +126,8 @@ async function loadRulesRow(tx: DrizzleTx, orgId: string): Promise<EffectiveRule
     SELECT o.timezone,
            r.geofence_enabled, r.geofence_radius_meters, r.require_photo, r.require_geo, r.allow_wfh_checkin,
            r.require_face_match, r.face_match_threshold::float8 AS face_match_threshold, r.face_match_action,
-           r.photo_change_cooldown_days, r.image_retention_days
+           r.photo_change_cooldown_days, r.image_retention_days,
+           r.min_half_day_minutes, r.min_full_day_minutes
     FROM entity.organizations o
     LEFT JOIN hr.attendance_rules r ON r.org_id = o.id AND NOT r.is_deleted
     WHERE o.id = ${orgId} LIMIT 1
@@ -163,12 +181,13 @@ interface ShiftRow {
   min_half_day_minutes: number;
   min_full_day_minutes: number;
   is_night_shift: boolean;
+  is_split: boolean;
 }
 
 async function currentShift(tx: DrizzleTx, orgId: string, userId: string, date: string): Promise<ShiftRow | null> {
   const rows = (await tx.execute(sql`
     SELECT s.id::text, s.name, s.start_time::text, s.end_time::text, s.grace_minutes,
-           s.min_half_day_minutes, s.min_full_day_minutes, s.is_night_shift
+           s.min_half_day_minutes, s.min_full_day_minutes, s.is_night_shift, s.is_split
     FROM hr.shift_assignments sa
     JOIN hr.shifts s ON s.id = sa.shift_id AND NOT s.is_deleted AND s.is_active
     WHERE sa.user_id = ${userId} AND sa.org_id = ${orgId} AND NOT sa.is_deleted
@@ -180,9 +199,34 @@ async function currentShift(tx: DrizzleTx, orgId: string, userId: string, date: 
   return rows[0] ?? null;
 }
 
-function thresholdsFor(shift: ShiftRow | null): ShiftThresholds {
-  if (!shift) return DEFAULT_THRESHOLDS;
-  return { minHalfDayMinutes: shift.min_half_day_minutes, minFullDayMinutes: shift.min_full_day_minutes };
+/** Count of one punch type already recorded for a (user, work_date). */
+async function countPunches(
+  tx: DrizzleTx,
+  ctx: AttendanceCtx,
+  workDate: string,
+  tz: string,
+  isNight: boolean,
+  shiftStartMin: number,
+  eventType: 'check_in' | 'check_out',
+): Promise<number> {
+  const wd = eventWorkDateSql(tz, isNight, shiftStartMin);
+  const rows = (await tx.execute(sql`
+    SELECT COUNT(*)::int AS n
+    FROM hr.attendance_events e
+    WHERE e.user_id = ${ctx.user_id} AND e.org_id = ${ctx.org_id}
+      AND e.event_type = ${eventType} AND ${wd} = ${workDate}::date
+  `)) as unknown as Array<{ n: number }>;
+  return rows[0]?.n ?? 0;
+}
+
+/** Ordered, non-deleted segments of a shift. Empty for a non-split shift. */
+async function loadSegments(tx: DrizzleTx, shiftId: string): Promise<ShiftSegment[]> {
+  return (await tx.execute(sql`
+    SELECT seq, start_time::text, end_time::text
+    FROM hr.shift_segments
+    WHERE shift_id = ${shiftId} AND NOT is_deleted AND is_active
+    ORDER BY seq
+  `)) as unknown as ShiftSegment[];
 }
 
 // SQL expression: the org-local work date of an attendance_events row `e`,
@@ -293,7 +337,7 @@ export async function punch(
 
     // Photo enforcement (identical for both punch types). Decode now for the
     // required-photo check; the bytes are stored after the work date is known so
-    // the key can be the retention-friendly `punch/<user>/<YYYYMMDD>_chkin|chkout`.
+    // the key keeps its retention-friendly `punch/<user>/<YYYYMMDD>_…` shape.
     let photoKey: string | null = null;
     let photoBuf: Buffer | null = null;
     if (data.photo) {
@@ -311,20 +355,41 @@ export async function punch(
     const isNight = shift?.is_night_shift ?? false;
     const workDate = workDateOf(now, org.timezone, isNight, shiftStartMin);
 
+    // Split-shift segment match. NULL when there is no shift or no segments, so a
+    // non-split employee is never flagged. An off-window punch is accepted and its
+    // minutes still count — the flag only surfaces the day for review.
+    const segments = shift ? await loadSegments(tx, shift.id) : [];
+    const isOffSegment =
+      segments.length > 0
+        ? matchSegment(localTimeMinutes(now, org.timezone), segments, shift!.grace_minutes, shiftStartMin) === null
+        : null;
+
+    // How many punches of this type the day already has. Drives both the unique
+    // photo key below and the non-split second-pair guard in Phase 3.
+    const priorSameType = await countPunches(tx, ctx, workDate, org.timezone, isNight, shiftStartMin, eventType);
+
     if (photoBuf) {
       const compact = workDate.replace(/-/g, '');
       const kind = eventType === 'check_in' ? 'chkin' : 'chkout';
       const ext = detectImageExt(photoBuf);
-      // One check-in + one check-out per day are enforced below, so this
-      // deterministic key never collides within a day.
-      photoKey = await getPhotoStorage().putAt(`punch/${ctx.user_id}/${compact}_${kind}.${ext}`, photoBuf);
+      // A split shift punches several times a day, so the key MUST carry a
+      // sequence — the old fixed `<date>_chkin` overwrote the earlier session's
+      // selfie. The YYYYMMDD prefix stays leading: msq-deploy/retention/
+      // retention-cleanup.sh ages selfies out by parsing the date off the front.
+      photoKey = await getPhotoStorage().putAt(
+        `punch/${ctx.user_id}/${compact}_${kind}_${priorSameType + 1}.${ext}`,
+        photoBuf,
+      );
     }
 
     // Face subject (only needed when the rule is on AND a photo is present).
     const faceSubjectId =
       rules.require_face_match && photoBuf ? await loadFaceSubjectId(tx, ctx.org_id, ctx.user_id) : null;
 
-    return { org, distance, isWithin, photoKey, photoBuf, workDate, isNight, shiftStartMin, shift, faceSubjectId };
+    return {
+      org, distance, isWithin, photoKey, photoBuf, workDate, isNight, shiftStartMin, shift,
+      faceSubjectId, isOffSegment, segmentCount: segments.length,
+    };
   });
 
   // ── Phase 2: face verification OUTSIDE any DB transaction (the CompreFace call
@@ -360,7 +425,12 @@ export async function punch(
     const ci = counts[0]?.ci ?? 0;
     const co = counts[0]?.co ?? 0;
 
-    if (eventType === 'check_in' && ci > co) {
+    // An open check-in normally blocks another one. A SPLIT shift is exempt: an
+    // employee who forgot to punch out of segment 1 must still be able to punch
+    // segment 2, rather than being locked out for the rest of the day. The
+    // abandoned session then contributes zero minutes and the day is flagged
+    // has_open_session for regularization (see summarizeSessions).
+    if (eventType === 'check_in' && ci > co && !prep.shift?.is_split) {
       throw new ConflictError('You are already checked in (an open check-in exists for today)', {
         code: 'ALREADY_CHECKED_IN',
       });
@@ -368,17 +438,33 @@ export async function punch(
     if (eventType === 'check_out' && ci <= co) {
       throw new ConflictError('No open check-in to check out from', { code: 'NO_OPEN_CHECK_IN' });
     }
+    // Repeated in/out pairs are the point of a split shift, but they must stay
+    // exceptional for everyone else: without this, the sum-of-sessions formula
+    // would let a regular-shift employee punch an unbounded number of times.
+    // No assigned shift → no basis to judge, so the gate does not apply.
+    if (eventType === 'check_in' && ci > 0 && prep.shift && !prep.shift.is_split) {
+      throw new ConflictError('You have already completed a check-in and check-out for today', {
+        code: 'ALREADY_COMPLETED_TODAY',
+      });
+    }
+    // A split shift may punch at most once per declared segment.
+    if (eventType === 'check_in' && prep.shift?.is_split && prep.segmentCount > 0 && ci >= prep.segmentCount) {
+      throw new ConflictError('You have already punched every segment of your shift for today', {
+        code: 'SEGMENT_LIMIT_REACHED',
+        segments: prep.segmentCount,
+      });
+    }
 
     const inserted = (await tx.execute(sql`
       INSERT INTO hr.attendance_events
         (user_id, org_id, event_type, source, geo_lat, geo_lng, distance_from_org_m,
          is_within_geofence, is_wfh, photo_url, face_match_score, face_match_passed, face_review_status,
-         ip, device_info)
+         is_off_segment, ip, device_info)
       VALUES
         (${ctx.user_id}, ${ctx.org_id}, ${eventType}, ${data.source},
          ${data.geo_lat ?? null}, ${data.geo_lng ?? null}, ${prep.distance}, ${prep.isWithin},
          ${data.is_wfh}, ${prep.photoKey}, ${face.score}, ${face.passed}, ${face.reviewStatus},
-         ${meta.ip}, ${sql`${JSON.stringify({ user_agent: meta.userAgent })}::jsonb`})
+         ${prep.isOffSegment}, ${meta.ip}, ${sql`${JSON.stringify({ user_agent: meta.userAgent })}::jsonb`})
       RETURNING id::text
     `)) as unknown as Array<{ id: string }>;
     const eventId = inserted[0]!.id;
@@ -393,6 +479,7 @@ export async function punch(
       isNight: prep.isNight,
       shiftStartMin: prep.shiftStartMin,
       shift: prep.shift,
+      orgThresholds: orgThresholdsOf(rules),
     });
 
     const notifyManagerId = face.notifyManager ? await loadManagerId(tx, ctx.user_id) : null;
@@ -427,61 +514,52 @@ async function upsertDayFromEvents(
     isNight: boolean;
     shiftStartMin: number;
     shift: ShiftRow | null;
+    orgThresholds: ShiftThresholds;
   },
 ): Promise<string> {
   const wd = eventWorkDateSql(p.tz, p.isNight, p.shiftStartMin);
-  const agg = (await tx.execute(sql`
-    SELECT
-      MIN(e.occurred_at) FILTER (WHERE e.event_type = 'check_in')  AS first_in,
-      MAX(e.occurred_at) FILTER (WHERE e.event_type = 'check_out') AS last_out,
-      (EXTRACT(HOUR FROM (MIN(e.occurred_at) FILTER (WHERE e.event_type = 'check_in')  AT TIME ZONE ${p.tz})) * 60
-       + EXTRACT(MINUTE FROM (MIN(e.occurred_at) FILTER (WHERE e.event_type = 'check_in')  AT TIME ZONE ${p.tz})))::int AS first_in_min,
-      (EXTRACT(HOUR FROM (MAX(e.occurred_at) FILTER (WHERE e.event_type = 'check_out') AT TIME ZONE ${p.tz})) * 60
-       + EXTRACT(MINUTE FROM (MAX(e.occurred_at) FILTER (WHERE e.event_type = 'check_out') AT TIME ZONE ${p.tz})))::int AS last_out_min
+  // The full ordered punch list, not MIN/MAX aggregates — worked minutes are the
+  // sum of paired sessions, which needs every event in sequence. 'pending' rows
+  // are SELECTED but not counted; deriveFromEvents needs to see them to flag the
+  // day, so the filter stays at 'rejected' rather than excluding both here.
+  const rows = (await tx.execute(sql`
+    SELECT e.occurred_at::text AS occurred_at,
+           e.event_type,
+           e.is_off_segment,
+           e.face_review_status,
+           (EXTRACT(HOUR   FROM (e.occurred_at AT TIME ZONE ${p.tz})) * 60
+          + EXTRACT(MINUTE FROM (e.occurred_at AT TIME ZONE ${p.tz})))::int AS local_min
     FROM hr.attendance_events e
     WHERE e.user_id = ${p.userId} AND e.org_id = ${p.orgId}
       AND e.face_review_status IS DISTINCT FROM 'rejected'
       AND ${wd} = ${p.workDate}::date
-  `)) as unknown as Array<{
-    first_in: string | null;
-    last_out: string | null;
-    first_in_min: number | null;
-    last_out_min: number | null;
-  }>;
-  const row = agg[0]!;
+    ORDER BY e.occurred_at
+  `)) as unknown as DayEventRow[];
 
-  let workedMinutes: number | null = null;
-  if (row.first_in && row.last_out) {
-    workedMinutes = Math.max(0, Math.round((Date.parse(row.last_out) - Date.parse(row.first_in)) / 60_000));
-  }
-
-  const statusName = resolveEventStatus(workedMinutes, thresholdsFor(p.shift));
-
-  let isLate = false;
-  let isEarly = false;
-  if (p.shift && row.first_in_min != null) {
-    isLate = isLateArrival(row.first_in_min, parseTimeToMinutes(p.shift.start_time), p.shift.grace_minutes);
-  }
-  if (p.shift && row.last_out_min != null) {
-    isEarly = isEarlyExit(row.last_out_min, parseTimeToMinutes(p.shift.end_time), p.isNight);
-  }
+  // Same derivation the nightly job and the face-review recompute use, so all
+  // three write paths agree by construction.
+  const d = deriveFromEvents(rows, p.shift, p.isNight, thresholdsFrom(p.shift, p.orgThresholds));
 
   await tx.execute(sql`
     INSERT INTO hr.attendance_days
       (user_id, org_id, work_date, first_in, last_out, worked_minutes, status_id,
-       is_late, is_early_exit, resolved_at, resolution_source)
+       is_late, is_early_exit, has_off_window_punch, has_open_session, has_pending_face_review,
+       resolved_at, resolution_source)
     VALUES
-      (${p.userId}, ${p.orgId}, ${p.workDate}::date, ${row.first_in}, ${row.last_out}, ${workedMinutes},
-       (SELECT id FROM hr.attendance_statuses WHERE tenant_id = ${p.tenantId} AND name = ${statusName}),
-       ${isLate}, ${isEarly}, CLOCK_TIMESTAMP(), 'events')
+      (${p.userId}, ${p.orgId}, ${p.workDate}::date, ${d.firstIn}, ${d.lastOut}, ${d.workedMinutes},
+       (SELECT id FROM hr.attendance_statuses WHERE tenant_id = ${p.tenantId} AND name = ${d.status}),
+       ${d.isLate}, ${d.isEarlyExit}, ${d.hasOffWindowPunch}, ${d.hasOpenSession}, ${d.hasPendingFaceReview},
+       CLOCK_TIMESTAMP(), 'events')
     ON CONFLICT (user_id, work_date) DO UPDATE SET
       first_in = EXCLUDED.first_in, last_out = EXCLUDED.last_out, worked_minutes = EXCLUDED.worked_minutes,
       status_id = EXCLUDED.status_id, is_late = EXCLUDED.is_late, is_early_exit = EXCLUDED.is_early_exit,
+      has_off_window_punch = EXCLUDED.has_off_window_punch, has_open_session = EXCLUDED.has_open_session,
+      has_pending_face_review = EXCLUDED.has_pending_face_review,
       resolved_at = CLOCK_TIMESTAMP(), resolution_source = 'events', updated_at = CLOCK_TIMESTAMP()
     WHERE hr.attendance_days.resolution_source IS DISTINCT FROM 'regularization'
   `);
 
-  return statusName;
+  return d.status;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -497,12 +575,15 @@ export async function upsertRules(ctx: AttendanceCtx, data: AttendanceRulesAdmin
       INSERT INTO hr.attendance_rules
         (org_id, geofence_enabled, geofence_radius_meters, require_photo, require_geo, allow_wfh_checkin,
          require_face_match, face_match_threshold, face_match_action,
-         photo_change_cooldown_days, image_retention_days, created_by)
+         photo_change_cooldown_days, image_retention_days,
+         min_half_day_minutes, min_full_day_minutes, created_by)
       VALUES
         (${ctx.org_id}, ${data.geofence_enabled}, ${data.geofence_radius_meters}, ${data.require_photo},
          ${data.require_geo}, ${data.allow_wfh_checkin},
          ${data.require_face_match ?? false}, ${data.face_match_threshold ?? 85}, ${data.face_match_action ?? 'flag'},
          ${data.photo_change_cooldown_days ?? 30}, ${data.image_retention_days ?? 90},
+         ${data.min_half_day_minutes ?? DEFAULT_THRESHOLDS.minHalfDayMinutes},
+         ${data.min_full_day_minutes ?? DEFAULT_THRESHOLDS.minFullDayMinutes},
          ${ctx.user_id})
       ON CONFLICT (org_id) WHERE NOT is_deleted DO UPDATE SET
         geofence_enabled = EXCLUDED.geofence_enabled,
@@ -515,6 +596,8 @@ export async function upsertRules(ctx: AttendanceCtx, data: AttendanceRulesAdmin
         face_match_action = EXCLUDED.face_match_action,
         photo_change_cooldown_days = EXCLUDED.photo_change_cooldown_days,
         image_retention_days = EXCLUDED.image_retention_days,
+        min_half_day_minutes = EXCLUDED.min_half_day_minutes,
+        min_full_day_minutes = EXCLUDED.min_full_day_minutes,
         updated_at = CLOCK_TIMESTAMP()
     `);
     return loadRulesRow(tx, ctx.org_id);
@@ -532,7 +615,9 @@ export async function getMyMonth(ctx: AttendanceCtx, month: string) {
     const days = (await tx.execute(sql`
       SELECT ad.work_date::text, ad.first_in, ad.last_out, ad.worked_minutes,
              st.name AS status_name, st.label AS status_label,
-             ad.is_late, ad.is_early_exit, ad.leave_request_id::text, ad.resolution_source
+             ad.is_late, ad.is_early_exit, ad.has_off_window_punch, ad.has_open_session,
+             ad.has_pending_face_review,
+             ad.leave_request_id::text, ad.resolution_source
       FROM hr.attendance_days ad
       JOIN hr.attendance_statuses st ON st.id = ad.status_id
       WHERE ad.user_id = ${ctx.user_id} AND ad.org_id = ${ctx.org_id}
@@ -586,6 +671,12 @@ export async function getTeam(ctx: AttendanceCtx, date: string, seeAllOrg: boole
              COALESCE(st.label, 'Not Marked') AS status_label,
              COALESCE(ad.is_late, FALSE)       AS is_late,
              COALESCE(ad.is_early_exit, FALSE) AS is_early_exit,
+             COALESCE(ad.has_off_window_punch, FALSE) AS has_off_window_punch,
+             COALESCE(ad.has_open_session, FALSE)     AS has_open_session,
+             -- Day-level, so it catches a mismatch on ANY punch. The e_in lateral
+             -- below is pinned to first_in and is blind to a split shift's middle
+             -- punches — exactly where buddy-punching happens.
+             COALESCE(ad.has_pending_face_review, FALSE) AS has_pending_face_review,
              (u.photo_key IS NOT NULL)         AS has_photo,
              (ep.face_subject_id IS NOT NULL)  AS enrolled,
              e_in.id::text  AS checkin_event_id,
@@ -717,6 +808,44 @@ export async function loadEventForPhoto(ctx: AttendanceCtx, eventId: string): Pr
   });
 }
 
+/**
+ * Every punch of one employee's work date, oldest first.
+ *
+ * The team view exposes only two event ids — the check-in matching first_in and
+ * the check-out matching last_out — so on a split shift the middle punches' photos
+ * are stored but unaddressable, and the second-segment check-in is precisely where
+ * buddy-punching happens. This returns the whole day so a reviewer can open any of
+ * them.
+ *
+ * `photo_url` itself never leaves the server: the client fetches bytes through
+ * /attendance/photos/:eventId, so only a has_photo boolean is exposed. Rejected
+ * punches ARE included — a reviewer looking into a suspected buddy-punch needs to
+ * see the punch that was thrown out.
+ */
+export async function listDayEvents(ctx: AttendanceCtx, userId: string, date: string) {
+  return withServiceTx(async (tx) => {
+    const org = await loadOrg(tx, ctx.org_id);
+    // Bucket by the same work-date expression the rollup uses, so a night shift's
+    // post-midnight punches belong to the date the employee actually worked.
+    const shift = await currentShift(tx, ctx.org_id, userId, date);
+    const shiftStartMin = shift ? parseTimeToMinutes(shift.start_time) : 0;
+    const wd = eventWorkDateSql(org.timezone, shift?.is_night_shift ?? false, shiftStartMin);
+
+    return (await tx.execute(sql`
+      SELECT e.id::text AS event_id, e.event_type, e.occurred_at,
+             e.face_match_score::float8 AS face_match_score,
+             e.face_match_passed, e.face_review_status, e.is_off_segment,
+             e.is_within_geofence, e.distance_from_org_m::float8 AS distance_from_org_m,
+             e.geo_lat::float8 AS geo_lat, e.geo_lng::float8 AS geo_lng,
+             (e.photo_url IS NOT NULL) AS has_photo
+      FROM hr.attendance_events e
+      WHERE e.user_id = ${userId} AND e.org_id = ${ctx.org_id}
+        AND ${wd} = ${date}::date
+      ORDER BY e.occurred_at
+    `)) as unknown as Row[];
+  });
+}
+
 export async function canViewUserAttendance(ctx: AttendanceCtx, targetUserId: string): Promise<boolean> {
   if (targetUserId === ctx.user_id) return true;
   return withServiceTx(async (tx) => {
@@ -734,13 +863,62 @@ export async function canViewUserAttendance(ctx: AttendanceCtx, targetUserId: st
 // ═════════════════════════════════════════════════════════════════════════════
 export async function listShifts(ctx: AttendanceCtx) {
   return withRoleTx(ctx, async (tx) => {
-    return (await tx.execute(sql`
+    const shifts = (await tx.execute(sql`
       SELECT id::text, org_id::text, name, start_time::text, end_time::text, grace_minutes,
-             min_half_day_minutes, min_full_day_minutes, is_night_shift, is_active
+             min_half_day_minutes, min_full_day_minutes, is_night_shift, is_split, is_active
       FROM hr.shifts WHERE org_id = ${ctx.org_id} AND NOT is_deleted
       ORDER BY name
-    `)) as unknown as Row[];
+    `)) as unknown as Array<Row & { id: string }>;
+    if (shifts.length === 0) return shifts;
+
+    // One extra query for every segment in the org, grouped in memory — not one
+    // query per shift.
+    const segs = (await tx.execute(sql`
+      SELECT shift_id::text, seq, start_time::text, end_time::text
+      FROM hr.shift_segments
+      WHERE org_id = ${ctx.org_id} AND NOT is_deleted AND is_active
+      ORDER BY shift_id, seq
+    `)) as unknown as Array<ShiftSegment & { shift_id: string }>;
+
+    const byShift = new Map<string, ShiftSegment[]>();
+    for (const s of segs) {
+      const list = byShift.get(s.shift_id) ?? [];
+      list.push({ seq: s.seq, start_time: s.start_time, end_time: s.end_time });
+      byShift.set(s.shift_id, list);
+    }
+    return shifts.map((s) => ({ ...s, segments: byShift.get(s.id) ?? [] }));
   });
+}
+
+/**
+ * Replace a shift's segment set wholesale: soft-delete what is there, insert the
+ * new rows. Validated against the window the shift will actually have after this
+ * request, since updateShift is a partial update that may be changing it in the
+ * same call.
+ */
+async function replaceSegments(
+  tx: DrizzleTx,
+  ctx: AttendanceCtx,
+  shiftId: string,
+  segments: ShiftSegment[],
+  windowStart: string,
+  windowEnd: string,
+): Promise<void> {
+  const problem = validateSegments(segments, windowStart, windowEnd);
+  if (problem) throw new BadRequestError(problem);
+
+  await tx.execute(sql`
+    UPDATE hr.shift_segments SET is_deleted = TRUE, is_active = FALSE, deleted_at = CLOCK_TIMESTAMP(),
+      deleted_by = ${ctx.user_id}, updated_at = CLOCK_TIMESTAMP()
+    WHERE shift_id = ${shiftId} AND org_id = ${ctx.org_id} AND NOT is_deleted
+  `);
+
+  for (const seg of segments) {
+    await tx.execute(sql`
+      INSERT INTO hr.shift_segments (shift_id, org_id, seq, start_time, end_time, created_by)
+      VALUES (${shiftId}, ${ctx.org_id}, ${seg.seq}, ${seg.start_time}, ${seg.end_time}, ${ctx.user_id})
+    `);
+  }
 }
 
 export async function createShift(ctx: AttendanceCtx, data: CreateShiftInput): Promise<{ id: string }> {
@@ -748,13 +926,20 @@ export async function createShift(ctx: AttendanceCtx, data: CreateShiftInput): P
     try {
       const rows = (await tx.execute(sql`
         INSERT INTO hr.shifts
-          (org_id, name, start_time, end_time, grace_minutes, min_half_day_minutes, min_full_day_minutes, is_night_shift, created_by)
+          (org_id, name, start_time, end_time, grace_minutes, min_half_day_minutes, min_full_day_minutes,
+           is_night_shift, is_split, created_by)
         VALUES
           (${ctx.org_id}, ${data.name}, ${data.start_time}, ${data.end_time}, ${data.grace_minutes},
-           ${data.min_half_day_minutes}, ${data.min_full_day_minutes}, ${data.is_night_shift}, ${ctx.user_id})
+           ${data.min_half_day_minutes}, ${data.min_full_day_minutes}, ${data.is_night_shift},
+           ${data.is_split ?? false}, ${ctx.user_id})
         RETURNING id::text
       `)) as unknown as Array<{ id: string }>;
-      return { id: rows[0]!.id };
+      const id = rows[0]!.id;
+
+      if (data.is_split) {
+        await replaceSegments(tx, ctx, id, data.segments ?? [], data.start_time, data.end_time);
+      }
+      return { id };
     } catch (err) {
       if ((err as { code?: string }).code === '23505') {
         throw new ConflictError('A shift with that name already exists in this org');
@@ -774,14 +959,44 @@ export async function updateShift(ctx: AttendanceCtx, id: string, data: UpdateSh
     if (data.min_half_day_minutes !== undefined) sets.push(sql`min_half_day_minutes = ${data.min_half_day_minutes}`);
     if (data.min_full_day_minutes !== undefined) sets.push(sql`min_full_day_minutes = ${data.min_full_day_minutes}`);
     if (data.is_night_shift !== undefined) sets.push(sql`is_night_shift = ${data.is_night_shift}`);
+    if (data.is_split !== undefined) sets.push(sql`is_split = ${data.is_split}`);
     if (data.is_active !== undefined) sets.push(sql`is_active = ${data.is_active}`);
-    if (sets.length === 0) return;
-    const res = (await tx.execute(sql`
-      UPDATE hr.shifts SET ${sql.join(sets, sql`, `)}
-      WHERE id = ${id} AND org_id = ${ctx.org_id} AND NOT is_deleted
-      RETURNING id::text
-    `)) as unknown as Row[];
-    if (res.length === 0) throw new NotFoundError('Shift not found');
+
+    // The stored row is needed either way: to 404, and to resolve the window a
+    // partial update leaves unchanged.
+    const existing = (await tx.execute(sql`
+      SELECT start_time::text, end_time::text, is_split
+      FROM hr.shifts WHERE id = ${id} AND org_id = ${ctx.org_id} AND NOT is_deleted
+    `)) as unknown as Array<{ start_time: string; end_time: string; is_split: boolean }>;
+    if (existing.length === 0) throw new NotFoundError('Shift not found');
+    const cur = existing[0]!;
+
+    if (sets.length > 0) {
+      await tx.execute(sql`
+        UPDATE hr.shifts SET ${sql.join(sets, sql`, `)}
+        WHERE id = ${id} AND org_id = ${ctx.org_id} AND NOT is_deleted
+      `);
+    }
+
+    const isSplit = data.is_split ?? cur.is_split;
+    if (data.segments !== undefined && isSplit) {
+      await replaceSegments(
+        tx,
+        ctx,
+        id,
+        data.segments,
+        data.start_time ?? cur.start_time,
+        data.end_time ?? cur.end_time,
+      );
+    } else if (data.is_split === false) {
+      // Turning split off retires the segments so a later re-enable can't
+      // resurrect a stale set that no longer fits the window.
+      await tx.execute(sql`
+        UPDATE hr.shift_segments SET is_deleted = TRUE, is_active = FALSE, deleted_at = CLOCK_TIMESTAMP(),
+          deleted_by = ${ctx.user_id}, updated_at = CLOCK_TIMESTAMP()
+        WHERE shift_id = ${id} AND org_id = ${ctx.org_id} AND NOT is_deleted
+      `);
+    }
   });
 }
 
@@ -1022,16 +1237,25 @@ export async function approveRegularization(
       if (reg.requested_in && reg.requested_out) {
         worked = Math.max(0, Math.round((Date.parse(reg.requested_out) - Date.parse(reg.requested_in)) / 60_000));
       }
+      // A regularization is a single corrected span, not a split-shift day, so
+      // worked stays (out - in). It also CLEARS all three review flags: the
+      // approved override supersedes the punches that raised them, and leaving
+      // them set would flag a day an approver just fixed. Note this includes
+      // has_pending_face_review — an approver correcting the day has implicitly
+      // decided it, and the underlying event keeps its own 'pending' status in
+      // the face-review queue for a separate decision.
       await tx.execute(sql`
         INSERT INTO hr.attendance_days
-          (user_id, org_id, work_date, first_in, last_out, worked_minutes, status_id, resolved_at, resolution_source)
+          (user_id, org_id, work_date, first_in, last_out, worked_minutes, status_id,
+           has_off_window_punch, has_open_session, has_pending_face_review, resolved_at, resolution_source)
         VALUES
           (${reg.user_id}, ${ctx.org_id}, ${reg.work_date}::date, ${reg.requested_in}, ${reg.requested_out}, ${worked},
            (SELECT id FROM hr.attendance_statuses WHERE tenant_id = ${ctx.tenant_id} AND name = ${reg.requested_status_name}),
-           CLOCK_TIMESTAMP(), 'regularization')
+           FALSE, FALSE, FALSE, CLOCK_TIMESTAMP(), 'regularization')
         ON CONFLICT (user_id, work_date) DO UPDATE SET
           first_in = EXCLUDED.first_in, last_out = EXCLUDED.last_out, worked_minutes = EXCLUDED.worked_minutes,
-          status_id = EXCLUDED.status_id, resolved_at = CLOCK_TIMESTAMP(),
+          status_id = EXCLUDED.status_id, has_off_window_punch = FALSE, has_open_session = FALSE,
+          has_pending_face_review = FALSE, resolved_at = CLOCK_TIMESTAMP(),
           resolution_source = 'regularization', updated_at = CLOCK_TIMESTAMP()
       `);
       flipped = true;
@@ -1389,14 +1613,57 @@ async function assertCanActOnFaceReview(
   }
 }
 
+/**
+ * Re-resolve the day an event belongs to, after its face_review_status changed.
+ *
+ * Both decisions need this, in opposite directions: rejecting drops the punch out
+ * of the day entirely, and clearing lets a previously WITHHELD punch count for the
+ * first time — pending minutes are excluded until someone clears them, so this is
+ * the step that restores the employee's time.
+ */
+async function recomputeDayForEvent(
+  tx: DrizzleTx,
+  ctx: AttendanceCtx,
+  evt: FaceEventForAction,
+): Promise<string> {
+  const org = await loadOrg(tx, ctx.org_id);
+  const occurred = new Date(evt.occurred_at);
+  const localToday = localDateOf(occurred, org.timezone);
+  const shift = await currentShift(tx, ctx.org_id, evt.user_id, localToday);
+  const shiftStartMin = shift ? parseTimeToMinutes(shift.start_time) : 0;
+  const isNight = shift?.is_night_shift ?? false;
+  const workDate = workDateOf(occurred, org.timezone, isNight, shiftStartMin);
+
+  const offRows = (await tx.execute(sql`
+    SELECT weekly_off_pattern AS p FROM hr.employee_profiles
+    WHERE user_id = ${evt.user_id} AND org_id = ${ctx.org_id} AND NOT is_deleted
+  `)) as unknown as Array<{ p: number[] }>;
+
+  const emp: DayEmployee = {
+    user_id: evt.user_id,
+    org_id: ctx.org_id,
+    tenant_id: ctx.tenant_id,
+    timezone: org.timezone,
+    weekly_off_pattern: offRows[0]?.p ?? [0, 6],
+  };
+  const resolution = await computeDayResolution(tx, emp, workDate, orgThresholdsOf(await getCachedRules(ctx.org_id)));
+  await upsertResolvedDay(tx, emp, workDate, resolution, { overwrite: true });
+  return workDate;
+}
+
 export async function clearFaceReview(ctx: AttendanceCtx, eventId: string, isOverride: boolean): Promise<FaceReviewDecision> {
   return serviceTxWithContext(ctx, async (tx) => {
     const evt = await loadFaceEventForAction(tx, eventId);
     await assertCanActOnFaceReview(tx, ctx, evt!, isOverride);
+
+    // Confirm the punch, then recompute — a cleared punch counts, and its minutes
+    // were being withheld until this moment.
     await tx.execute(sql`
       UPDATE hr.attendance_events SET face_review_status = 'cleared' WHERE id = ${eventId}
     `);
-    return { event_id: eventId, user_id: evt!.user_id, work_date: null, day_recomputed: false };
+    const workDate = await recomputeDayForEvent(tx, ctx, evt!);
+
+    return { event_id: eventId, user_id: evt!.user_id, work_date: workDate, day_recomputed: true };
   });
 }
 
@@ -1409,29 +1676,7 @@ export async function rejectFaceReview(ctx: AttendanceCtx, eventId: string, isOv
     await tx.execute(sql`
       UPDATE hr.attendance_events SET face_review_status = 'rejected' WHERE id = ${eventId}
     `);
-
-    const org = await loadOrg(tx, ctx.org_id);
-    const occurred = new Date(evt!.occurred_at);
-    const localToday = localDateOf(occurred, org.timezone);
-    const shift = await currentShift(tx, ctx.org_id, evt!.user_id, localToday);
-    const shiftStartMin = shift ? parseTimeToMinutes(shift.start_time) : 0;
-    const isNight = shift?.is_night_shift ?? false;
-    const workDate = workDateOf(occurred, org.timezone, isNight, shiftStartMin);
-
-    const offRows = (await tx.execute(sql`
-      SELECT weekly_off_pattern AS p FROM hr.employee_profiles
-      WHERE user_id = ${evt!.user_id} AND org_id = ${ctx.org_id} AND NOT is_deleted
-    `)) as unknown as Array<{ p: number[] }>;
-
-    const emp: DayEmployee = {
-      user_id: evt!.user_id,
-      org_id: ctx.org_id,
-      tenant_id: ctx.tenant_id,
-      timezone: org.timezone,
-      weekly_off_pattern: offRows[0]?.p ?? [0, 6],
-    };
-    const resolution = await computeDayResolution(tx, emp, workDate);
-    await upsertResolvedDay(tx, emp, workDate, resolution, { overwrite: true });
+    const workDate = await recomputeDayForEvent(tx, ctx, evt!);
 
     return { event_id: eventId, user_id: evt!.user_id, work_date: workDate, day_recomputed: true };
   });

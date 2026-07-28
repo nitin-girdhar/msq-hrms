@@ -1,16 +1,21 @@
 'use client';
 
 // Per-employee attendance photo viewer for the Team screen. Shows the enrolled
-// reference photo and lets the viewer LOAD each day's check-in / check-out selfie
-// on demand (never auto-loaded — that is a deliberate privacy choice). Each punch
-// selfie is shown with its captured time and device location overlaid (the pixels
-// themselves are never stamped). Admins can replace the reference photo here with
-// no cooldown.
+// reference photo and lets the viewer LOAD each punch's selfie on demand (never
+// auto-loaded — that is a deliberate privacy choice). Each punch selfie is shown
+// with its captured time and device location overlaid (the pixels themselves are
+// never stamped). Admins can replace the reference photo here with no cooldown.
+//
+// The punch list comes from /hr/attendance/events rather than the two event ids
+// on the team row. Those are pinned to the day's first_in and last_out, so on a
+// split shift the middle punches — including the second-segment check-in, where
+// buddy-punching happens — were stored but had no addressable id and could not
+// be viewed at all.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal, PhotoUploadModal, PhotoAvatar, users as usersApi } from '@platform/ui-kit';
 import { attendance as attendanceApi } from '../../lib/api/client';
-import type { TeamDayRow } from '../../lib/attendance/types';
+import type { TeamDayRow, DayEventView } from '../../lib/attendance/types';
 import { formatClockTime } from '../../lib/attendance/format';
 
 interface Props {
@@ -25,35 +30,57 @@ function fmtLoc(lat: number | null, lng: number | null): string | null {
   return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 }
 
-function PunchPhoto({
-  eventId,
-  time,
-  loc,
-  label,
-}: {
-  eventId: string | null;
-  time: string | null;
-  loc: string | null;
-  label: string;
-}) {
+function PunchPhoto({ event }: { event: DayEventView }) {
   const [show, setShow] = useState(false);
-  if (!eventId) {
-    return (
-      <div className="flex-1">
-        <p className="mb-1 text-xs font-semibold text-[#64748B]">{label}</p>
-        <p className="text-xs text-[#94A3B8]">No {label.toLowerCase()} photo.</p>
-      </div>
-    );
-  }
+  const [failed, setFailed] = useState(false);
+
+  const label = event.event_type === 'check_in' ? 'Check-in' : 'Check-out';
+  const loc = fmtLoc(event.geo_lat, event.geo_lng);
+  const pending = event.face_review_status === 'pending';
+  const rejected = event.face_review_status === 'rejected';
+
   return (
-    <div className="flex-1">
-      <p className="mb-1 text-xs font-semibold text-[#64748B]">{label}</p>
-      {show ? (
+    <div className="w-40 shrink-0">
+      <p className="mb-1 flex items-baseline gap-1.5 text-xs font-semibold text-[#64748B]">
+        <span>{label}</span>
+        <span className="font-normal text-[#94A3B8]">{formatClockTime(event.occurred_at)}</span>
+      </p>
+
+      {/* Photos are only half the story — a punch can be flagged, thrown out, or
+          made from the wrong place, and the reviewer needs that beside the face. */}
+      <div className="mb-1 flex flex-wrap gap-x-1.5 text-[10px] leading-tight">
+        {event.face_match_score != null && (
+          <span className={pending ? 'font-semibold text-amber-700' : 'text-[#64748B]'}>
+            {Math.round(event.face_match_score)}%
+          </span>
+        )}
+        {pending && <span className="font-semibold text-amber-700">Awaiting review</span>}
+        {rejected && <span className="font-semibold text-red-700">Rejected</span>}
+        {event.is_off_segment && <span className="text-amber-700">Outside window</span>}
+        {event.is_within_geofence === false && <span className="text-red-700">Outside geofence</span>}
+      </div>
+
+      {!event.has_photo ? (
+        <p className="rounded-lg border border-dashed border-[#E2E8F0] py-5 text-center text-[11px] text-[#94A3B8]">
+          No photo
+        </p>
+      ) : failed ? (
+        // Retention deletes the blob but leaves photo_url set, so has_photo can
+        // be true for an image that no longer exists.
+        <p className="rounded-lg border border-dashed border-[#E2E8F0] py-5 text-center text-[11px] text-[#94A3B8]">
+          Photo unavailable
+        </p>
+      ) : show ? (
         <div className="relative overflow-hidden rounded-lg bg-slate-100">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={attendanceApi.photoUrl(eventId)} alt={`${label} selfie`} className="w-full object-cover" />
+          <img
+            src={attendanceApi.photoUrl(event.event_id)}
+            alt={`${label} selfie`}
+            onError={() => setFailed(true)}
+            className="w-full object-cover"
+          />
           <div className="absolute inset-x-0 bottom-0 bg-black/55 px-2 py-1 text-[10px] leading-tight text-white">
-            <div>{formatClockTime(time)}</div>
+            <div>{formatClockTime(event.occurred_at)}</div>
             {loc && <div className="opacity-80">📍 {loc}</div>}
           </div>
         </div>
@@ -74,6 +101,26 @@ export default function TeamPhotoModal({ row, canManage, onClose, onChanged }: P
   const [changeOpen, setChangeOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [events, setEvents] = useState<DayEventView[] | null>(null);
+
+  const userId = row?.user_id;
+  const workDate = row?.work_date;
+
+  useEffect(() => {
+    if (!userId || !workDate) {
+      setEvents(null);
+      return;
+    }
+    let active = true;
+    setEvents(null);
+    attendanceApi
+      .dayEvents({ user_id: userId, date: workDate })
+      .then((res) => { if (active) setEvents(res.data); })
+      // An empty list renders as "No punches", which is the honest outcome for a
+      // failed load here — the reference photo and actions still work.
+      .catch(() => { if (active) setEvents([]); });
+    return () => { active = false; };
+  }, [userId, workDate]);
 
   if (!row) return null;
 
@@ -111,9 +158,23 @@ export default function TeamPhotoModal({ row, canManage, onClose, onChanged }: P
             </div>
           </div>
 
-          <div className="flex gap-3">
-            <PunchPhoto eventId={row.checkin_event_id} time={row.first_in} loc={fmtLoc(row.checkin_lat, row.checkin_lng)} label="Check-in" />
-            <PunchPhoto eventId={row.checkout_event_id} time={row.last_out} loc={fmtLoc(row.checkout_lat, row.checkout_lng)} label="Check-out" />
+          <div>
+            <p className="mb-1.5 text-xs font-semibold text-[#0F172A]">
+              Punches{events && events.length > 0 ? ` (${events.length})` : ''}
+            </p>
+            {events === null ? (
+              <p className="text-xs text-[#94A3B8]">Loading punches…</p>
+            ) : events.length === 0 ? (
+              <p className="text-xs text-[#94A3B8]">No punches recorded for this day.</p>
+            ) : (
+              // Horizontal scroll rather than a wrapping grid: a split shift can
+              // run to six punches and the modal must not grow unboundedly.
+              <div className="flex gap-3 overflow-x-auto pb-1">
+                {events.map((e) => (
+                  <PunchPhoto key={e.event_id} event={e} />
+                ))}
+              </div>
+            )}
           </div>
 
           {error && <p className="text-sm text-red-600">{error}</p>}

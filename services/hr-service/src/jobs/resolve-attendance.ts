@@ -31,6 +31,7 @@ import {
   upsertResolvedDay,
   type DayEmployee,
 } from '../lib/attendance/day-resolution.js';
+import type { ShiftThresholds } from '../lib/attendance/resolve.js';
 
 const DEFAULT_LOOKBACK_DAYS = 3;
 
@@ -60,6 +61,24 @@ async function loadEmployees(tx: DrizzleTx): Promise<DayEmployee[]> {
   `)) as unknown as DayEmployee[];
 }
 
+/**
+ * Org-level day-classification thresholds, loaded once for the whole run rather
+ * than per (employee, date). Orgs with no attendance_rules row are simply absent
+ * from the map, and computeDayResolution falls back to DEFAULT_THRESHOLDS.
+ */
+async function loadOrgThresholds(tx: DrizzleTx): Promise<Map<string, ShiftThresholds>> {
+  const rows = (await tx.execute(sql`
+    SELECT org_id::text, min_half_day_minutes, min_full_day_minutes
+    FROM hr.attendance_rules WHERE NOT is_deleted
+  `)) as unknown as Array<{ org_id: string; min_half_day_minutes: number; min_full_day_minutes: number }>;
+  return new Map(
+    rows.map((r) => [
+      r.org_id,
+      { minHalfDayMinutes: r.min_half_day_minutes, minFullDayMinutes: r.min_full_day_minutes },
+    ]),
+  );
+}
+
 function dateRange(from: string, to: string): string[] {
   const out: string[] = [];
   let d = from;
@@ -78,6 +97,7 @@ async function main() {
 
   await withServiceTx(async (tx) => {
     const employees = await loadEmployees(tx);
+    const orgThresholds = await loadOrgThresholds(tx);
     for (const emp of employees) {
       const today = orgToday(emp.timezone);
       const yesterday = addDays(today, -1);
@@ -88,7 +108,7 @@ async function main() {
       for (const date of dateRange(from, to)) {
         // Skip any date already resolved (regularization / live events / prior run).
         if (await dayRowExists(tx, emp.user_id, date)) continue;
-        const r = await computeDayResolution(tx, emp, date);
+        const r = await computeDayResolution(tx, emp, date, orgThresholds.get(emp.org_id));
         await upsertResolvedDay(tx, emp, date, r, { overwrite: false });
         counts[r.status] = (counts[r.status] ?? 0) + 1;
       }

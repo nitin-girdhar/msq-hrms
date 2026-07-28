@@ -17,6 +17,7 @@ import type {
   ListRegularizationsInput,
   AttendanceMeQueryInput,
   AttendanceTeamQueryInput,
+  DayEventsQueryInput,
   ReportsSummaryQueryInput,
   FaceEnrollInput,
   FaceReviewsQueryInput,
@@ -86,6 +87,12 @@ export class AttendanceController {
   todaySummary = async (request: FastifyRequest, reply: FastifyReply) => {
     const { date } = request.query as AttendanceTeamQueryInput;
     const data = await service.getTodaySummary(ctxOf(request), date ?? currentDate());
+    return reply.send({ success: true, data });
+  };
+
+  dayEvents = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { user_id, date } = request.query as DayEventsQueryInput;
+    const data = await service.listDayEvents(ctxOf(request), user_id, date);
     return reply.send({ success: true, data });
   };
 

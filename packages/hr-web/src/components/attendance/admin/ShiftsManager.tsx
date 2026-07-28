@@ -66,7 +66,16 @@ export default function ShiftsManager({ onNotice }: Props) {
               {items.map((s) => (
                 <tr key={s.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                   <td className="px-4 py-3 font-medium text-[#0F172A]">{s.name}</td>
-                  <td className="px-4 py-3 text-[#475569]">{s.start_time.slice(0, 5)}–{s.end_time.slice(0, 5)}</td>
+                  <td className="px-4 py-3 text-[#475569]">
+                    {s.start_time.slice(0, 5)}–{s.end_time.slice(0, 5)}
+                    {/* The outer window alone hides that a split shift is not
+                        continuous, so list the slots that make it up. */}
+                    {s.is_split && s.segments.length > 0 && (
+                      <div className="mt-0.5 text-xs text-[#94A3B8]">
+                        {s.segments.map((seg) => `${seg.start_time.slice(0, 5)}–${seg.end_time.slice(0, 5)}`).join(' + ')}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-[#475569]">{s.grace_minutes}m</td>
                   <td className="px-4 py-3 text-[#475569]">{s.min_half_day_minutes}m / {s.min_full_day_minutes}m</td>
                   <td className="px-4 py-3 text-[#475569]">{s.is_night_shift ? 'Yes' : 'No'}</td>

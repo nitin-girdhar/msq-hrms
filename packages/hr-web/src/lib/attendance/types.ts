@@ -26,6 +26,11 @@ export interface AttendanceRules {
   photo_change_cooldown_days: number;
   // Days daily check-in/out selfies are retained before the cleanup job deletes them.
   image_retention_days: number;
+  // Org-level day classification for employees with NO shift assignment (an
+  // assigned shift's own thresholds win). Below the half-day floor a day with
+  // punches is marked Absent, not Half Day.
+  min_half_day_minutes: number;
+  min_full_day_minutes: number;
   // Org IANA timezone; use it with todayIso(tz) so the client's "today" matches
   // the server-computed attendance work_date.
   timezone: string;
@@ -63,6 +68,13 @@ export interface AttendanceDayRow {
   status_label: string;
   is_late: boolean;
   is_early_exit: boolean;
+  // A punch landed outside the shift's declared segments (split shifts).
+  has_off_window_punch: boolean;
+  // A check-in was never closed; that session contributed zero minutes.
+  has_open_session: boolean;
+  // A punch is awaiting face review. Its minutes are WITHHELD until a reviewer
+  // clears it, so this is what explains an otherwise unexplained short day.
+  has_pending_face_review: boolean;
   leave_request_id: string | null;
   resolution_source: string | null;
 }
@@ -79,6 +91,42 @@ export interface MyMonthResponse {
   weekly_off_pattern: number[];
 }
 
+// NULL when face matching passed or was not required. 'pending' punches do not
+// count toward the day until a reviewer clears them.
+export type FaceReviewStatus = 'pending' | 'cleared' | 'rejected' | null;
+
+// One punch of an employee's work date. Unlike TeamDayRow — which carries only
+// the day's first check-in and last check-out — this covers every punch, so a
+// split shift's middle punches (and their selfies) are reachable.
+export interface DayEventView {
+  event_id: string;
+  event_type: 'check_in' | 'check_out';
+  occurred_at: string;
+  face_match_score: number | null;
+  face_match_passed: boolean | null;
+  face_review_status: FaceReviewStatus;
+  is_off_segment: boolean | null;
+  is_within_geofence: boolean | null;
+  distance_from_org_m: number | null;
+  geo_lat: number | null;
+  geo_lng: number | null;
+  has_photo: boolean;
+}
+
+// A punch awaiting a face-match decision, as listed by the review queue.
+export interface FaceReviewView {
+  event_id: string;
+  user_id: string;
+  user_full_name: string | null;
+  user_email: string | null;
+  event_type: 'check_in' | 'check_out';
+  occurred_at: string;
+  face_match_score: number | null;
+  face_review_status: FaceReviewStatus;
+  photo_url: string | null;
+  reference_photo_url: string | null;
+}
+
 export interface TeamDayRow {
   user_id: string;
   user_full_name: string;
@@ -91,17 +139,30 @@ export interface TeamDayRow {
   status_label: string;
   is_late: boolean;
   is_early_exit: boolean;
+  has_off_window_punch: boolean;
+  has_open_session: boolean;
+  // Day-level: true when ANY punch of the day awaits face review. The
+  // face_match_score below comes only from the check-in matching first_in, so on
+  // a split shift it is blind to the middle punches — this flag is not.
+  has_pending_face_review: boolean;
   // Face-attendance columns (present when the org uses face matching).
   has_photo: boolean;
   enrolled: boolean;
   face_match_score: number | null;
-  face_review_status: string | null;
+  face_review_status: FaceReviewStatus;
   checkin_event_id: string | null;
   checkin_lat: number | null;
   checkin_lng: number | null;
   checkout_event_id: string | null;
   checkout_lat: number | null;
   checkout_lng: number | null;
+}
+
+// One slot of a split shift, e.g. 09:00-13:00. seq orders them within the day.
+export interface ShiftSegmentView {
+  seq: number;
+  start_time: string;
+  end_time: string;
 }
 
 export interface ShiftView {
@@ -114,6 +175,10 @@ export interface ShiftView {
   min_half_day_minutes: number;
   min_full_day_minutes: number;
   is_night_shift: boolean;
+  // A split shift works 2+ slots a day; start_time/end_time stay the OUTER
+  // window its segments nest inside. Empty segments for a non-split shift.
+  is_split: boolean;
+  segments: ShiftSegmentView[];
   is_active: boolean;
 }
 

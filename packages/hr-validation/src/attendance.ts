@@ -23,6 +23,25 @@ export const punchSchema = z.object({
 export const checkInSchema = punchSchema;
 export const checkOutSchema = punchSchema;
 
+// A half-day floor above the full-day floor makes 'half_day' unreachable — every
+// day would resolve to either 'present' or 'absent'. Shared by the rules and
+// shift schemas, and mirrored by a DB CHECK on hr.attendance_rules.
+function checkThresholdOrder(
+  v: { min_half_day_minutes?: number | undefined; min_full_day_minutes?: number | undefined },
+  ctx: z.RefinementCtx,
+): void {
+  const half = v.min_half_day_minutes;
+  const full = v.min_full_day_minutes;
+  if (half === undefined || full === undefined) return;
+  if (half > full) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['min_half_day_minutes'],
+      message: 'The half-day minimum must not exceed the full-day minimum.',
+    });
+  }
+}
+
 // ── Attendance rules (admin upsert) ─────────────────────────────────────────
 export const attendanceRulesAdminSchema = z.object({
   geofence_enabled: z.boolean().default(true),
@@ -38,10 +57,103 @@ export const attendanceRulesAdminSchema = z.object({
   photo_change_cooldown_days: z.number().int().min(0).max(365).optional(),
   // Days daily check-in/out selfies are retained before the cleanup job deletes them.
   image_retention_days: z.number().int().min(1).max(3650).optional(),
-});
+  // Org-level day-classification fallback for employees with NO shift assignment.
+  // An assigned shift's own thresholds always win.
+  min_half_day_minutes: z.number().int().min(0).max(1440).default(240),
+  min_full_day_minutes: z.number().int().min(0).max(1440).default(480),
+}).superRefine(checkThresholdOrder);
 
 // ── Shifts ──────────────────────────────────────────────────────────────────
 const timeString = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/, 'Expected HH:MM or HH:MM:SS');
+
+// One slot of a split shift, e.g. 09:00-13:00. seq orders them within the day.
+const shiftSegmentSchema = z.object({
+  seq: z.number().int().min(1).max(12),
+  start_time: timeString,
+  end_time: timeString,
+});
+
+const MINUTES_PER_DAY = 1440;
+
+function toMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map((s) => parseInt(s, 10));
+  return h! * 60 + m!;
+}
+
+/** Minutes elapsed from the shift's start, wrapping across midnight. */
+function fromShiftStart(minutes: number, shiftStartMin: number): number {
+  return ((minutes - shiftStartMin) % MINUTES_PER_DAY + MINUTES_PER_DAY) % MINUTES_PER_DAY;
+}
+
+/**
+ * Segment-set rules that no single-column check can express. Mirrors
+ * validateSegments in hr-service/src/lib/attendance/segments.ts so the client and
+ * the server reject the same input, and so a night shift whose segments wrap
+ * midnight is judged in the same normalized space rather than rejected outright.
+ */
+function checkSegments(
+  v: {
+    is_split?: boolean | undefined;
+    segments?: Array<{ seq: number; start_time: string; end_time: string }> | undefined;
+    start_time?: string | undefined;
+    end_time?: string | undefined;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  if (!v.is_split) return;
+
+  const segments = v.segments ?? [];
+  const add = (message: string) =>
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['segments'], message });
+
+  if (segments.length < 2) {
+    add('A split shift needs at least 2 segments.');
+    return;
+  }
+  // On a partial update the window may not be in the payload; the server
+  // re-validates against the stored row, so skip the window checks here.
+  if (!v.start_time || !v.end_time) return;
+
+  const shiftStartMin = toMinutes(v.start_time);
+  let windowEnd = fromShiftStart(toMinutes(v.end_time), shiftStartMin);
+  if (windowEnd === 0) windowEnd = MINUTES_PER_DAY;
+
+  const seqs = new Set<number>();
+  const ranges: Array<{ seq: number; start: number; end: number }> = [];
+
+  for (const seg of segments) {
+    if (seqs.has(seg.seq)) {
+      add(`Duplicate segment order ${seg.seq}.`);
+      return;
+    }
+    seqs.add(seg.seq);
+
+    const start = fromShiftStart(toMinutes(seg.start_time), shiftStartMin);
+    let end = fromShiftStart(toMinutes(seg.end_time), shiftStartMin);
+    if (end <= start) end += MINUTES_PER_DAY;
+
+    if (end > windowEnd) {
+      add(`Segment ${seg.seq} (${seg.start_time}–${seg.end_time}) falls outside the shift window ${v.start_time}–${v.end_time}.`);
+      return;
+    }
+    ranges.push({ seq: seg.seq, start, end });
+  }
+
+  for (let i = 1; i <= segments.length; i += 1) {
+    if (!seqs.has(i)) {
+      add(`Segment order must run 1..${segments.length} without gaps.`);
+      return;
+    }
+  }
+
+  ranges.sort((a, b) => a.start - b.start);
+  for (let i = 1; i < ranges.length; i += 1) {
+    if (ranges[i]!.start < ranges[i - 1]!.end) {
+      add(`Segments ${ranges[i - 1]!.seq} and ${ranges[i]!.seq} overlap.`);
+      return;
+    }
+  }
+}
 
 export const createShiftSchema = z.object({
   name: z.string().min(1).max(200),
@@ -51,7 +163,13 @@ export const createShiftSchema = z.object({
   min_half_day_minutes: z.number().int().min(0).max(1440).default(240),
   min_full_day_minutes: z.number().int().min(0).max(1440).default(480),
   is_night_shift: z.boolean().default(false),
-});
+  // A split shift works 2+ slots in a day; start_time/end_time stay the OUTER
+  // window the segments must nest inside.
+  is_split: z.boolean().default(false),
+  segments: z.array(shiftSegmentSchema).max(12).optional(),
+})
+  .superRefine(checkThresholdOrder)
+  .superRefine(checkSegments);
 
 export const updateShiftSchema = z.object({
   name: z.string().min(1).max(200).optional(),
@@ -61,8 +179,12 @@ export const updateShiftSchema = z.object({
   min_half_day_minutes: z.number().int().min(0).max(1440).optional(),
   min_full_day_minutes: z.number().int().min(0).max(1440).optional(),
   is_night_shift: z.boolean().optional(),
+  is_split: z.boolean().optional(),
+  segments: z.array(shiftSegmentSchema).max(12).optional(),
   is_active: z.boolean().optional(),
-});
+})
+  .superRefine(checkThresholdOrder)
+  .superRefine(checkSegments);
 
 // ── Shift assignments ───────────────────────────────────────────────────────
 const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD');
@@ -144,6 +266,14 @@ export const reportsSummaryQuerySchema = z.object({
   format: z.enum(['json', 'csv', 'xlsx']).default('json'),
 });
 
+// Every punch of one employee's work date. A split shift has 4+ punches, but the
+// team view only ever exposes the first check-in and last check-out, so without
+// this the middle punches' selfies are stored yet unreachable.
+export const dayEventsQuerySchema = z.object({
+  user_id: z.string().uuid(),
+  date: dateString,
+});
+
 // ── Inferred types ────────────────────────────────────────────────────────────
 export type PunchInput = z.infer<typeof punchSchema>;
 export type CheckInInput = z.infer<typeof checkInSchema>;
@@ -163,3 +293,4 @@ export type ListRegularizationsInput = z.infer<typeof listRegularizationsSchema>
 export type AttendanceMeQueryInput = z.infer<typeof attendanceMeQuerySchema>;
 export type AttendanceTeamQueryInput = z.infer<typeof attendanceTeamQuerySchema>;
 export type ReportsSummaryQueryInput = z.infer<typeof reportsSummaryQuerySchema>;
+export type DayEventsQueryInput = z.infer<typeof dayEventsQuerySchema>;

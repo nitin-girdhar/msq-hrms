@@ -28,7 +28,29 @@ export default function DayDetailPopover({ date, row, onClose, onRequestRegulari
           <Row label="Out" value={formatClockTime(row?.last_out ?? null)} />
           {row?.is_late && <Row label="Late" value="Yes" />}
           {row?.is_early_exit && <Row label="Early exit" value="Yes" />}
+          {row?.has_open_session && <Row label="Missing check-out" value="Yes" />}
+          {row?.has_off_window_punch && <Row label="Outside shift window" value="Yes" />}
+          {row?.has_pending_face_review && <Row label="Face review" value="Pending" />}
         </dl>
+
+        {/* Withheld time looks like a payroll error unless the reason is stated.
+            The remedy is review, not regularization, so don't send them there. */}
+        {row?.has_pending_face_review && (
+          <p className="text-xs text-[#64748B]">
+            A photo check on one of your punches needs confirming, so that punch is not
+            counted yet. Your manager will review it — the time is added back once it is
+            confirmed.
+          </p>
+        )}
+
+        {/* Worked time is the sum of the day's sessions, so an unclosed one reads
+            as lost time. Say why rather than leaving a bare flag above. */}
+        {row?.has_open_session && (
+          <p className="text-xs text-[#64748B]">
+            A check-in was never closed with a check-out, so that session counted as no
+            time worked. Request regularization to have it corrected.
+          </p>
+        )}
 
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC]">

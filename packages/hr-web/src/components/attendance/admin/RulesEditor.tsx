@@ -109,6 +109,9 @@ export default function RulesEditor({ actor, onNotice }: Props) {
   const geoDirty = canSetLocation && (lat !== baseline.lat || lng !== baseline.lng);
   const rulesDirty = JSON.stringify(rules) !== JSON.stringify(baseline.rules);
   const dirty = geoDirty || rulesDirty;
+  // Mirrors the server-side superRefine and the DB CHECK: a half-day floor above
+  // the full-day floor would make 'half_day' unreachable.
+  const thresholdOrderInvalid = rules.min_half_day_minutes > rules.min_full_day_minutes;
 
   const save = async () => {
     setError(null);
@@ -255,6 +258,55 @@ export default function RulesEditor({ actor, onNotice }: Props) {
         </div>
       </PageSection>
 
+      <PageSection title="Day classification">
+        <div className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-4">
+          <p className="text-xs text-[#64748B]">
+            How much time an employee must actually work for a day to count. Time is
+            the total of every check-in/check-out session, so a break punched out and
+            back in is not counted. Employees on a shift use their shift&apos;s own
+            figures; these apply to everyone without a shift assignment.
+          </p>
+          <div className="mt-3 flex flex-wrap items-end gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="re-half-day" className={fieldLabelCls}>Half day from</label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="re-half-day" type="number" min={0} max={1440} step={15}
+                  value={rules.min_half_day_minutes}
+                  onChange={(e) => setRules({ ...rules, min_half_day_minutes: Number(e.target.value) })}
+                  className={`${inputCls} w-24`}
+                />
+                <span className="text-xs text-[#64748B]">minutes</span>
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="re-full-day" className={fieldLabelCls}>Full day from</label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="re-full-day" type="number" min={0} max={1440} step={15}
+                  value={rules.min_full_day_minutes}
+                  onChange={(e) => setRules({ ...rules, min_full_day_minutes: Number(e.target.value) })}
+                  className={`${inputCls} w-24`}
+                />
+                <span className="text-xs text-[#64748B]">minutes</span>
+              </div>
+            </div>
+          </div>
+          {/* The consequential part: below the half-day floor the day is Absent,
+              not Half Day. Spelled out because it is the surprising outcome. */}
+          <p className="mt-3 text-xs text-[#64748B]">
+            Below {rules.min_half_day_minutes} minutes a day with attendance is marked{' '}
+            <span className="font-semibold text-[#0F172A]">Absent</span>, and the employee
+            can request regularization. The check-in and check-out times are still kept.
+          </p>
+          {thresholdOrderInvalid && (
+            <p role="alert" className="mt-2 text-xs font-medium text-red-600">
+              The half-day minimum must not exceed the full-day minimum.
+            </p>
+          )}
+        </div>
+      </PageSection>
+
       <PageSection title="Face verification">
         <div className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-1">
           <ToggleRow
@@ -335,7 +387,7 @@ export default function RulesEditor({ actor, onNotice }: Props) {
           then pressing one of them silently dropped the other. */}
       <div className="flex items-center justify-end gap-3 border-t border-[#E2E8F0] pt-4">
         {dirty && <span className="text-xs text-[#64748B]">Unsaved changes</span>}
-        <Button variant="primary" size="md" onClick={save} disabled={saving || !dirty}>
+        <Button variant="primary" size="md" onClick={save} disabled={saving || !dirty || thresholdOrderInvalid}>
           {saving ? 'Saving…' : 'Save changes'}
         </Button>
       </div>

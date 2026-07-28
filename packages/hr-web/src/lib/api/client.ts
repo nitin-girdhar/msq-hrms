@@ -23,7 +23,10 @@ import type {
   MyMonthResponse,
   TeamDayRow,
   ShiftView,
+  ShiftSegmentView,
   ShiftAssignmentView,
+  DayEventView,
+  FaceReviewView,
   RegularizationView,
   MonthlySummaryRow,
   FaceSelfContext,
@@ -287,6 +290,27 @@ export const attendance = {
 
   photoUrl: (eventId: string) => `/api/hr/attendance/photos/${eventId}`,
 
+  // Every punch of one employee's work date. The team view carries only the
+  // day's first check-in and last check-out, so this is the only way to reach a
+  // split shift's middle punches — and their selfies.
+  dayEvents: (params: { user_id: string; date: string }) =>
+    request<Envelope<DayEventView[]>>(`/hr/attendance/events${qs(params)}`),
+
+  // ── Face review queue (same approval authority as regularizations) ──
+  faceReviews: {
+    list: (params: { status?: 'pending' | 'cleared' | 'rejected'; page?: number; limit?: number } = {}) =>
+      request<ListEnvelope<FaceReviewView>>(`/hr/attendance/face-reviews${qs(params)}`),
+
+    // Confirms the punch. The day is recomputed and the withheld minutes are
+    // restored, so this is not a cosmetic status change.
+    clear: (eventId: string) =>
+      request<Envelope<unknown>>(`/hr/attendance/face-reviews/${eventId}/clear`, { method: 'POST' }),
+
+    // Invalidates the punch. The day is recomputed without it.
+    reject: (eventId: string) =>
+      request<Envelope<unknown>>(`/hr/attendance/face-reviews/${eventId}/reject`, { method: 'POST' }),
+  },
+
   // ── Face enrollment (reference photo lives in identity as the avatar) ──
   face: {
     // Self-service enrollment context (own user): drives the check-in gate.
@@ -341,6 +365,10 @@ export interface CreateShiftBody {
   min_half_day_minutes: number;
   min_full_day_minutes: number;
   is_night_shift: boolean;
+  is_split: boolean;
+  // Required when is_split; the outer start_time/end_time is the window these
+  // must nest inside, and they may not overlap each other.
+  segments?: ShiftSegmentView[];
 }
 
 export const shifts = {

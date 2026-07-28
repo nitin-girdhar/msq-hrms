@@ -17,6 +17,16 @@ export function canManageAttendanceAdmin(actor: CapabilityHolder): boolean {
   return can(actor, CAPABILITY.HR_ATTENDANCE_ADMIN);
 }
 
+/**
+ * Who may act on a flagged face match. Mirrors the capability the clear/reject
+ * routes require, so the queue is not rendered to someone the service will refuse
+ * — and, like the helper above, asks the session's resolved capability list rather
+ * than comparing a rank.
+ */
+export function canReviewFaceMatches(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_ATTENDANCE_REGULARIZATION_APPROVE);
+}
+
 /** Only an org admin can set the org's geofence-centre coordinates — matches the
  *  floor identity-service's updateOrgGeo enforces, which excludes hr_admin. */
 export function canSetOrgLocation(rank: number): boolean {

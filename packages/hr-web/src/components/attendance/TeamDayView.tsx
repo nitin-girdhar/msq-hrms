@@ -58,7 +58,10 @@ export default function TeamDayView({ rows, loading, faceEnabled, canManage, onC
         <tbody>
           {rows.map((r) => {
             const style = ATTENDANCE_STATUS_STYLES[r.status_name] ?? ATTENDANCE_STATUS_STYLES.not_marked;
-            const pending = r.face_review_status === 'pending';
+            // Day-level, NOT r.face_review_status: that field comes from the
+            // check-in matching first_in, so it misses a mismatch on a split
+            // shift's later punches — exactly where buddy-punching happens.
+            const pending = r.has_pending_face_review;
             return (
               <tr key={r.user_id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                 <td className="px-4 py-3">
@@ -89,14 +92,20 @@ export default function TeamDayView({ rows, loading, faceEnabled, canManage, onC
                 <td className="px-4 py-3 text-[#475569]">{formatWorkedMinutes(r.worked_minutes)}</td>
                 {faceEnabled && (
                   <td className="px-4 py-3">
-                    {r.face_match_score != null ? (
+                    {/* The review marker stands on its own rather than being
+                        appended to a score. A not-enrolled punch and a CompreFace
+                        outage are both 'pending' with a NULL score, and those are
+                        the cases most worth surfacing — previously they rendered
+                        as a grey dash and disappeared. */}
+                    {r.face_match_score != null || pending ? (
                       <button
                         type="button"
                         onClick={() => setViewing(r)}
-                        className={`font-semibold ${scoreClass(r.face_match_score, pending)} hover:underline`}
-                        title={pending ? 'Flagged for review' : 'View photos'}
+                        className={`font-semibold ${scoreClass(r.face_match_score ?? 0, pending)} hover:underline`}
+                        title={pending ? 'A punch is awaiting face review — its time is not counted' : 'View photos'}
                       >
-                        {Math.round(r.face_match_score)}%{pending ? ' ⚑' : ''}
+                        {r.face_match_score != null ? `${Math.round(r.face_match_score)}%` : 'No score'}
+                        {pending ? ' ⚑' : ''}
                       </button>
                     ) : (
                       <span className="text-[11px] text-[#94A3B8]">{r.first_in ? '—' : ''}</span>
@@ -104,8 +113,13 @@ export default function TeamDayView({ rows, loading, faceEnabled, canManage, onC
                   </td>
                 )}
                 <td className="px-4 py-3 text-[11px] text-amber-700">
-                  {r.is_late && <span className="mr-1">Late</span>}
-                  {r.is_early_exit && <span>Early exit</span>}
+                  <div className="flex flex-wrap gap-x-2">
+                    {r.is_late && <span>Late</span>}
+                    {r.is_early_exit && <span>Early exit</span>}
+                    {/* Both already came back from the API and were being dropped. */}
+                    {r.has_off_window_punch && <span>Outside window</span>}
+                    {r.has_open_session && <span>Missing check-out</span>}
+                  </div>
                 </td>
               </tr>
             );

@@ -20,6 +20,7 @@ import {
   attendanceMeQuerySchema,
   attendanceTeamQuerySchema,
   reportsSummaryQuerySchema,
+  dayEventsQuerySchema,
   faceEnrollSchema,
   faceReviewsQuerySchema,
 } from './attendance.schema.js';
@@ -47,6 +48,10 @@ export async function attendanceRouter(app: FastifyInstance) {
   app.get('/attendance/today-summary', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_VIEW), validate({ query: attendanceTeamQuerySchema })] }, ctrl.todaySummary);
 
   // ── Photo (authenticated fetch — never a public static dir) ─────────────────
+  // Every punch of one employee's day, so a reviewer can open ANY punch's selfie.
+  // The team view only carries the first check-in and last check-out, which hides
+  // a split shift's middle punches. Same capability as the photos it leads to.
+  app.get('/attendance/events', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_PHOTO_VIEW), validate({ query: dayEventsQuerySchema })] }, ctrl.dayEvents);
   app.get('/attendance/photos/:id', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_PHOTO_VIEW)] }, ctrl.photo);
 
   // ── Regularizations (registered before nothing else conflicts) ──────────────
