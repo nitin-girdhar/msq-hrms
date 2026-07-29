@@ -25,6 +25,7 @@ import type {
   UpdateShiftAssignmentInput,
   RecomputeAttendanceInput,
   CreateRegularizationInput,
+  UpdateRegularizationInput,
   ListRegularizationsInput,
   FaceEnrollInput,
   FaceReviewsQueryInput,
@@ -273,6 +274,30 @@ export async function createRegularization(ctx: AttendanceCtx, data: CreateRegul
     new_value: { regularization_id: result.id, work_date: data.work_date },
   });
   return result;
+}
+
+// Requester-side edits. No approver authority is involved — the repository's
+// self-RLS + pending guard is the whole rule, so there is no rank check here.
+export async function updateRegularization(ctx: AttendanceCtx, id: string, data: UpdateRegularizationInput) {
+  await repo.updateRegularization(ctx, id, data);
+  void logActivity({
+    action_type: 'attendance_regularization_updated',
+    performed_by: ctx.user_id,
+    subject_user_id: ctx.user_id,
+    org_id: ctx.org_id,
+    new_value: { regularization_id: id, ...data },
+  });
+}
+
+export async function cancelRegularization(ctx: AttendanceCtx, id: string) {
+  await repo.cancelRegularization(ctx, id);
+  void logActivity({
+    action_type: 'attendance_regularization_cancelled',
+    performed_by: ctx.user_id,
+    subject_user_id: ctx.user_id,
+    org_id: ctx.org_id,
+    new_value: { regularization_id: id },
+  });
 }
 
 export async function listRegularizations(ctx: AttendanceCtx, filters: ListRegularizationsInput) {

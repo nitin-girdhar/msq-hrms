@@ -221,7 +221,8 @@ export interface ShiftAssignmentView {
   is_active: boolean;
 }
 
-export type RegularizationStatus = 'pending' | 'approved' | 'rejected';
+// 'cancelled' is requester-side: the employee withdrew a still-pending request.
+export type RegularizationStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 
 export interface RegularizationView {
   id: string;

@@ -156,15 +156,14 @@ export async function updateLeaveRequest(ctx: LeaveCtx, id: string, data: Update
 }
 
 export async function cancelLeave(ctx: LeaveCtx, id: string, comment: string | null) {
-  const result = await repo.cancelLeave(ctx, id, comment);
+  await repo.cancelLeave(ctx, id, comment);
   void logActivity({
     action_type: 'leave_cancelled',
     performed_by: ctx.user_id,
     subject_user_id: ctx.user_id,
     org_id: ctx.org_id,
-    new_value: { request_id: id, reversed: result.reversed },
+    new_value: { request_id: id },
   });
-  return result;
 }
 
 // ── Balances & ledger ───────────────────────────────────────────────────────

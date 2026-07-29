@@ -13,6 +13,7 @@ import type {
   UpdateShiftAssignmentInput,
   RecomputeAttendanceInput,
   CreateRegularizationInput,
+  UpdateRegularizationInput,
   ApproveRegularizationInput,
   RejectRegularizationInput,
   ListRegularizationsInput,
@@ -161,6 +162,18 @@ export class AttendanceController {
   listRegularizations = async (request: FastifyRequest, reply: FastifyReply) => {
     const result = await service.listRegularizations(ctxOf(request), request.query as ListRegularizationsInput);
     return reply.send({ success: true, ...result });
+  };
+
+  updateRegularization = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = request.params as { id: string };
+    await service.updateRegularization(ctxOf(request), id, request.body as UpdateRegularizationInput);
+    return reply.send({ success: true, data: { id } });
+  };
+
+  cancelRegularization = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = request.params as { id: string };
+    await service.cancelRegularization(ctxOf(request), id);
+    return reply.send({ success: true, data: { id } });
   };
 
   approveRegularization = async (request: FastifyRequest, reply: FastifyReply) => {

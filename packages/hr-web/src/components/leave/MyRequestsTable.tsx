@@ -52,12 +52,12 @@ export default function MyRequestsTable({ items, onEdit, onCancel, busyId }: Pro
                       Edit
                     </Button>
                   )}
-                  {canCancelRequest(r.status_name, r.start_date) && (
+                  {canCancelRequest(r.status_name) && (
                     <Button variant="danger" onClick={() => onCancel(r)} disabled={busyId === r.id}>
                       {busyId === r.id ? 'Cancelling…' : 'Cancel'}
                     </Button>
                   )}
-                  {!canEditRequest(r.status_name) && !canCancelRequest(r.status_name, r.start_date) && (
+                  {!canEditRequest(r.status_name) && !canCancelRequest(r.status_name) && (
                     <span className="text-xs text-[#CBD5E1]">—</span>
                   )}
                 </div>

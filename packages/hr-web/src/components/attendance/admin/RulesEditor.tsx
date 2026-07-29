@@ -324,7 +324,7 @@ export default function RulesEditor({ actor, onNotice }: Props) {
                   value={rules.face_match_threshold}
                   onChange={(e) => setRules({ ...rules, face_match_threshold: Number(e.target.value) })}
                   disabled={!rules.require_face_match}
-                  className={`${inputCls} w-20`}
+                  className={`${inputCls} w-24`}
                 />
                 <span className={`text-xs ${rules.require_face_match ? 'text-[#64748B]' : 'text-[#CBD5E1]'}`}>%</span>
               </div>
@@ -335,7 +335,8 @@ export default function RulesEditor({ actor, onNotice }: Props) {
                   value={rules.face_match_action}
                   onChange={(e) => setRules({ ...rules, face_match_action: e.target.value })}
                   disabled={!rules.require_face_match}
-                  className={`${inputCls} w-28`}
+                  // w-44: "Flag for review" plus the native chevron; w-28 clipped it.
+                  className={`${inputCls} w-44 pr-8`}
                 >
                   <option value="flag">Flag for review</option>
                   <option value="block">Block check-in</option>
@@ -353,7 +354,7 @@ export default function RulesEditor({ actor, onNotice }: Props) {
                 id="re-cooldown" type="number" min={0} max={365} step={1}
                 value={rules.photo_change_cooldown_days}
                 onChange={(e) => setRules({ ...rules, photo_change_cooldown_days: Number(e.target.value) })}
-                className={`${inputCls} w-20`}
+                className={`${inputCls} w-24`}
               />
               <span className="text-xs text-[#64748B]">days</span>
             </div>

@@ -110,14 +110,10 @@ export function canEditRequest(status: LeaveStatusName): boolean {
   return status === 'pending';
 }
 
-export function canCancelRequest(
-  status: LeaveStatusName,
-  startDate: string,
-): boolean {
-  if (status === 'pending') return true;
-  if (status === 'approved') {
-    const today = new Date().toISOString().slice(0, 10);
-    return startDate > today;
-  }
-  return false;
+// Pending only — once an approver has acted, the balance ledger and the
+// 'on_leave' attendance days are already written and only HR can reverse them.
+// hr-service enforces the same rule (leave.repository.cancelLeave); this just
+// keeps the button off a row the server would reject.
+export function canCancelRequest(status: LeaveStatusName): boolean {
+  return status === 'pending';
 }

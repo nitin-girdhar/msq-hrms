@@ -48,6 +48,7 @@ export const REGULARIZATION_STATUS_STYLES: Record<RegularizationStatus, { bg: st
   pending: { bg: 'bg-amber-50', fg: 'text-amber-700' },
   approved: { bg: 'bg-green-50', fg: 'text-green-700' },
   rejected: { bg: 'bg-red-50', fg: 'text-red-700' },
+  cancelled: { bg: 'bg-slate-100', fg: 'text-slate-600' },
 };
 
 export function formatWorkedMinutes(minutes: number | null): string {

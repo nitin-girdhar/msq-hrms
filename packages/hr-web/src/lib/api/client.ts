@@ -152,7 +152,7 @@ export const leave = {
     }),
 
   cancel: (id: string, comment?: string) =>
-    request<Envelope<{ reversed: boolean }>>(`/hr/leave/requests/${id}/cancel`, {
+    request<Envelope<{ id: string }>>(`/hr/leave/requests/${id}/cancel`, {
       method: 'POST',
       body: JSON.stringify({ comment }),
     }),
@@ -276,6 +276,15 @@ export interface CreateRegularizationBody {
   reason: string;
 }
 
+// work_date is not editable — a different date is a different request, and the
+// one-open-per-date rule would reject it anyway. Cancel and file a new one.
+export interface UpdateRegularizationBody {
+  requested_status_name?: string | null | undefined;
+  requested_in?: string | null | undefined;
+  requested_out?: string | null | undefined;
+  reason?: string | undefined;
+}
+
 export interface ListRegularizationsParams {
   scope?: 'own' | 'team' | undefined;
   status?: string | undefined;
@@ -350,6 +359,16 @@ export const attendance = {
 
     list: (params: ListRegularizationsParams = {}) =>
       request<ListEnvelope<RegularizationView>>(`/hr/attendance/regularizations${qs(params)}`),
+
+    // Requester-side, own pending request only (server enforces both).
+    update: (id: string, body: UpdateRegularizationBody) =>
+      request<Envelope<{ id: string }>>(`/hr/attendance/regularizations/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+
+    cancel: (id: string) =>
+      request<Envelope<{ id: string }>>(`/hr/attendance/regularizations/${id}/cancel`, { method: 'POST' }),
 
     approve: (id: string, comment?: string) =>
       request<Envelope<unknown>>(`/hr/attendance/regularizations/${id}/approve`, {

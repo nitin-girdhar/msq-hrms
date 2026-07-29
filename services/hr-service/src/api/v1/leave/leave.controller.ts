@@ -78,8 +78,8 @@ export class LeaveController {
   cancel = async (request: FastifyRequest, reply: FastifyReply) => {
     const { id } = request.params as { id: string };
     const { comment } = request.body as CancelLeaveRequestInput;
-    const result = await service.cancelLeave(ctxOf(request), id, comment ?? null);
-    return reply.send({ success: true, data: result });
+    await service.cancelLeave(ctxOf(request), id, comment ?? null);
+    return reply.send({ success: true, data: { id } });
   };
 
   // ── Balances & ledger ─────────────────────────────────────────────────────

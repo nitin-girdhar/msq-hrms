@@ -41,6 +41,8 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
   const [detailDate, setDetailDate] = useState<string | null>(null);
   const [detailRow, setDetailRow] = useState<AttendanceDayRow | undefined>(undefined);
   const [regFormDate, setRegFormDate] = useState<string | null>(null);
+  // Set = the form modal is open in edit mode over this pending request.
+  const [regEditing, setRegEditing] = useState<RegularizationView | null>(null);
 
   // Derive "today" in the org timezone (from rules) so it matches the
   // server-computed work_date. Falls back to browser-local until rules load.
@@ -166,6 +168,18 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
     [actor.id],
   );
 
+  const handleCancelRegularization = useCallback(async (item: RegularizationView) => {
+    setNotice(null);
+    setError(null);
+    try {
+      await attendanceApi.regularizations.cancel(item.id);
+      setNotice('Regularization request cancelled.');
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to cancel the request.');
+    }
+  }, []);
+
   const handlePunchSuccess = (result: PunchResult) => {
     setNotice(result.event_type === 'check_in' ? 'Checked in.' : 'Checked out.');
     setPunchMode(null);
@@ -194,7 +208,12 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
         </PageSection>
 
         <PageSection title="My regularizations">
-          <MyRegularizationsList items={regularizations} loading={regLoading} />
+          <MyRegularizationsList
+            items={regularizations}
+            loading={regLoading}
+            onEdit={(item) => { setNotice(null); setRegEditing(item); }}
+            onCancel={handleCancelRegularization}
+          />
         </PageSection>
       </PageBody>
 
@@ -225,10 +244,14 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
       />
 
       <RegularizationFormModal
-        open={regFormDate !== null}
+        open={regFormDate !== null || regEditing !== null}
         date={regFormDate}
-        onClose={() => setRegFormDate(null)}
-        onSubmitted={() => { setNotice('Regularization request submitted.'); setRefreshKey((k) => k + 1); }}
+        item={regEditing}
+        onClose={() => { setRegFormDate(null); setRegEditing(null); }}
+        onSubmitted={() => {
+          setNotice(regEditing ? 'Regularization request updated.' : 'Regularization request submitted.');
+          setRefreshKey((k) => k + 1);
+        }}
       />
     </div>
   );

@@ -1,0 +1,15 @@
+meta {
+  name: Cancel Regularization
+  type: http
+  seq: 32
+}
+
+post {
+  url: {{baseUrl}}/hr/attendance/regularizations/{{regularizationId}}/cancel
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: auth_token={{authToken}}
+}

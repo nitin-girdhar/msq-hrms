@@ -15,6 +15,7 @@ import {
   updateShiftAssignmentSchema,
   recomputeAttendanceSchema,
   createRegularizationSchema,
+  updateRegularizationSchema,
   approveRegularizationSchema,
   rejectRegularizationSchema,
   listRegularizationsSchema,
@@ -61,6 +62,10 @@ export async function attendanceRouter(app: FastifyInstance) {
   // ── Regularizations (registered before nothing else conflicts) ──────────────
   app.post('/attendance/regularizations', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_REQUEST, 'You do not have permission to request a correction'), validate({ body: createRegularizationSchema })] }, ctrl.createRegularization);
   app.get('/attendance/regularizations', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_VIEW), validate({ query: listRegularizationsSchema })] }, ctrl.listRegularizations);
+  // Requester-side edit / withdraw: same capability as filing one, because the
+  // authority being exercised is "this is my request", not an approval.
+  app.patch('/attendance/regularizations/:id', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_REQUEST, 'You do not have permission to change this request'), validate({ body: updateRegularizationSchema })] }, ctrl.updateRegularization);
+  app.post('/attendance/regularizations/:id/cancel', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_REQUEST, 'You do not have permission to change this request')] }, ctrl.cancelRegularization);
   app.post('/attendance/regularizations/:id/approve', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_APPROVE, 'You do not have permission to approve corrections'), validate({ body: approveRegularizationSchema })] }, ctrl.approveRegularization);
   app.post('/attendance/regularizations/:id/reject', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_REJECT, 'You do not have permission to reject corrections'), validate({ body: rejectRegularizationSchema })] }, ctrl.rejectRegularization);
 

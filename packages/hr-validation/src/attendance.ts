@@ -244,6 +244,21 @@ export const createRegularizationSchema = z.object({
   reason: z.string().min(1).max(1000),
 });
 
+// Editing a still-pending request. `work_date` is deliberately absent: moving a
+// request to another date is a different request (and would collide with the
+// one-open-per-date index), so the requester cancels and files a new one.
+export const updateRegularizationSchema = z
+  .object({
+    requested_status_name: z
+      .enum(['present', 'absent', 'half_day', 'on_leave', 'holiday', 'weekly_off', 'wfh'])
+      .nullable()
+      .optional(),
+    requested_in: z.string().datetime({ offset: true }).nullable().optional(),
+    requested_out: z.string().datetime({ offset: true }).nullable().optional(),
+    reason: z.string().min(1).max(1000).optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: 'Provide at least one field to update' });
+
 export const approveRegularizationSchema = z.object({
   comment: z.string().max(1000).optional(),
 });
@@ -254,7 +269,7 @@ export const rejectRegularizationSchema = z.object({
 
 export const listRegularizationsSchema = z.object({
   scope: z.enum(['own', 'team']).default('own'),
-  status: z.enum(['pending', 'approved', 'rejected']).optional(),
+  status: z.enum(['pending', 'approved', 'rejected', 'cancelled']).optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
@@ -318,6 +333,7 @@ export type CreateShiftAssignmentInput = z.infer<typeof createShiftAssignmentSch
 export type UpdateShiftAssignmentInput = z.infer<typeof updateShiftAssignmentSchema>;
 export type RecomputeAttendanceInput = z.infer<typeof recomputeAttendanceSchema>;
 export type CreateRegularizationInput = z.infer<typeof createRegularizationSchema>;
+export type UpdateRegularizationInput = z.infer<typeof updateRegularizationSchema>;
 export type ApproveRegularizationInput = z.infer<typeof approveRegularizationSchema>;
 export type RejectRegularizationInput = z.infer<typeof rejectRegularizationSchema>;
 export type ListRegularizationsInput = z.infer<typeof listRegularizationsSchema>;

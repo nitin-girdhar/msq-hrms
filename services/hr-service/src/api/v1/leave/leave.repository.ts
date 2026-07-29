@@ -602,49 +602,25 @@ export async function updateLeaveRequest(
   });
 }
 
-export async function cancelLeave(ctx: LeaveCtx, id: string, comment: string | null): Promise<{ reversed: boolean }> {
+export async function cancelLeave(ctx: LeaveCtx, id: string, comment: string | null): Promise<void> {
   return serviceTxWithContext(ctx, comment, async (tx) => {
     const req = await loadRequestForAction(tx, id);
     if (!req) throw new NotFoundError('Leave request not found');
     if (req.user_id !== ctx.user_id) throw new ForbiddenError('You can only cancel your own leave requests');
 
+    // Pending only. An approved request has already moved the balance ledger and
+    // written its 'on_leave' attendance days, and an approver — not the requester
+    // — owns that decision; reversing it is an hr_admin adjustment, not a
+    // self-service cancel. This is the authoritative check: the UI hides the
+    // button for the same reason, but a direct API call must fail here too.
+    if (req.status_name !== 'pending') {
+      throw new ConflictError(
+        `Cannot cancel a request that is ${req.status_name} — ask HR to reverse it`,
+      );
+    }
+
     const cancelledStatusId = await resolveStatusId(tx, 'cancelled');
-
-    if (req.status_name === 'pending') {
-      await tx.execute(sql`UPDATE hr.leave_requests SET status_id = ${cancelledStatusId} WHERE id = ${id}`);
-      return { reversed: false };
-    }
-
-    if (req.status_name === 'approved') {
-      // Only future-dated approved leave can be cancelled; past/ongoing becomes
-      // a regularization concern.
-      if (Date.parse(req.start_date) <= Date.parse(todayIso())) {
-        throw new ConflictError(
-          'Cannot cancel leave that has already started or passed — raise a regularization request instead',
-        );
-      }
-      await tx.execute(sql`UPDATE hr.leave_requests SET status_id = ${cancelledStatusId} WHERE id = ${id}`);
-      // Reverse the consumption: positive adjustment restores the balance.
-      await tx.execute(sql`
-        INSERT INTO hr.leave_ledger
-          (user_id, org_id, leave_type_id, entry_type, amount, leave_request_id, effective_date, note, created_by)
-        VALUES
-          (${req.user_id}, ${req.org_id}, ${req.leave_type_id}, 'adjustment', ${req.days_count},
-           ${id}, ${todayIso()}, 'Reversal of cancelled approved leave', ${ctx.user_id})
-      `);
-      // Attendance integration: drop the 'on_leave' attendance_days rows the
-      // approval wrote for this request's span so payroll no longer counts them.
-      // Only this leave's own 'leave'-sourced rows are removed (never a
-      // 'regularization' row); the span is future-dated so there is no punch data
-      // to preserve, and the nightly job will re-resolve those dates if needed.
-      await tx.execute(sql`
-        DELETE FROM hr.attendance_days
-        WHERE leave_request_id = ${id} AND resolution_source = 'leave'
-      `);
-      return { reversed: true };
-    }
-
-    throw new ConflictError(`Cannot cancel a request that is ${req.status_name}`);
+    await tx.execute(sql`UPDATE hr.leave_requests SET status_id = ${cancelledStatusId} WHERE id = ${id}`);
   });
 }
 

@@ -50,6 +50,7 @@ import type {
   CreateShiftAssignmentInput,
   UpdateShiftAssignmentInput,
   CreateRegularizationInput,
+  UpdateRegularizationInput,
   ListRegularizationsInput,
   FaceReviewsQueryInput,
 } from '@hr/validation';
@@ -1216,6 +1217,69 @@ export async function createRegularization(ctx: AttendanceCtx, data: CreateRegul
       }
       throw err;
     }
+  });
+}
+
+// Edit / withdraw, both restricted to the requester's OWN still-pending request.
+// They run under withRoleTx so the self RLS policy — not an application-side
+// `user_id = ...` we could forget — is what makes another user's row invisible;
+// the status guard is a separate SELECT so "already approved" reports a 409
+// instead of the 404 a no-op UPDATE would produce.
+async function loadOwnPendingReg(tx: DrizzleTx, id: string): Promise<{ status: string } | null> {
+  const rows = (await tx.execute(sql`
+    SELECT status FROM hr.attendance_regularizations WHERE id = ${id} AND NOT is_deleted
+  `)) as unknown as Array<{ status: string }>;
+  const row = rows[0];
+  if (!row) return null;
+  if (row.status !== 'pending') {
+    throw new ConflictError(`This request is already ${row.status} and can no longer be changed`);
+  }
+  return row;
+}
+
+export async function updateRegularization(
+  ctx: AttendanceCtx,
+  id: string,
+  data: UpdateRegularizationInput,
+): Promise<void> {
+  return withRoleTx(ctx, async (tx) => {
+    if (!(await loadOwnPendingReg(tx, id))) throw new NotFoundError('Regularization not found');
+
+    const sets = [];
+    if (data.requested_status_name !== undefined) {
+      sets.push(sql`requested_status_id = ${
+        data.requested_status_name
+          ? sql`(SELECT id FROM hr.attendance_statuses WHERE name = ${data.requested_status_name})`
+          : sql`NULL`
+      }`);
+    }
+    if (data.requested_in !== undefined) sets.push(sql`requested_in = ${data.requested_in}`);
+    if (data.requested_out !== undefined) sets.push(sql`requested_out = ${data.requested_out}`);
+    if (data.reason !== undefined) sets.push(sql`reason = ${data.reason}`);
+    if (sets.length === 0) return;
+
+    const res = (await tx.execute(sql`
+      UPDATE hr.attendance_regularizations SET ${sql.join(sets, sql`, `)}
+      WHERE id = ${id} AND status = 'pending' AND NOT is_deleted
+      RETURNING id::text
+    `)) as unknown as Row[];
+    if (res.length === 0) throw new NotFoundError('Regularization not found');
+  });
+}
+
+export async function cancelRegularization(ctx: AttendanceCtx, id: string): Promise<void> {
+  return withRoleTx(ctx, async (tx) => {
+    if (!(await loadOwnPendingReg(tx, id))) throw new NotFoundError('Regularization not found');
+    // acted_at/approver_id stay null — nobody decided this; the requester withdrew
+    // it. Leaving 'pending' also releases the one-open-per-date unique index, so
+    // the employee can file a corrected request for the same day.
+    const res = (await tx.execute(sql`
+      UPDATE hr.attendance_regularizations
+      SET status = 'cancelled'
+      WHERE id = ${id} AND status = 'pending' AND NOT is_deleted
+      RETURNING id::text
+    `)) as unknown as Row[];
+    if (res.length === 0) throw new NotFoundError('Regularization not found');
   });
 }
 

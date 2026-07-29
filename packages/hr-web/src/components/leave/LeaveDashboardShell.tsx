@@ -76,8 +76,8 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
     setNotice(null);
     setCancelBusyId(req.id);
     try {
-      const res = await leaveApi.cancel(req.id);
-      setNotice(res.data.reversed ? 'Leave cancelled and balance restored.' : 'Leave request cancelled.');
+      await leaveApi.cancel(req.id);
+      setNotice('Leave request cancelled.');
       loadStatic();
       loadRequests();
     } catch (err) {

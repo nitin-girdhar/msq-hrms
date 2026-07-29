@@ -1,0 +1,24 @@
+meta {
+  name: Update Regularization
+  type: http
+  seq: 31
+}
+
+patch {
+  url: {{baseUrl}}/hr/attendance/regularizations/{{regularizationId}}
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: auth_token={{authToken}}
+}
+
+body:json {
+  {
+    "requested_status_name": "present",
+    "requested_in": null,
+    "requested_out": null,
+    "reason": "Corrected reason — was on client visit"
+  }
+}
