@@ -78,8 +78,37 @@ export default function FaceReviewDecisionModal({ review, onClose, onDecided }: 
     }
   };
 
+  const footer = (
+    <div className="flex justify-end gap-2">
+      <button
+        type="button"
+        onClick={onClose}
+        disabled={busy !== null}
+        className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60"
+      >
+        Cancel
+      </button>
+      <button
+        type="button"
+        onClick={() => decide('reject')}
+        disabled={busy !== null}
+        className="rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"
+      >
+        {busy === 'reject' ? 'Rejecting…' : 'Reject punch'}
+      </button>
+      <button
+        type="button"
+        onClick={() => decide('clear')}
+        disabled={busy !== null}
+        className="rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:opacity-60"
+      >
+        {busy === 'clear' ? 'Confirming…' : 'Confirm punch'}
+      </button>
+    </div>
+  );
+
   return (
-    <Modal open onClose={onClose} title="Review face match" locked={busy !== null} maxWidth="max-w-lg">
+    <Modal open onClose={onClose} title="Review face match" locked={busy !== null} maxWidth="max-w-lg" footer={footer}>
       <div className="flex flex-col gap-4">
         <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 text-sm">
           <p className="font-semibold text-[#0F172A]">{who}</p>
@@ -122,33 +151,6 @@ export default function FaceReviewDecisionModal({ review, onClose, onDecided }: 
         </p>
 
         {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy !== null}
-            className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => decide('reject')}
-            disabled={busy !== null}
-            className="rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"
-          >
-            {busy === 'reject' ? 'Rejecting…' : 'Reject punch'}
-          </button>
-          <button
-            type="button"
-            onClick={() => decide('clear')}
-            disabled={busy !== null}
-            className="rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:opacity-60"
-          >
-            {busy === 'clear' ? 'Confirming…' : 'Confirm punch'}
-          </button>
-        </div>
       </div>
     </Modal>
   );

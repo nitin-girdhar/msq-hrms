@@ -144,8 +144,17 @@ function EmployeeEditModal({ profile, departments, designations, onClose, onSave
     'rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#0F172A] shadow-sm focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20';
   const labelCls = 'text-xs font-semibold text-[#0F172A]';
 
+  const footer = (
+    <div className="flex justify-end gap-2">
+      <button type="button" onClick={onClose} disabled={submitting} className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60">Cancel</button>
+      <button type="button" onClick={save} disabled={submitting} className="rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:opacity-60">
+        {submitting ? 'Saving…' : 'Save profile'}
+      </button>
+    </div>
+  );
+
   return (
-    <Modal open onClose={onClose} title={`Edit — ${profile.full_name}`} locked={submitting} maxWidth="max-w-lg">
+    <Modal open onClose={onClose} title={`Edit — ${profile.full_name}`} locked={submitting} maxWidth="max-w-lg" footer={footer}>
       <div className="flex flex-col gap-4">
         {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>}
 
@@ -182,12 +191,6 @@ function EmployeeEditModal({ profile, departments, designations, onClose, onSave
           </div>
         </div>
 
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={submitting} className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60">Cancel</button>
-          <button type="button" onClick={save} disabled={submitting} className="rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:opacity-60">
-            {submitting ? 'Saving…' : 'Save profile'}
-          </button>
-        </div>
       </div>
     </Modal>
   );

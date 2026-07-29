@@ -28,6 +28,10 @@ const HALF_OPTIONS: { value: HalfDay; label: string }[] = [
   { value: 'second_half', label: 'Second half' },
 ];
 
+// The submit button lives in the Modal's pinned footer, outside the <form>;
+// the HTML `form` attribute is what still wires it to this form.
+const FORM_ID = 'apply-leave-form';
+
 // Floor for the date inputs — leave is applied for today or later.
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -194,6 +198,32 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied, ed
   const inputCls =
     'rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#0F172A] shadow-sm focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20 disabled:cursor-not-allowed disabled:bg-[#F8FAFC]';
 
+  // With no bookable leave type there is nothing to submit, so the footer drops
+  // to a single dismiss action.
+  const footer =
+    typeOptions.length === 0 ? (
+      <div className="flex justify-end">
+        <button type="button" onClick={handleClose}
+          className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC]">
+          Close
+        </button>
+      </div>
+    ) : (
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={handleClose} disabled={submitting}
+          className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60">
+          Cancel
+        </button>
+        <button type="submit" form={FORM_ID} disabled={blockSubmit} aria-busy={submitting}
+          className="inline-flex items-center gap-2 rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:cursor-not-allowed disabled:opacity-60">
+          {submitting && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />}
+          {submitting
+            ? (editing ? 'Saving…' : 'Submitting…')
+            : (editing ? 'Save changes' : 'Submit request')}
+        </button>
+      </div>
+    );
+
   return (
     <Modal
       open={open}
@@ -201,8 +231,9 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied, ed
       title={editing ? 'Edit leave request' : 'Apply for leave'}
       locked={submitting}
       maxWidth="max-w-lg"
+      footer={footer}
     >
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+      <form id={FORM_ID} onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
         {error && (
           <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
             {error}
@@ -336,19 +367,6 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied, ed
               )}
             </div>
 
-            <div className="mt-1 flex justify-end gap-2">
-              <button type="button" onClick={handleClose} disabled={submitting}
-                className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60">
-                Cancel
-              </button>
-              <button type="submit" disabled={blockSubmit} aria-busy={submitting}
-                className="inline-flex items-center gap-2 rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:cursor-not-allowed disabled:opacity-60">
-                {submitting && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />}
-                {submitting
-                  ? (editing ? 'Saving…' : 'Submitting…')
-                  : (editing ? 'Save changes' : 'Submit request')}
-              </button>
-            </div>
           </>
         )}
       </form>

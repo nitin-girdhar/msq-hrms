@@ -22,6 +22,10 @@ const STATUS_OPTIONS: { value: AttendanceStatusName; label: string }[] = [
   { value: 'wfh', label: 'WFH' },
 ];
 
+// The submit button lives in the Modal's pinned footer, outside the <form>;
+// the HTML `form` attribute is what still wires it to this form.
+const FORM_ID = 'regularization-form';
+
 function toIsoWithOffset(localDatetime: string): string | undefined {
   if (!localDatetime) return undefined;
   const d = new Date(localDatetime);
@@ -85,9 +89,21 @@ export default function RegularizationFormModal({ open, date, onClose, onSubmitt
   const inputCls =
     'rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#0F172A] shadow-sm focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20 disabled:cursor-not-allowed disabled:bg-[#F8FAFC]';
 
+  const footer = (
+    <div className="flex justify-end gap-2">
+      <button type="button" onClick={handleClose} disabled={submitting} className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60">
+        Cancel
+      </button>
+      <button type="submit" form={FORM_ID} disabled={blockSubmit} aria-busy={submitting} className="inline-flex items-center gap-2 rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:cursor-not-allowed disabled:opacity-60">
+        {submitting && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />}
+        {submitting ? 'Submitting…' : 'Submit request'}
+      </button>
+    </div>
+  );
+
   return (
-    <Modal open={open} onClose={handleClose} title="Request regularization" locked={submitting} maxWidth="max-w-md">
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+    <Modal open={open} onClose={handleClose} title="Request regularization" locked={submitting} maxWidth="max-w-md" footer={footer}>
+      <form id={FORM_ID} onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
         {error && (
           <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
             {error}
@@ -138,15 +154,6 @@ export default function RegularizationFormModal({ open, date, onClose, onSubmitt
           <textarea id="rg-reason" value={reason} onChange={(e) => setReason(e.target.value)} disabled={submitting} rows={3} className={inputCls} />
         </div>
 
-        <div className="mt-1 flex justify-end gap-2">
-          <button type="button" onClick={handleClose} disabled={submitting} className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60">
-            Cancel
-          </button>
-          <button type="submit" disabled={blockSubmit} aria-busy={submitting} className="inline-flex items-center gap-2 rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:cursor-not-allowed disabled:opacity-60">
-            {submitting && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />}
-            {submitting ? 'Submitting…' : 'Submit request'}
-          </button>
-        </div>
       </form>
     </Modal>
   );

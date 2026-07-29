@@ -43,8 +43,25 @@ export default function DayDetailPopover({ date, row, userId, onClose, onRequest
   const canRegularize = !row || REGULARIZABLE.has(row.status_name);
   const sessions = events ? toSessions(events) : [];
 
+  const footer = (
+    <div className="flex justify-end gap-2">
+      <button type="button" onClick={onClose} className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC]">
+        Close
+      </button>
+      {canRegularize && (
+        <button
+          type="button"
+          onClick={() => onRequestRegularization(date)}
+          className="rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699]"
+        >
+          Request regularization
+        </button>
+      )}
+    </div>
+  );
+
   return (
-    <Modal open onClose={onClose} title={formatDay(date)} maxWidth="max-w-sm">
+    <Modal open onClose={onClose} title={formatDay(date)} maxWidth="max-w-sm" footer={footer}>
       <div className="flex flex-col gap-4">
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 text-sm">
           <Row label="Status" value={row?.status_label ?? 'Not marked'} />
@@ -122,20 +139,6 @@ export default function DayDetailPopover({ date, row, userId, onClose, onRequest
           </p>
         )}
 
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC]">
-            Close
-          </button>
-          {canRegularize && (
-            <button
-              type="button"
-              onClick={() => onRequestRegularization(date)}
-              className="rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699]"
-            >
-              Request regularization
-            </button>
-          )}
-        </div>
       </div>
     </Modal>
   );

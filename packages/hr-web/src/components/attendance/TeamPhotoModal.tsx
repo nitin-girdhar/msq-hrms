@@ -141,9 +141,27 @@ export default function TeamPhotoModal({ row, canManage, onClose, onChanged }: P
     }
   };
 
+  const footer = (
+    <div className="flex justify-end gap-2">
+      {canManage && (
+        <button
+          type="button"
+          onClick={() => setChangeOpen(true)}
+          disabled={busy}
+          className="rounded-lg bg-[#0b6cbf] px-3 py-2 text-sm font-medium text-white hover:bg-[#0a5da3] disabled:opacity-50"
+        >
+          Change photo
+        </button>
+      )}
+      <button type="button" onClick={onClose} className="rounded-lg px-3 py-2 text-sm font-medium text-[#475569] hover:bg-slate-50">
+        Close
+      </button>
+    </div>
+  );
+
   return (
     <>
-      <Modal open={!!row && !changeOpen} onClose={onClose} title={row.user_full_name} maxWidth="max-w-lg">
+      <Modal open={!!row && !changeOpen} onClose={onClose} title={row.user_full_name} maxWidth="max-w-lg" footer={footer}>
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-3">
             {row.has_photo ? (
@@ -178,22 +196,6 @@ export default function TeamPhotoModal({ row, canManage, onClose, onChanged }: P
           </div>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
-
-          <div className="flex justify-end gap-2">
-            {canManage && (
-              <button
-                type="button"
-                onClick={() => setChangeOpen(true)}
-                disabled={busy}
-                className="rounded-lg bg-[#0b6cbf] px-3 py-2 text-sm font-medium text-white hover:bg-[#0a5da3] disabled:opacity-50"
-              >
-                Change photo
-              </button>
-            )}
-            <button type="button" onClick={onClose} className="rounded-lg px-3 py-2 text-sm font-medium text-[#475569] hover:bg-slate-50">
-              Close
-            </button>
-          </div>
         </div>
       </Modal>
 

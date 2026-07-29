@@ -45,8 +45,25 @@ export default function RegularizationDecisionModal({ request, onClose, onDecide
   const inputCls =
     'rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#0F172A] shadow-sm focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20';
 
+  const footer = (
+    <div className="flex justify-end gap-2">
+      <button type="button" onClick={onClose} disabled={busy !== null}
+        className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60">
+        Close
+      </button>
+      <button type="button" onClick={() => decide('reject')} disabled={busy !== null}
+        className="rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60">
+        {busy === 'reject' ? 'Rejecting…' : 'Reject'}
+      </button>
+      <button type="button" onClick={() => decide('approve')} disabled={busy !== null}
+        className="rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:opacity-60">
+        {busy === 'approve' ? 'Approving…' : 'Approve'}
+      </button>
+    </div>
+  );
+
   return (
-    <Modal open onClose={onClose} title="Review regularization" locked={busy !== null} maxWidth="max-w-lg">
+    <Modal open onClose={onClose} title="Review regularization" locked={busy !== null} maxWidth="max-w-lg" footer={footer}>
       <div className="flex flex-col gap-4">
         {error && (
           <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>
@@ -68,20 +85,6 @@ export default function RegularizationDecisionModal({ request, onClose, onDecide
           <textarea id="rd-comment" value={comment} onChange={(e) => setComment(e.target.value)} rows={2} className={inputCls} disabled={busy !== null} />
         </div>
 
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={busy !== null}
-            className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60">
-            Close
-          </button>
-          <button type="button" onClick={() => decide('reject')} disabled={busy !== null}
-            className="rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60">
-            {busy === 'reject' ? 'Rejecting…' : 'Reject'}
-          </button>
-          <button type="button" onClick={() => decide('approve')} disabled={busy !== null}
-            className="rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:opacity-60">
-            {busy === 'approve' ? 'Approving…' : 'Approve'}
-          </button>
-        </div>
       </div>
     </Modal>
   );

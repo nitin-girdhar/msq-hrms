@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { NotificationProvider, productOrigins } from '@platform/ui-kit';
+import { NotificationProvider, productOrigins, authOrigin, usableProducts, landingFor } from '@platform/ui-kit';
 import { AppNavbar, AppSidebar, MobileSidebar } from '@platform/ui-kit/shell';
 import { requireSession, getEnabledModules, type PlatformModule } from '@platform/ui-kit/server';
 import { HR_NAV } from '@/src/config/navigation';
@@ -12,19 +12,26 @@ interface Props {
 
 // Authenticated HR chrome (hr.app.com). Same session gating + shared navbar/
 // sidebar as the other product apps, plus a check that the tenant has this HR
-// module (leave/attendance) enabled and is licensed for the `hr` product. A
-// disabled/unlicensed module bounces to the HR home rather than 404-ing.
+// module (leave/attendance) enabled AND that this user can actually use the `hr`
+// product. A disabled/unlicensed/uncapable module bounces rather than 404-ing.
 export default async function HrModuleShell({ module, children }: Props) {
   const { session, cookieHeader, licensedProducts } = await requireSession(`/${module}`);
   const enabledModules = await getEnabledModules(cookieHeader);
-
-  if (!enabledModules.includes(module) || !licensedProducts.includes('hr')) {
-    // No HR access — send to the lead product if licensed, else sign-in resolves it.
-    const origins = productOrigins();
-    redirect(origins.lms ? `${origins.lms}/dashboard/leads` : '/attendance');
-  }
-
   const origins = productOrigins();
+  const usable = usableProducts(licensedProducts, session);
+
+  if (!enabledModules.includes(module) || !usable.includes('hr')) {
+    // No HR access. Send them to a product they CAN use — never a hardcoded LMS,
+    // which an HRMS-only tenant would just get 403'd on. Nothing usable at all is
+    // an entitlement problem, not a routing one, so say so explicitly.
+    const elsewhere = landingFor(
+      usable.filter((p) => p !== 'hr'),
+      origins,
+    );
+    if (elsewhere) redirect(elsewhere);
+    const auth = authOrigin();
+    redirect(auth ? `${auth}/no-access` : '/no-access');
+  }
 
   return (
     <NotificationProvider>

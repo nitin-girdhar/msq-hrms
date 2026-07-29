@@ -17,6 +17,10 @@ interface Props {
 // accepts any active type name (server validates against the lookup).
 const LEAVE_TYPE_SUGGESTIONS = ['casual', 'sick', 'earned', 'maternity', 'paternity', 'bereavement', 'comp_off', 'loss_of_pay'];
 
+// The submit button lives in the Modal's pinned footer, outside the <form>;
+// the HTML `form` attribute is what still wires it to this form.
+const FORM_ID = 'leave-policy-form';
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -100,9 +104,18 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
     'rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#0F172A] shadow-sm focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20';
   const labelCls = 'text-xs font-semibold text-[#0F172A]';
 
+  const footer = (
+    <div className="flex justify-end gap-2">
+      <button type="button" onClick={handleClose} disabled={submitting} className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60">Cancel</button>
+      <button type="submit" form={FORM_ID} disabled={submitting} className="rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:opacity-60">
+        {submitting ? 'Saving…' : 'Save policy'}
+      </button>
+    </div>
+  );
+
   return (
-    <Modal open={open} onClose={handleClose} title="Create / revise leave policy" locked={submitting} maxWidth="max-w-2xl">
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+    <Modal open={open} onClose={handleClose} title="Create / revise leave policy" locked={submitting} maxWidth="max-w-2xl" footer={footer}>
+      <form id={FORM_ID} onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
         {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>}
 
         <p className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2 text-[11px] text-[#64748B]">
@@ -164,12 +177,6 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
           </label>
         </div>
 
-        <div className="mt-1 flex justify-end gap-2">
-          <button type="button" onClick={handleClose} disabled={submitting} className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60">Cancel</button>
-          <button type="submit" disabled={submitting} className="rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:opacity-60">
-            {submitting ? 'Saving…' : 'Save policy'}
-          </button>
-        </div>
       </form>
     </Modal>
   );
