@@ -1,0 +1,46 @@
+name: msq
+
+# Production overlay for the HRMS product repo. Apply ON TOP of docker-compose.yml:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# See msq-lms/docker-compose.prod.yml for the full rationale on NODE_ENV — in
+# short, without it pino runs at debug through pino-pretty and every
+# `if (nodeEnv === 'production')` guard in the codebase silently does nothing,
+# including @platform/auth-constants' placeholder/length gate on
+# INTERNAL_SERVICE_SECRET.
+
+services:
+  hr-service:
+    environment:
+      NODE_ENV: production
+
+  hr-web:
+    environment:
+      NODE_ENV: production
+    # Behind Caddy in production — see the LMS overlay for why `!override` is
+    # required rather than a plain empty list.
+    ports: !override []
+
+  compreface-ui:
+    # The base file publishes the CompreFace admin console on the host
+    # (COMPREFACE_ADMIN_UI_PORT, default 8010) for the ONE-TIME API-key setup.
+    # It is an unauthenticated-by-default third-party admin UI sitting in front
+    # of the face-recognition service that holds employee biometric templates —
+    # it must not stay on the host network once setup is done.
+    #
+    # To perform that one-time setup on a production host, bring this single
+    # service up from the base file only, or port-forward over SSH:
+    #   ssh -L 8010:compreface-ui:80 <host>
+    ports: !override []
+
+  compreface-api:
+    # SPRING_PROFILES_ACTIVE is 'dev' in the base file. Narrowed here so the
+    # bundled Spring dev conveniences (verbose error pages, relaxed actuator
+    # exposure) are not serving next to biometric data.
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+
+  compreface-admin:
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
