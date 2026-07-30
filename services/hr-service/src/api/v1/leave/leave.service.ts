@@ -72,7 +72,7 @@ export async function listTeamRequests(ctx: LeaveCtx, filters: ListLeaveRequests
   // call itself on canViewTeamLeave (HR rank >= manager) previously blocked a
   // reporting-line-resolved approver from ever seeing (or reaching, via the
   // /leave/approvals UI) a request assigned to them when they hadn't also been
-  // separately granted an hr.member_roles row — see approveLeave, which
+  // separately granted an HR role on the iam ladder — see approveLeave, which
   // already allows the assigned approver through regardless of rank.
   const seeAllOrg = canManageLeave(ctx);
   return repo.listTeamRequests(ctx, filters, seeAllOrg);

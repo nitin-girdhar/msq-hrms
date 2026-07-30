@@ -10,7 +10,6 @@ import { meRouter } from './me/me.router.js';
 import { leaveTypesRouter } from './leave-types/leave-types.router.js';
 import { employmentTypesRouter } from './employment-types/employment-types.router.js';
 import { attendanceStatusesRouter } from './attendance-statuses/attendance-statuses.router.js';
-import { hrRolesRouter } from './hr-roles/hr-roles.router.js';
 
 export async function v1Router(app: FastifyInstance) {
   await app.register(employeesRouter);
@@ -21,5 +20,4 @@ export async function v1Router(app: FastifyInstance) {
   await app.register(leaveTypesRouter);
   await app.register(employmentTypesRouter);
   await app.register(attendanceStatusesRouter);
-  await app.register(hrRolesRouter);
 }

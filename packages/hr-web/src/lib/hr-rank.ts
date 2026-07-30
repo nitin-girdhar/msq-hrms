@@ -1,5 +1,6 @@
-// Resolves the caller's actual HR product role/rank (hr.member_roles) once
-// per authenticated Server Component request — the same authority hr-service
+// Resolves the caller's actual HR role/rank (the unified iam ladder, via
+// iam.fn_user_org_role) once per authenticated Server Component request —
+// the same authority hr-service
 // itself enforces for HR-admin-only actions. Never use SessionUser.rank for
 // this: that's the platform/session rank (a different, only-coincidentally-
 // overlapping scale — see GET /hr/me on hr-service for the full story).
