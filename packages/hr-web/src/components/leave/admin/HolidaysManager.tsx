@@ -29,12 +29,9 @@ export default function HolidaysManager({ onNotice }: Props) {
   const loadCalendars = useCallback(() => {
     calendarsApi
       .list()
-      .then((res) => {
-        setCalendars(res.data);
-        setCalendarId((prev) => prev || res.data.find((c) => c.year === year)?.id || res.data[0]?.id || '');
-      })
+      .then((res) => setCalendars(res.data))
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load calendars.'));
-  }, [year]);
+  }, []);
 
   const loadHolidays = useCallback(() => {
     holidaysApi
@@ -45,6 +42,15 @@ export default function HolidaysManager({ onNotice }: Props) {
 
   useEffect(() => { loadCalendars(); }, [loadCalendars]);
   useEffect(() => { loadHolidays(); }, [loadHolidays]);
+
+  // Only calendars belonging to the selected year are selectable — a 2025 calendar
+  // must not stay selected while the admin is adding 2026 holidays.
+  const yearCalendars = calendars.filter((c) => c.year === year);
+
+  useEffect(() => {
+    setCalendarId((prev) => (yearCalendars.some((c) => c.id === prev) ? prev : yearCalendars[0]?.id ?? ''));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calendars, year]);
 
   const createCalendar = async () => {
     if (!newCalName.trim()) return;
@@ -67,6 +73,7 @@ export default function HolidaysManager({ onNotice }: Props) {
     setError(null);
     if (!calendarId) { setError('Create or select a calendar first.'); return; }
     if (!hDate || !hName.trim()) { setError('Date and name are required.'); return; }
+    if (!hDate.startsWith(`${year}-`)) { setError(`The date must fall in ${year}, the year of the selected calendar.`); return; }
     setBusy(true);
     try {
       await holidaysApi.create({ calendar_id: calendarId, holiday_date: hDate, name: hName.trim(), is_optional: hOptional });
@@ -98,9 +105,21 @@ export default function HolidaysManager({ onNotice }: Props) {
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="hm-cal" className="text-xs font-semibold text-[#0F172A]">Calendar</label>
-          <select id="hm-cal" value={calendarId} onChange={(e) => setCalendarId(e.target.value)} className={inputCls}>
-            <option value="">Select…</option>
-            {calendars.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.year})</option>)}
+          <select
+            id="hm-cal"
+            value={calendarId}
+            onChange={(e) => setCalendarId(e.target.value)}
+            disabled={yearCalendars.length === 0}
+            className={`${inputCls} disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]`}
+          >
+            {yearCalendars.length === 0 ? (
+              <option value="">No calendar for {year}</option>
+            ) : (
+              <>
+                <option value="">Select…</option>
+                {yearCalendars.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </>
+            )}
           </select>
         </div>
         <div className="flex items-end gap-2">
@@ -116,10 +135,15 @@ export default function HolidaysManager({ onNotice }: Props) {
 
       <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3">
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#64748B]">Add holiday</p>
+        {yearCalendars.length === 0 && (
+          <p className="mb-3 text-xs text-[#64748B]">
+            No holiday calendar exists for {year} yet. Name one above (e.g. “India Holidays”) and click <span className="font-semibold">Add calendar</span> before adding holidays.
+          </p>
+        )}
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1.5">
             <label htmlFor="hm-date" className="text-xs font-semibold text-[#0F172A]">Date</label>
-            <input id="hm-date" type="date" value={hDate} onChange={(e) => setHDate(e.target.value)} className={inputCls} />
+            <input id="hm-date" type="date" value={hDate} min={`${year}-01-01`} max={`${year}-12-31`} onChange={(e) => setHDate(e.target.value)} className={inputCls} />
           </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="hm-name" className="text-xs font-semibold text-[#0F172A]">Name</label>
@@ -129,7 +153,7 @@ export default function HolidaysManager({ onNotice }: Props) {
             <input type="checkbox" checked={hOptional} onChange={(e) => setHOptional(e.target.checked)} className="h-4 w-4 rounded border-[#E2E8F0] text-[#0b6cbf]" />
             <span>Optional (restricted)</span>
           </label>
-          <button type="button" onClick={addHoliday} disabled={busy} className="rounded-xl bg-[#0b6cbf] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#095699] disabled:opacity-60">
+          <button type="button" onClick={addHoliday} disabled={busy || !calendarId} className="rounded-xl bg-[#0b6cbf] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#095699] disabled:opacity-60">
             Add holiday
           </button>
         </div>
