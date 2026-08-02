@@ -83,9 +83,14 @@ async function resolveLeaveType(tx: DrizzleTx, tenantId: string, name: string): 
   return rows[0];
 }
 
-async function resolveStatusId(tx: DrizzleTx, name: string): Promise<string> {
+// hr.leave_request_statuses is tenant-scoped as of 1.26.0, like leave_types
+// above — every tenant has its own row named 'pending'. Without the tenant
+// filter this ran under a service tx (BYPASSRLS) and would take rows[0] from
+// whichever tenant the planner happened to return first, stamping a leave
+// request with another tenant's status id.
+async function resolveStatusId(tx: DrizzleTx, tenantId: string, name: string): Promise<string> {
   const rows = (await tx.execute(sql`
-    SELECT id::text FROM hr.leave_request_statuses WHERE name = ${name}
+    SELECT id::text FROM hr.leave_request_statuses WHERE tenant_id = ${tenantId} AND name = ${name}
   `)) as unknown as Array<{ id: string }>;
   if (!rows[0]) throw new BadRequestError(`Unknown leave request status: ${name}`);
   return rows[0].id;
@@ -235,7 +240,7 @@ export async function applyLeave(ctx: LeaveCtx, data: ApplyLeaveRequestInput): P
   return serviceTxWithContext(ctx, data.reason ?? null, async (tx) => {
     const { leaveTypeId, approvalLevels, daysCount } = await validateRequestInput(tx, ctx, data, null);
 
-    const pendingStatusId = await resolveStatusId(tx, 'pending');
+    const pendingStatusId = await resolveStatusId(tx, ctx.tenant_id, 'pending');
 
     const inserted = (await tx.execute(sql`
       INSERT INTO hr.leave_requests
@@ -477,7 +482,7 @@ export async function approveLeave(
     }
 
     // Final level → approve the request and consume the balance in the same tx.
-    const approvedStatusId = await resolveStatusId(tx, 'approved');
+    const approvedStatusId = await resolveStatusId(tx, ctx.tenant_id, 'approved');
     await tx.execute(sql`
       UPDATE hr.leave_requests SET status_id = ${approvedStatusId} WHERE id = ${id}
     `);
@@ -541,7 +546,7 @@ export async function rejectLeave(
       WHERE id = ${pending.id}
     `);
 
-    const rejectedStatusId = await resolveStatusId(tx, 'rejected');
+    const rejectedStatusId = await resolveStatusId(tx, ctx.tenant_id, 'rejected');
     await tx.execute(sql`UPDATE hr.leave_requests SET status_id = ${rejectedStatusId} WHERE id = ${id}`);
 
     // No ledger row on rejection.
@@ -619,7 +624,7 @@ export async function cancelLeave(ctx: LeaveCtx, id: string, comment: string | n
       );
     }
 
-    const cancelledStatusId = await resolveStatusId(tx, 'cancelled');
+    const cancelledStatusId = await resolveStatusId(tx, ctx.tenant_id, 'cancelled');
     await tx.execute(sql`UPDATE hr.leave_requests SET status_id = ${cancelledStatusId} WHERE id = ${id}`);
   });
 }
