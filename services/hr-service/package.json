@@ -24,6 +24,7 @@
     "@platform/authz": "workspace:*",
     "@platform/blob-storage": "workspace:*",
     "@platform/db": "workspace:*",
+    "@platform/logger": "workspace:*",
     "@platform/rbac": "workspace:*",
     "@platform/service-auth": "workspace:*",
     "@platform/types": "workspace:*",
