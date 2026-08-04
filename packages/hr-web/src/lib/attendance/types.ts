@@ -31,6 +31,14 @@ export interface AttendanceRules {
   // punches is marked Absent, not Half Day.
   min_half_day_minutes: number;
   min_full_day_minutes: number;
+  // How far back a regularization may be filed, in days, counted in `timezone`.
+  // 0 = today only; a future date is never accepted. Use it with todayIso/shiftIso
+  // to bound the date picker so the client refuses what the server refuses.
+  regularization_max_backdate_days: number;
+  // Levels of the reporting chain that must approve a regularization; 1 = the
+  // direct manager. Applies to requests filed from now on — the chain is
+  // materialized at submit time, so pending requests keep theirs.
+  regularization_approval_levels: number;
   // Org IANA timezone; use it with todayIso(tz) so the client's "today" matches
   // the server-computed attendance work_date.
   timezone: string;

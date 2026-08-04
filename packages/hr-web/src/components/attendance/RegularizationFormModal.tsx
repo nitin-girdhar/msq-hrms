@@ -3,13 +3,21 @@
 import { useEffect, useState } from 'react';
 import { Modal } from '@platform/ui-kit';
 import { attendance as attendanceApi } from '../../lib/api/client';
-import type { AttendanceStatusName, RegularizationView } from '../../lib/attendance/types';
+import { todayIso, shiftIso } from '../../lib/attendance/format';
+import type { AttendanceRules, AttendanceStatusName, RegularizationView } from '../../lib/attendance/types';
 
 interface Props {
   open: boolean;
   date: string | null;
   /** Present = edit an existing pending request instead of filing a new one. */
   item?: RegularizationView | null;
+  /**
+   * The effective attendance rules, used to bound the date picker to the window
+   * the server will accept. Optional because the rules load asynchronously: when
+   * absent the picker is unbounded and the server's 400 carries the message,
+   * which is a worse experience but never a wrong one.
+   */
+  rules?: AttendanceRules | null;
   onClose: () => void;
   onSubmitted: () => void;
 }
@@ -45,7 +53,7 @@ function toLocalInput(iso: string | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export default function RegularizationFormModal({ open, date, item, onClose, onSubmitted }: Props) {
+export default function RegularizationFormModal({ open, date, item, rules, onClose, onSubmitted }: Props) {
   const [workDate, setWorkDate] = useState('');
   const [mode, setMode] = useState<'status' | 'times'>('status');
   const [statusName, setStatusName] = useState<AttendanceStatusName | ''>('');
@@ -82,9 +90,23 @@ export default function RegularizationFormModal({ open, date, item, onClose, onS
     onClose();
   };
 
+  // The window the server enforces (attendance_rules.regularization_max_backdate_days,
+  // counted in the ORG timezone). Mirrored here so the picker refuses exactly
+  // what the API refuses rather than letting someone fill in a whole form for a
+  // date that was never going to be accepted.
+  const latestDate = rules ? todayIso(rules.timezone) : null;
+  const earliestDate =
+    rules && latestDate ? shiftIso(latestDate, -rules.regularization_max_backdate_days) : null;
+  // `min`/`max` stop the picker's own UI, but a typed date can still land
+  // outside them, so the value is checked too.
+  const dateOutOfWindow =
+    !editing && !!workDate && !!latestDate && !!earliestDate &&
+    (workDate > latestDate || workDate < earliestDate);
+
   const blockSubmit =
     submitting ||
     !workDate ||
+    dateOutOfWindow ||
     !reason.trim() ||
     (mode === 'status' ? !statusName : !inTime && !outTime);
 
@@ -155,12 +177,31 @@ export default function RegularizationFormModal({ open, date, item, onClose, onS
           <label htmlFor="rg-date" className="text-xs font-semibold text-[#0F172A]">Date *</label>
           {/* Locked while editing: only one open request may exist per date, so
               moving one is a cancel-and-refile, not an edit. */}
-          <input id="rg-date" type="date" value={workDate} onChange={(e) => setWorkDate(e.target.value)} disabled={submitting || editing} className={inputCls} />
-          {editing && (
+          <input
+            id="rg-date"
+            type="date"
+            value={workDate}
+            onChange={(e) => setWorkDate(e.target.value)}
+            disabled={submitting || editing}
+            {...(!editing && earliestDate ? { min: earliestDate } : {})}
+            {...(!editing && latestDate ? { max: latestDate } : {})}
+            className={inputCls}
+          />
+          {editing ? (
             <p className="text-[11px] text-[#94A3B8]">
               To request a different date, cancel this request and file a new one.
             </p>
-          )}
+          ) : dateOutOfWindow ? (
+            <p role="alert" className="text-[11px] font-medium text-red-600">
+              Pick a date between {earliestDate} and {latestDate}.
+            </p>
+          ) : earliestDate && latestDate ? (
+            <p className="text-[11px] text-[#94A3B8]">
+              {earliestDate === latestDate
+                ? `Only today (${latestDate}) can be regularized.`
+                : `Dates from ${earliestDate} to ${latestDate} can be regularized.`}
+            </p>
+          ) : null}
         </div>
 
         <div className="flex gap-1 rounded-xl border border-[#E2E8F0] bg-white p-1">

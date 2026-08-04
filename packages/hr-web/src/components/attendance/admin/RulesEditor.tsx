@@ -6,7 +6,7 @@ import type { SessionUser } from '@platform/types';
 import { attendance as attendanceApi } from '../../../lib/api/client';
 import { orgs as orgsApi, Alert, Button, PageSection } from '@platform/ui-kit';
 import type { AttendanceRules } from '../../../lib/attendance/types';
-import { canSetOrgLocation } from '../../../lib/attendance/format';
+import { canSetOrgLocation, canManageTenantAttendance, todayIso, shiftIso } from '../../../lib/attendance/format';
 import { fieldInputCls, fieldLabelCls, stateBlockCls } from '../../../lib/ui';
 import { useGeolocation } from '../../../hooks/useGeolocation';
 
@@ -70,9 +70,15 @@ export default function RulesEditor({ actor, onNotice }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Which row the save writes: this org's override, or the tenant-wide default
+  // every other org inherits. Deliberately NOT part of `rules` — it is not a
+  // saved value, so folding it in would make the form look dirty on its own and
+  // would make the baseline diff meaningless.
+  const [scope, setScope] = useState<'org' | 'tenant'>('org');
 
   const geo = useGeolocation();
   const canSetLocation = canSetOrgLocation(actor.rank);
+  const canSetTenantWide = canManageTenantAttendance(actor.rank);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -109,6 +115,10 @@ export default function RulesEditor({ actor, onNotice }: Props) {
   const geoDirty = canSetLocation && (lat !== baseline.lat || lng !== baseline.lng);
   const rulesDirty = JSON.stringify(rules) !== JSON.stringify(baseline.rules);
   const dirty = geoDirty || rulesDirty;
+  // The oldest work_date a regularization may still name, resolved for display.
+  // Showing the actual date is what makes the window concrete — "30 days" is an
+  // abstraction an admin has to do arithmetic on.
+  const earliestWorkDate = shiftIso(todayIso(rules.timezone), -rules.regularization_max_backdate_days);
   // Mirrors the server-side superRefine and the DB CHECK: a half-day floor above
   // the full-day floor would make 'half_day' unreachable.
   const thresholdOrderInvalid = rules.min_half_day_minutes > rules.min_full_day_minutes;
@@ -134,11 +144,12 @@ export default function RulesEditor({ actor, onNotice }: Props) {
     setSaving(true);
     try {
       if (coords) await orgsApi.updateGeo(actor.org_id, { geo_lat: coords.lat, geo_lng: coords.lng });
-      if (rulesDirty) await attendanceApi.updateRules(rules);
+      if (rulesDirty) await attendanceApi.updateRules({ ...rules, scope });
+      const tenantWide = rulesDirty && scope === 'tenant';
       onNotice(
-        coords && rulesDirty ? 'Location and check-in rules saved.'
+        coords && rulesDirty ? `Location and check-in rules saved${tenantWide ? ' for every organization' : ''}.`
           : coords ? 'Organization location saved.'
-            : 'Check-in rules saved.',
+            : `Check-in rules saved${tenantWide ? ' for every organization' : ''}.`,
       );
       load();
     } catch (err) {
@@ -152,6 +163,33 @@ export default function RulesEditor({ actor, onNotice }: Props) {
     <div className="max-w-3xl space-y-5">
       {error && (
         <Alert tone="error">{error}</Alert>
+      )}
+
+      {/* Scope first, above every field it governs: an admin needs to know
+          whether they are editing one org or all of them BEFORE they start
+          typing, not when they reach the save button. */}
+      {canSetTenantWide && (
+        <PageSection title="Apply to">
+          <div className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <label htmlFor="re-scope" className={fieldLabelCls}>These settings apply to</label>
+              <select
+                id="re-scope"
+                value={scope}
+                onChange={(e) => setScope(e.target.value as 'org' | 'tenant')}
+                className={`${inputCls} w-72 pr-8`}
+              >
+                <option value="org">This organization only</option>
+                <option value="tenant">All organizations (tenant-wide default)</option>
+              </select>
+            </div>
+            <p className="mt-2 text-xs text-[#64748B]">
+              {scope === 'tenant'
+                ? 'Saves the tenant-wide default. Organizations that have their own settings keep them — this only changes what the rest inherit.'
+                : 'Saves an override for this organization only, leaving the tenant-wide default untouched.'}
+            </p>
+          </div>
+        </PageSection>
       )}
 
       {!locationSet && canSetLocation && (
@@ -304,6 +342,56 @@ export default function RulesEditor({ actor, onNotice }: Props) {
               The half-day minimum must not exceed the full-day minimum.
             </p>
           )}
+        </div>
+      </PageSection>
+
+      <PageSection title="Regularization">
+        <div className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-4">
+          <p className="text-xs text-[#64748B]">
+            A regularization is an employee&apos;s request to correct what a past day
+            says about their attendance. These settings decide how far back they may
+            reach and who has to sign it off.
+          </p>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <label htmlFor="re-backdate" className="block text-sm font-medium text-[#0F172A]">
+              Allow requests up to
+            </label>
+            <input
+              id="re-backdate" type="number" min={0} max={365} step={1}
+              value={rules.regularization_max_backdate_days}
+              onChange={(e) => setRules({ ...rules, regularization_max_backdate_days: Number(e.target.value) })}
+              className={`${inputCls} w-24`}
+            />
+            <span className="text-xs text-[#64748B]">days old</span>
+          </div>
+          <p className="mt-0.5 text-xs text-[#64748B]">
+            {rules.regularization_max_backdate_days === 0
+              ? 'Employees can only regularize today.'
+              : `Employees can regularize today and the previous ${rules.regularization_max_backdate_days} day(s) — on or after ${earliestWorkDate}.`}{' '}
+            A date in the future is never accepted.
+          </p>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#F1F5F9] pt-3">
+            <label htmlFor="re-levels" className="block text-sm font-medium text-[#0F172A]">
+              Require
+            </label>
+            <input
+              id="re-levels" type="number" min={1} max={5} step={1}
+              value={rules.regularization_approval_levels}
+              onChange={(e) => setRules({ ...rules, regularization_approval_levels: Number(e.target.value) })}
+              className={`${inputCls} w-24`}
+            />
+            <span className="text-xs text-[#64748B]">level(s) of approval</span>
+          </div>
+          {/* The approver chain is materialized when the request is submitted, so
+              a change here can never reshuffle something already under review —
+              worth saying, because the opposite is the natural assumption. */}
+          <p className="mt-0.5 text-xs text-[#64748B]">
+            How far up the reporting chain a request travels before it is approved.
+            1 = the direct manager only. Applies to requests filed from now on;
+            requests already awaiting a decision keep the approvers they started with.
+          </p>
         </div>
       </PageSection>
 

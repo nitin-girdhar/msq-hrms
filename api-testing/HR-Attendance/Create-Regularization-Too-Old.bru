@@ -1,0 +1,38 @@
+meta {
+  name: Create Regularization (too old - expect 400)
+  type: http
+  seq: 33
+}
+
+post {
+  url: {{baseUrl}}/hr/attendance/regularizations
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: auth_token={{authToken}}
+}
+
+body:json {
+  {
+    "work_date": "2024-01-15",
+    "requested_status_name": "present",
+    "reason": "Filed well outside the backdate window"
+  }
+}
+
+docs {
+  Negative case for the configurable backdate window.
+
+  hr.attendance_rules.regularization_max_backdate_days (default 30) caps how far
+  back a member may file. This work_date is years old, so it is outside any
+  window an admin can set (the column is capped at 365).
+
+  EXPECT 400 with a message naming the oldest acceptable date, e.g.
+    "Regularizations are only accepted for the last 30 day(s) - on or after 2026-07-05."
+
+  The window is counted in the ORG's timezone, not UTC, and the setting is
+  edited in Attendance > Admin > Rules > Regularization (or via
+  PUT /hr/attendance/rules/admin). Set it to 0 and even yesterday returns 400.
+}

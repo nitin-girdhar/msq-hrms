@@ -1,0 +1,43 @@
+meta {
+  name: Update Rules (admin, tenant-wide)
+  type: http
+  seq: 35
+}
+
+put {
+  url: {{baseUrl}}/hr/attendance/rules/admin
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: auth_token={{authToken}}
+}
+
+body:json {
+  {
+    "geofence_enabled": true,
+    "geofence_radius_meters": 200,
+    "require_photo": true,
+    "require_geo": true,
+    "allow_wfh_checkin": false,
+    "regularization_max_backdate_days": 15,
+    "regularization_approval_levels": 2,
+    "scope": "tenant"
+  }
+}
+
+docs {
+  Writes the TENANT-WIDE default row (hr.attendance_rules with org_id NULL) that
+  every org without its own override inherits. Orgs that already have their own
+  row keep it — precedence is whole-row, org over tenant.
+
+  EXPECT 403 unless the caller's platform_role is tenant_admin or super_admin:
+    "Only tenant admins can set attendance rules for every organization"
+  The hr.attendance.admin capability alone is NOT enough. It says "may configure
+  attendance"; writing the row other orgs inherit is a tenancy question, so an
+  org's own hr_admin cannot reconfigure its siblings.
+
+  Omit "scope" (or send "org") to write only the calling org's override — that is
+  what Update-Rules-Admin.bru does and what the default is.
+}

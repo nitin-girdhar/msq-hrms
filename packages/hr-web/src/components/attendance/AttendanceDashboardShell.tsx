@@ -247,6 +247,7 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
         open={regFormDate !== null || regEditing !== null}
         date={regFormDate}
         item={regEditing}
+        rules={rules}
         onClose={() => { setRegFormDate(null); setRegEditing(null); }}
         onSubmitted={() => {
           setNotice(regEditing ? 'Regularization request updated.' : 'Regularization request submitted.');

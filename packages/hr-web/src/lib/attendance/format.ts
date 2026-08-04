@@ -33,6 +33,17 @@ export function canSetOrgLocation(rank: number): boolean {
   return rank >= ANCHOR_RANK.ORG_ADMIN;
 }
 
+/**
+ * A tenant admin may additionally write the TENANT-WIDE rules row — the default
+ * every org without its own override inherits. Rank-based like
+ * canManageTenantLeave, because this is a tenancy question rather than a
+ * per-role permission; hr-service answers the same question with
+ * isTenantHrAdmin(platform_role).
+ */
+export function canManageTenantAttendance(rank: number): boolean {
+  return rank >= ANCHOR_RANK.TENANT_ADMIN;
+}
+
 export const ATTENDANCE_STATUS_STYLES: Record<AttendanceStatusName, { bg: string; fg: string; dot: string }> = {
   present: { bg: 'bg-green-50', fg: 'text-green-700', dot: '#16A34A' },
   absent: { bg: 'bg-red-50', fg: 'text-red-700', dot: '#DC2626' },
@@ -93,6 +104,19 @@ export function formatDateTime(iso: string | null): string {
 export function todayIso(timezone?: string): string {
   if (!timezone) return new Date().toLocaleDateString('en-CA');
   return new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(new Date());
+}
+
+// Shift a YYYY-MM-DD calendar date by whole days, returning YYYY-MM-DD. Built on
+// UTC so no zone shift can move the result across a day boundary — the input is
+// already a calendar date, not an instant. Mirrors addDays in hr-service's
+// lib/attendance/time.ts, so the bounds the picker shows are the ones the server
+// computes when it validates the regularization window.
+export function shiftIso(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split('-').map((s) => parseInt(s, 10));
+  const dt = new Date(Date.UTC(y!, m! - 1, d!));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(dt.getUTCDate())}`;
 }
 
 interface PunchErrorDetails {

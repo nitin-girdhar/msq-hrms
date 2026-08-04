@@ -20,6 +20,22 @@ body:json {
     "geofence_radius_meters": 200,
     "require_photo": true,
     "require_geo": true,
-    "allow_wfh_checkin": false
+    "allow_wfh_checkin": false,
+    "regularization_max_backdate_days": 30,
+    "regularization_approval_levels": 1
   }
+}
+
+docs {
+  Writes this org's own rules row. "scope" defaults to "org", so omitting it
+  leaves the tenant-wide default untouched — see Update-Rules-Admin-Tenant-Scope.bru
+  for the row other orgs inherit.
+
+  regularization_max_backdate_days (0-365, default 30) is how far back a member
+  may file an attendance regularization, counted in the ORG's timezone. 0 = today
+  only. Future dates are rejected regardless of this value.
+
+  regularization_approval_levels (>= 1, default 1) is how many levels of the
+  reporting chain must approve. The chain is materialized when a request is
+  submitted, so changing this never reshuffles a request already under review.
 }

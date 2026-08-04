@@ -43,12 +43,23 @@ export function canOverrideLeaveApproval(actor: CapabilityHolder): boolean {
 }
 
 /**
- * Tenant-wide leave policy/settings authority. Still keyed on platform_role:
- * this is a TENANCY question ("may you act across every org"), not a per-role
- * permission, so it is answered by the JWT rather than the capability matrix.
+ * Authority to write TENANT-WIDE HR configuration — the rows other orgs inherit
+ * (hr.hr_settings and hr.attendance_rules with org_id NULL), as opposed to an
+ * org's own override. Still keyed on platform_role: this is a TENANCY question
+ * ("may you act across every org"), not a per-role permission, so it is answered
+ * by the JWT rather than the capability matrix.
+ *
+ * The capability check is separate and still required — this only decides SCOPE.
+ * An hr_admin holds hr.leave.admin / hr.attendance.admin and configures their own
+ * org; only a tenant admin can change the default every other org inherits.
  */
-export function isTenantLeaveAdmin(platformRole: string): boolean {
+export function isTenantHrAdmin(platformRole: string): boolean {
   return platformRole === 'tenant_admin' || platformRole === 'super_admin';
+}
+
+/** @see isTenantHrAdmin — the leave-side name, kept for its existing callers. */
+export function isTenantLeaveAdmin(platformRole: string): boolean {
+  return isTenantHrAdmin(platformRole);
 }
 
 // ── Attendance ──────────────────────────────────────────────────────────────

@@ -301,7 +301,11 @@ export const attendance = {
 
   getRules: () => request<Envelope<AttendanceRules>>('/hr/attendance/rules'),
 
-  updateRules: (body: Partial<AttendanceRules>) =>
+  // `scope` is write-only and deliberately absent from AttendanceRules: it says
+  // WHICH row to write (this org's override, or the tenant-wide default others
+  // inherit), not what the rules are. The response is always the effective rules
+  // for the caller's own org, whichever row was written.
+  updateRules: (body: Partial<AttendanceRules> & { scope?: 'org' | 'tenant' }) =>
     request<Envelope<AttendanceRules>>('/hr/attendance/rules/admin', { method: 'PUT', body: JSON.stringify(body) }),
 
   me: (params: { month?: string } = {}) => request<Envelope<MyMonthResponse>>(`/hr/attendance/me${qs(params)}`),

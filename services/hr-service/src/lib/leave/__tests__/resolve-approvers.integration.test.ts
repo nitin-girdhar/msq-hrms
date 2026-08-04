@@ -8,9 +8,17 @@ import type { DrizzleTx } from '@platform/db';
 // query from raw `sql` template chunks (no Drizzle table refs), so every literal is a
 // StringChunk — walking queryChunks and concatenating them recovers the query text
 // exactly, params included as `?` (chunk shape).
+// Recurses into nested `sql` fragments: resolveApprovers composes its effective-date
+// predicate from a sub-fragment, and a flat walk would silently drop it — making a
+// test that asserts on that predicate pass for the wrong reason.
 function queryText(query: SQL): string {
   return (query.queryChunks as SQLChunk[])
-    .map((chunk) => (chunk && typeof chunk === 'object' && 'value' in chunk ? (chunk as { value: string[] }).value.join('') : ''))
+    .map((chunk) => {
+      if (!chunk || typeof chunk !== 'object') return '';
+      if ('queryChunks' in chunk) return queryText(chunk as SQL);
+      if ('value' in chunk) return (chunk as { value: string[] }).value.join('');
+      return '';
+    })
     .join('');
 }
 
@@ -27,7 +35,7 @@ function makeTx(rows: {
   const seenTables: string[] = [];
   const execute = vi.fn(async (query: SQL) => {
     const text = queryText(query);
-    if (text.includes('hr.reporting_lines')) { seenTables.push('hr.reporting_lines'); return rows.reportingLines; }
+    if (text.includes('iam.reporting_lines')) { seenTables.push('iam.reporting_lines'); return rows.reportingLines; }
     if (text.includes('iam.user_org_mapping') && text.includes('iam.user_roles')) { seenTables.push('fallback_admin'); return rows.fallbackAdmin; }
     if (text.includes('iam.user_org_mapping')) { seenTables.push('iam.user_org_mapping'); return rows.orgActiveUsers; }
     if (text.includes('iam.users')) { seenTables.push('iam.users'); return rows.activeUsers; }
@@ -37,52 +45,69 @@ function makeTx(rows: {
   return { tx, seenTables, execute };
 }
 
-describe('resolveApprovers — HR/LMS hierarchy independence', () => {
+// These tests used to assert the OPPOSITE: that HR approvals were resolved from a
+// private hr.reporting_lines tree which deliberately diverged from the LMS one.
+// That split is gone — there is now a single platform hierarchy in
+// iam.reporting_lines, and these tests pin the convergence so it cannot be
+// quietly re-forked.
+describe('resolveApprovers — the single platform hierarchy', () => {
   const orgId = 'org-1';
 
-  it('never queries the LMS assignment tree (iam.vw_user_team_members)', async () => {
+  it('reads iam.reporting_lines — the same tree LMS and Tasks resolve against', async () => {
+    const { tx, seenTables } = makeTx({
+      reportingLines: [{ user_id: 'emp', manager_id: 'mgr' }],
+      activeUsers: [{ id: 'emp' }, { id: 'mgr' }],
+      orgActiveUsers: [{ user_id: 'emp' }, { user_id: 'mgr' }],
+      fallbackAdmin: [],
+    });
+
+    await resolveApprovers(tx, orgId, 'emp', 1);
+
+    expect(seenTables).toContain('iam.reporting_lines');
+  });
+
+  it('never reads the retired hr.reporting_lines or the manager_id display mirror', async () => {
     const { tx, execute } = makeTx({
-      reportingLines: [{ user_id: 'emp', manager_id: 'hr-mgr' }],
-      activeUsers: [{ id: 'emp' }, { id: 'hr-mgr' }],
-      orgActiveUsers: [{ user_id: 'emp' }, { user_id: 'hr-mgr' }],
+      reportingLines: [{ user_id: 'emp', manager_id: 'mgr' }],
+      activeUsers: [{ id: 'emp' }, { id: 'mgr' }],
+      orgActiveUsers: [{ user_id: 'emp' }, { user_id: 'mgr' }],
       fallbackAdmin: [],
     });
 
     await resolveApprovers(tx, orgId, 'emp', 1);
 
     for (const call of execute.mock.calls) {
-      expect(queryText(call[0] as SQL)).not.toContain('vw_user_team_members');
+      const text = queryText(call[0] as SQL);
+      // hr.reporting_lines was dropped in 1.27.0.
+      expect(text).not.toContain('hr.reporting_lines');
+      // iam.users.manager_id is a display mirror maintained by a trigger; reading
+      // it for authority would reintroduce a second, disagreeing source of truth.
+      expect(text).not.toContain('manager_id FROM iam.users');
     }
   });
 
-  it('resolves purely from hr.reporting_lines even when the LMS manager tree (iam.users.manager_id) disagrees', async () => {
-    // The LMS side (iam.vw_user_team_members) is derived from iam.users.manager_id and
-    // would place 'emp' under 'lms-lead' — a completely different person than HR's chain.
-    // resolveApprovers must never consult that tree: only hr.reporting_lines drives the
-    // approval chain (see resolve-approvers.ts header comment).
+  it('walks the chain upward, so a skip-level manager approves too', async () => {
     const { tx } = makeTx({
       reportingLines: [
-        { user_id: 'emp', manager_id: 'hr-mgr' },
-        { user_id: 'hr-mgr', manager_id: 'hr-director' },
+        { user_id: 'emp', manager_id: 'mgr' },
+        { user_id: 'mgr', manager_id: 'director' },
       ],
-      activeUsers: [{ id: 'emp' }, { id: 'hr-mgr' }, { id: 'hr-director' }],
-      orgActiveUsers: [{ user_id: 'emp' }, { user_id: 'hr-mgr' }, { user_id: 'hr-director' }],
+      activeUsers: [{ id: 'emp' }, { id: 'mgr' }, { id: 'director' }],
+      orgActiveUsers: [{ user_id: 'emp' }, { user_id: 'mgr' }, { user_id: 'director' }],
       fallbackAdmin: [],
     });
 
     const approvers = await resolveApprovers(tx, orgId, 'emp', 2);
 
-    // Chain follows hr.reporting_lines ('hr-mgr' -> 'hr-director'), not any LMS lead/manager.
     expect(approvers).toEqual([
-      { level: 1, approverId: 'hr-mgr' },
-      { level: 2, approverId: 'hr-director' },
+      { level: 1, approverId: 'mgr' },
+      { level: 2, approverId: 'director' },
     ]);
   });
 
-  it('falls back to the org_admin/hr_admin when hr.reporting_lines has no line, even though the requester has an LMS manager', async () => {
-    // A rep can be assigned under an LMS lead (iam.users.manager_id / vw_user_team_members)
-    // while having no HR reporting line at all — the two hierarchies are independent, so HR
-    // falls back to the deterministic admin rather than inferring anything from the LMS tree.
+  it('falls back to the org_admin/hr_admin when the requester has no reporting line', async () => {
+    // No line means no manager — the fallback is deterministic rather than
+    // inferred, so a user outside the tree still has someone who can approve.
     const { tx } = makeTx({
       reportingLines: [],
       activeUsers: [{ id: 'emp' }, { id: 'org-admin-1' }],
@@ -92,5 +117,30 @@ describe('resolveApprovers — HR/LMS hierarchy independence', () => {
 
     const approvers = await resolveApprovers(tx, orgId, 'emp', 1);
     expect(approvers).toEqual([{ level: 1, approverId: 'org-admin-1' }]);
+  });
+
+  it('resolves as of the supplied date, not today, so a backdated request keeps its own chain', async () => {
+    const fixture = {
+      reportingLines: [{ user_id: 'emp', manager_id: 'mgr-back-then' }],
+      activeUsers: [{ id: 'emp' }, { id: 'mgr-back-then' }],
+      orgActiveUsers: [{ user_id: 'emp' }, { user_id: 'mgr-back-then' }],
+      fallbackAdmin: [],
+    };
+    const lineQueryOf = (execute: { mock: { calls: unknown[][] } }) =>
+      execute.mock.calls
+        .map((call) => queryText(call[0] as SQL))
+        .find((text) => text.includes('iam.reporting_lines'));
+
+    // Default path: the effective-date predicate is the literal CURRENT_DATE.
+    const today = makeTx(fixture);
+    await resolveApprovers(today.tx, orgId, 'emp', 1);
+    expect(lineQueryOf(today.execute)).toContain('CURRENT_DATE');
+
+    // With an as-of date it becomes a bound parameter instead. queryText only
+    // recovers string chunks, so the parameter itself is invisible here — the
+    // observable signal is that CURRENT_DATE is gone.
+    const backdated = makeTx(fixture);
+    await resolveApprovers(backdated.tx, orgId, 'emp', 1, new Date('2026-03-14T00:00:00Z'));
+    expect(lineQueryOf(backdated.execute)).not.toContain('CURRENT_DATE');
   });
 });

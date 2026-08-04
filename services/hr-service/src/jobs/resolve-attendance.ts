@@ -63,13 +63,31 @@ async function loadEmployees(tx: DrizzleTx): Promise<DayEmployee[]> {
 
 /**
  * Org-level day-classification thresholds, loaded once for the whole run rather
- * than per (employee, date). Orgs with no attendance_rules row are simply absent
- * from the map, and computeDayResolution falls back to DEFAULT_THRESHOLDS.
+ * than per (employee, date). Orgs with no applicable attendance_rules row are
+ * simply absent from the map, and computeDayResolution falls back to
+ * DEFAULT_THRESHOLDS.
+ *
+ * The row that applies to an org may be its own OR the tenant-wide default
+ * (org_id NULL), so this resolves the same org-over-tenant precedence
+ * loadRulesRow does and keys the result by org. Selecting straight from
+ * attendance_rules would key a tenant-wide row under a NULL org and leave every
+ * org inheriting it absent — silently classifying their days against
+ * DEFAULT_THRESHOLDS instead of the thresholds their admin configured.
  */
 async function loadOrgThresholds(tx: DrizzleTx): Promise<Map<string, ShiftThresholds>> {
   const rows = (await tx.execute(sql`
-    SELECT org_id::text, min_half_day_minutes, min_full_day_minutes
-    FROM hr.attendance_rules WHERE NOT is_deleted
+    SELECT o.id::text AS org_id, r.min_half_day_minutes, r.min_full_day_minutes
+    FROM entity.organizations o
+    JOIN LATERAL (
+      SELECT ar.min_half_day_minutes, ar.min_full_day_minutes
+      FROM hr.attendance_rules ar
+      WHERE ar.tenant_id = o.tenant_id
+        AND NOT ar.is_deleted
+        AND (ar.org_id = o.id OR ar.org_id IS NULL)
+      -- FALSE sorts before TRUE, so the org's own row wins over the default.
+      ORDER BY (ar.org_id IS NULL)
+      LIMIT 1
+    ) r ON TRUE
   `)) as unknown as Array<{ org_id: string; min_half_day_minutes: number; min_full_day_minutes: number }>;
   return new Map(
     rows.map((r) => [

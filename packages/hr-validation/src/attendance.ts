@@ -61,6 +61,19 @@ export const attendanceRulesAdminSchema = z.object({
   // An assigned shift's own thresholds always win.
   min_half_day_minutes: z.number().int().min(0).max(1440).default(240),
   min_full_day_minutes: z.number().int().min(0).max(1440).default(480),
+  // ── Regularization policy ──
+  // How far back a member may file an attendance regularization, counted in the
+  // org's timezone. 0 = today only. Mirrors the DB CHECK (0..365). A future
+  // work_date is rejected unconditionally and is deliberately not a setting.
+  regularization_max_backdate_days: z.number().int().min(0).max(365).default(30),
+  // Levels of the reporting chain that must approve. Mirrors the DB CHECK (>= 1);
+  // the upper bound is a UI sanity limit, not a DB constraint.
+  regularization_approval_levels: z.number().int().min(1).max(5).default(1),
+  // Which row this writes: the org's own override, or the tenant-wide default
+  // that every org without an override falls back to. Same switch as
+  // leaveSettingsSchema; 'tenant' additionally requires a tenant_admin platform
+  // role, checked server-side in attendance.service.updateRules.
+  scope: z.enum(['org', 'tenant']).default('org'),
 }).superRefine(checkThresholdOrder);
 
 // ── Shifts ──────────────────────────────────────────────────────────────────

@@ -1,11 +1,16 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Approver-chain resolution.
 //
-// The org's approval chain walks the effective-dated HR reporting hierarchy
-// (hr.reporting_lines) upward `levels` steps. The chain is resolved as of the
-// current date (the request's apply time). iam.users.manager_id is NO LONGER
-// consulted here — it is an optional org default that only seeds the initial
-// reporting lines (db_scripts/21). See Platform_Architecture_Decisions.
+// The org's approval chain walks the effective-dated platform reporting
+// hierarchy (iam.reporting_lines) upward `levels` steps, as of `asOf` — the
+// request's apply date, so a backdated request resolves against the hierarchy
+// that actually stood then, and a re-org since does not rewrite who was
+// supposed to approve it.
+//
+// This is the SAME tree that drives LMS lead assignment (iam.can_assign_to) and
+// Tasks team scope; there is no longer an HR-specific hierarchy. It used to live
+// in hr.reporting_lines, which no product but this one could read.
+// iam.users.manager_id is a display mirror of the tree and is not consulted.
 //
 // Rules (Platform_Expansion_Plan §4.2):
 //   - Skip managers who are inactive or not active in the org — keep walking
@@ -88,18 +93,23 @@ export async function resolveApprovers(
   orgId: string,
   requesterId: string,
   levels: number,
+  // Defaults to today. Pass the request's apply date for a backdated request so
+  // its chain matches the hierarchy of that date rather than today's.
+  asOf?: Date,
 ): Promise<ApproverAssignment[]> {
-  // The reporting graph is the org's currently-effective reporting lines. A
-  // line is effective today when effective_from <= today and effective_to is
-  // open or in the future. The exclusion constraint guarantees at most one
-  // active line per user, so this is an unambiguous user -> manager map.
+  const asOfSql = asOf ? sql`${asOf.toISOString().slice(0, 10)}::date` : sql`CURRENT_DATE`;
+
+  // The reporting graph is the org's lines effective on asOf: effective_from on
+  // or before it, and effective_to open or later. The exclusion constraint
+  // guarantees at most one active line per user per org, so this is an
+  // unambiguous user -> manager map.
   const reportingRows = (await tx.execute(sql`
     SELECT user_id::text AS user_id, manager_id::text AS manager_id
-    FROM hr.reporting_lines
+    FROM iam.reporting_lines
     WHERE org_id = ${orgId}
       AND NOT is_deleted
-      AND effective_from <= CURRENT_DATE
-      AND (effective_to IS NULL OR effective_to > CURRENT_DATE)
+      AND effective_from <= ${asOfSql}
+      AND (effective_to IS NULL OR effective_to > ${asOfSql})
   `)) as unknown as Array<{ user_id: string; manager_id: string }>;
 
   // is_active (global) is still an IAM concern; a manager in the reporting

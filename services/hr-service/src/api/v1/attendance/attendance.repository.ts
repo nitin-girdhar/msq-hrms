@@ -31,6 +31,9 @@ import {
 import { DEFAULT_THRESHOLDS, thresholdsFrom, type ShiftThresholds } from '../../../lib/attendance/resolve.js';
 import { matchSegment, validateSegments, type ShiftSegment } from '../../../lib/attendance/segments.js';
 import { punchEligibility } from '../../../lib/attendance/punch-eligibility.js';
+// Regularizations escalate up the same hierarchy leave does — one resolver,
+// reading iam.reporting_lines, shared by both.
+import { resolveApprovers } from '../../../lib/leave/resolve-approvers.js';
 import {
   computeDayResolution,
   deriveFromEvents,
@@ -88,6 +91,14 @@ export interface EffectiveRules {
   // assignment. An assigned shift's own thresholds always win (see thresholdsFrom).
   min_half_day_minutes: number;
   min_full_day_minutes: number;
+  // How far back a regularization may be filed, in days, counted in `timezone`
+  // below. 0 = today only. Enforced in attendance.service.createRegularization,
+  // which also rejects any future work_date.
+  regularization_max_backdate_days: number;
+  // Levels of the reporting chain that must approve a regularization; 1 = direct
+  // manager. Read here rather than by its own query so org-over-tenant
+  // precedence is resolved in exactly one place.
+  regularization_approval_levels: number;
   // The org's IANA timezone. Attendance work_date and shift boundaries are
   // computed in this zone server-side (see workDateOf), so the client must use
   // it to derive "today" — using the browser's UTC date mismatched the stored
@@ -108,6 +119,8 @@ const DEFAULT_RULES: EffectiveRules = {
   image_retention_days: 90,
   min_half_day_minutes: DEFAULT_THRESHOLDS.minHalfDayMinutes,
   min_full_day_minutes: DEFAULT_THRESHOLDS.minFullDayMinutes,
+  regularization_max_backdate_days: 30,
+  regularization_approval_levels: 1,
   timezone: 'Asia/Kolkata',
 };
 
@@ -125,14 +138,31 @@ const rulesCache = new Map<string, { rules: EffectiveRules; expiresAt: number }>
 async function loadRulesRow(tx: DrizzleTx, orgId: string): Promise<EffectiveRules> {
   // Always resolve the org timezone (from entity.organizations); the
   // attendance_rules row is optional and its columns are NULL when unset.
+  //
+  // Two rows can apply: the org's own override and the tenant-wide default
+  // (org_id NULL). The org row wins WHOLE — precedence is per row, not per
+  // column, the same way hr.hr_settings resolves. Column-level merging would
+  // mean an org override could not turn a setting back OFF once the tenant
+  // default had it on, and "which value is in force" would stop being
+  // answerable by looking at one row.
   const rows = (await tx.execute(sql`
     SELECT o.timezone,
            r.geofence_enabled, r.geofence_radius_meters, r.require_photo, r.require_geo, r.allow_wfh_checkin,
            r.require_face_match, r.face_match_threshold::float8 AS face_match_threshold, r.face_match_action,
            r.photo_change_cooldown_days, r.image_retention_days,
-           r.min_half_day_minutes, r.min_full_day_minutes
+           r.min_half_day_minutes, r.min_full_day_minutes,
+           r.regularization_max_backdate_days, r.regularization_approval_levels
     FROM entity.organizations o
-    LEFT JOIN hr.attendance_rules r ON r.org_id = o.id AND NOT r.is_deleted
+    LEFT JOIN LATERAL (
+      SELECT ar.*
+      FROM hr.attendance_rules ar
+      WHERE ar.tenant_id = o.tenant_id
+        AND NOT ar.is_deleted
+        AND (ar.org_id = o.id OR ar.org_id IS NULL)
+      -- FALSE sorts before TRUE, so the org row (org_id NOT NULL) comes first.
+      ORDER BY (ar.org_id IS NULL)
+      LIMIT 1
+    ) r ON TRUE
     WHERE o.id = ${orgId} LIMIT 1
   `)) as unknown as Array<Partial<EffectiveRules> & { timezone: string | null; geofence_enabled: boolean | null }>;
   const row = rows[0];
@@ -156,6 +186,14 @@ async function getCachedRules(orgId: string): Promise<EffectiveRules> {
 
 function invalidateRules(orgId: string): void {
   rulesCache.delete(orgId);
+}
+
+// A tenant-wide write changes the effective rules of every org that has no
+// override, and this process has no cheap way to know which those are — the
+// cache is keyed by org, not by the row it came from. Clearing all of it costs
+// one reload per active org and the entries live 60s anyway.
+function invalidateAllRules(): void {
+  rulesCache.clear();
 }
 
 // ── Org geo + timezone ──────────────────────────────────────────────────────
@@ -287,9 +325,17 @@ async function loadFaceSubjectId(tx: DrizzleTx, orgId: string, userId: string): 
   return rows[0]?.face_subject_id ?? null;
 }
 
-async function loadManagerId(tx: DrizzleTx, userId: string): Promise<string | null> {
+// Who to notify about this user's punch: their direct manager in this org.
+//
+// Reads the hierarchy itself rather than iam.users.manager_id, which is only a
+// display mirror and, for someone who works in more than one branch, may name
+// the manager of a different org than the one they just punched in.
+async function loadManagerId(tx: DrizzleTx, userId: string, orgId: string): Promise<string | null> {
   const rows = (await tx.execute(sql`
-    SELECT manager_id::text AS manager_id FROM iam.users WHERE id = ${userId}
+    SELECT manager_id::text AS manager_id
+    FROM iam.fn_manager_chain(${userId}::uuid)
+    WHERE org_id = ${orgId}::uuid AND depth = 1
+    LIMIT 1
   `)) as unknown as Array<{ manager_id: string | null }>;
   return rows[0]?.manager_id ?? null;
 }
@@ -486,7 +532,7 @@ export async function punch(
       orgThresholds: orgThresholdsOf(rules),
     });
 
-    const notifyManagerId = face.notifyManager ? await loadManagerId(tx, ctx.user_id) : null;
+    const notifyManagerId = face.notifyManager ? await loadManagerId(tx, ctx.user_id, ctx.org_id) : null;
 
     return {
       event_id: eventId,
@@ -574,22 +620,31 @@ export async function getEffectiveRules(ctx: AttendanceCtx): Promise<EffectiveRu
 }
 
 export async function upsertRules(ctx: AttendanceCtx, data: AttendanceRulesAdminInput): Promise<EffectiveRules> {
+  // scope='tenant' writes the row every org without an override inherits; the
+  // caller has already checked the platform role for it (see service.updateRules).
+  const scope = data.scope ?? 'org';
+  const orgId = scope === 'org' ? ctx.org_id : null;
   const result = await serviceTxWithContext(ctx, async (tx) => {
     await tx.execute(sql`
       INSERT INTO hr.attendance_rules
-        (org_id, geofence_enabled, geofence_radius_meters, require_photo, require_geo, allow_wfh_checkin,
+        (tenant_id, org_id, geofence_enabled, geofence_radius_meters, require_photo, require_geo, allow_wfh_checkin,
          require_face_match, face_match_threshold, face_match_action,
          photo_change_cooldown_days, image_retention_days,
-         min_half_day_minutes, min_full_day_minutes, created_by)
+         min_half_day_minutes, min_full_day_minutes,
+         regularization_max_backdate_days, regularization_approval_levels, created_by)
       VALUES
-        (${ctx.org_id}, ${data.geofence_enabled}, ${data.geofence_radius_meters}, ${data.require_photo},
+        (${ctx.tenant_id}, ${orgId}, ${data.geofence_enabled}, ${data.geofence_radius_meters}, ${data.require_photo},
          ${data.require_geo}, ${data.allow_wfh_checkin},
          ${data.require_face_match ?? false}, ${data.face_match_threshold ?? 85}, ${data.face_match_action ?? 'flag'},
          ${data.photo_change_cooldown_days ?? 30}, ${data.image_retention_days ?? 90},
          ${data.min_half_day_minutes ?? DEFAULT_THRESHOLDS.minHalfDayMinutes},
          ${data.min_full_day_minutes ?? DEFAULT_THRESHOLDS.minFullDayMinutes},
+         ${data.regularization_max_backdate_days ?? DEFAULT_RULES.regularization_max_backdate_days},
+         ${data.regularization_approval_levels ?? DEFAULT_RULES.regularization_approval_levels},
          ${ctx.user_id})
-      ON CONFLICT (org_id) WHERE NOT is_deleted DO UPDATE SET
+      ON CONFLICT (tenant_id, COALESCE(org_id, '00000000-0000-0000-0000-000000000000'::uuid))
+        WHERE NOT is_deleted
+      DO UPDATE SET
         geofence_enabled = EXCLUDED.geofence_enabled,
         geofence_radius_meters = EXCLUDED.geofence_radius_meters,
         require_photo = EXCLUDED.require_photo,
@@ -602,11 +657,15 @@ export async function upsertRules(ctx: AttendanceCtx, data: AttendanceRulesAdmin
         image_retention_days = EXCLUDED.image_retention_days,
         min_half_day_minutes = EXCLUDED.min_half_day_minutes,
         min_full_day_minutes = EXCLUDED.min_full_day_minutes,
+        regularization_max_backdate_days = EXCLUDED.regularization_max_backdate_days,
+        regularization_approval_levels = EXCLUDED.regularization_approval_levels,
         updated_at = CLOCK_TIMESTAMP()
     `);
     return loadRulesRow(tx, ctx.org_id);
   });
-  invalidateRules(ctx.org_id);
+  // A tenant write can change what OTHER orgs read, so their cached copies go too.
+  if (scope === 'tenant') invalidateAllRules();
+  else invalidateRules(ctx.org_id);
   return result;
 }
 
@@ -1196,6 +1255,18 @@ export async function updateShiftAssignment(ctx: AttendanceCtx, id: string, data
 // ═════════════════════════════════════════════════════════════════════════════
 // REGULARIZATIONS
 // ═════════════════════════════════════════════════════════════════════════════
+// How many levels of the reporting chain must sign off. The direct counterpart
+// of hr.leave_policies.approval_levels; 1 (direct manager) when neither the org
+// nor its tenant has a rules row yet.
+//
+// Read through the effective rules rather than with its own `WHERE org_id =`
+// query: since the tenant-wide default row has org_id NULL, a direct lookup
+// would miss it and silently fall back to 1 for every org that inherits — which
+// would quietly shorten the approval chain rather than fail visibly.
+async function regularizationApprovalLevels(orgId: string): Promise<number> {
+  return (await getCachedRules(orgId)).regularization_approval_levels;
+}
+
 export async function createRegularization(ctx: AttendanceCtx, data: CreateRegularizationInput): Promise<{ id: string }> {
   return withRoleTx(ctx, async (tx) => {
     const statusSub = data.requested_status_name
@@ -1210,7 +1281,25 @@ export async function createRegularization(ctx: AttendanceCtx, data: CreateRegul
            ${data.requested_in ?? null}, ${data.requested_out ?? null}, ${data.reason}, ${ctx.user_id})
         RETURNING id::text
       `)) as unknown as Array<{ id: string }>;
-      return { id: rows[0]!.id };
+      const id = rows[0]!.id;
+
+      // Materialize the approver chain now, from iam.reporting_lines as of the
+      // work date being corrected — the same resolver leave uses, so a
+      // regularization escalates up exactly the hierarchy a leave request would.
+      // Resolving at submit time means a later re-org cannot strand the request.
+      const levels = await regularizationApprovalLevels(ctx.org_id);
+      const approvers = await resolveApprovers(
+        tx, ctx.org_id, ctx.user_id, levels, new Date(data.work_date),
+      );
+      for (const a of approvers) {
+        await tx.execute(sql`
+          INSERT INTO hr.attendance_regularization_approvals
+            (regularization_id, org_id, level, approver_id)
+          VALUES (${id}, ${ctx.org_id}, ${a.level}, ${a.approverId})
+        `);
+      }
+
+      return { id };
     } catch (err) {
       if ((err as { code?: string }).code === '23505') {
         throw new ConflictError('You already have an open regularization for that date');
@@ -1393,6 +1482,39 @@ export interface RegDecision {
   org_id: string;
   work_date: string;
   day_flipped: boolean;
+  // false when earlier levels of the chain have signed off but more remain, so
+  // the caller knows the requester has NOT been told "approved" yet.
+  final: boolean;
+  next_approver_id: string | null;
+}
+
+interface RegPendingLevel {
+  id: string;
+  level: number;
+  approver_id: string;
+}
+
+// The lowest level still awaiting a decision — the one an approval acts on.
+async function currentPendingRegLevel(tx: DrizzleTx, regId: string): Promise<RegPendingLevel | null> {
+  const rows = (await tx.execute(sql`
+    SELECT id::text, level, approver_id::text
+    FROM hr.attendance_regularization_approvals
+    WHERE regularization_id = ${regId} AND action = 'pending'
+    ORDER BY level ASC
+    LIMIT 1
+  `)) as unknown as RegPendingLevel[];
+  return rows[0] ?? null;
+}
+
+async function furtherPendingRegLevel(tx: DrizzleTx, regId: string, level: number): Promise<RegPendingLevel | null> {
+  const rows = (await tx.execute(sql`
+    SELECT id::text, level, approver_id::text
+    FROM hr.attendance_regularization_approvals
+    WHERE regularization_id = ${regId} AND action = 'pending' AND level > ${level}
+    ORDER BY level ASC
+    LIMIT 1
+  `)) as unknown as RegPendingLevel[];
+  return rows[0] ?? null;
 }
 
 export async function approveRegularization(
@@ -1407,7 +1529,45 @@ export async function approveRegularization(
     if (reg.org_id !== ctx.org_id) throw new NotFoundError('Regularization not found');
     if (reg.status !== 'pending') throw new ConflictError(`Regularization is already ${reg.status}`);
     assertNotSelfApproval(ctx.user_id, reg.user_id);
-    if (!isOverride && !(await canApprove(tx, ctx.org_id, ctx.user_id, reg.user_id))) {
+
+    // Multi-level sign-off, same shape as leave: act on the lowest pending
+    // level, and only finalize once no level is left.
+    const pending = await currentPendingRegLevel(tx, id);
+
+    // Requests created before approval levels existed have no rows at all —
+    // treat them as single-level so an in-flight queue does not become
+    // unactionable at deploy time.
+    if (pending) {
+      const isAssignedApprover = pending.approver_id === ctx.user_id;
+      // hr_admin / org_admin / tenant_admin act at any level without holding
+      // one; canApprove (hr.can_approve) is what grants that, and it also
+      // covers the manager chain for the assigned approver.
+      if (!isAssignedApprover && !isOverride && !(await canApprove(tx, ctx.org_id, ctx.user_id, reg.user_id))) {
+        throw new ForbiddenError('You are not the approver for this level');
+      }
+      const actComment = isAssignedApprover
+        ? comment
+        : `[override by ${ctx.user_id}] ${comment ?? ''}`.trim();
+      await tx.execute(sql`
+        UPDATE hr.attendance_regularization_approvals
+        SET action = 'approved', acted_at = CLOCK_TIMESTAMP(), comment = ${actComment}
+        WHERE id = ${pending.id}
+      `);
+
+      // More levels to go: the request stays pending and the day is untouched.
+      const next = await furtherPendingRegLevel(tx, id, pending.level);
+      if (next) {
+        return {
+          regularization_id: id,
+          requester_id: reg.user_id,
+          org_id: reg.org_id,
+          work_date: reg.work_date,
+          day_flipped: false,
+          final: false,
+          next_approver_id: next.approver_id,
+        };
+      }
+    } else if (!isOverride && !(await canApprove(tx, ctx.org_id, ctx.user_id, reg.user_id))) {
       throw new ForbiddenError('You are not authorized to approve this regularization');
     }
 
@@ -1454,6 +1614,8 @@ export async function approveRegularization(
       org_id: reg.org_id,
       work_date: reg.work_date,
       day_flipped: flipped,
+      final: true,
+      next_approver_id: null,
     };
   });
 }
@@ -1470,15 +1632,41 @@ export async function rejectRegularization(
     if (reg.org_id !== ctx.org_id) throw new NotFoundError('Regularization not found');
     if (reg.status !== 'pending') throw new ConflictError(`Regularization is already ${reg.status}`);
     assertNotSelfApproval(ctx.user_id, reg.user_id);
-    if (!isOverride && !(await canApprove(tx, ctx.org_id, ctx.user_id, reg.user_id))) {
+
+    // A rejection at ANY level ends the request — the remaining levels never see
+    // it, exactly as leave behaves. Same authority rule as approve.
+    const pending = await currentPendingRegLevel(tx, id);
+    if (pending) {
+      const isAssignedApprover = pending.approver_id === ctx.user_id;
+      if (!isAssignedApprover && !isOverride && !(await canApprove(tx, ctx.org_id, ctx.user_id, reg.user_id))) {
+        throw new ForbiddenError('You are not the approver for this level');
+      }
+      const actComment = isAssignedApprover
+        ? comment
+        : `[override by ${ctx.user_id}] ${comment}`.trim();
+      await tx.execute(sql`
+        UPDATE hr.attendance_regularization_approvals
+        SET action = 'rejected', acted_at = CLOCK_TIMESTAMP(), comment = ${actComment}
+        WHERE id = ${pending.id}
+      `);
+    } else if (!isOverride && !(await canApprove(tx, ctx.org_id, ctx.user_id, reg.user_id))) {
       throw new ForbiddenError('You are not authorized to act on this regularization');
     }
+
     await tx.execute(sql`
       UPDATE hr.attendance_regularizations
       SET status = 'rejected', approver_id = ${ctx.user_id}, acted_at = CLOCK_TIMESTAMP(), approver_comment = ${comment}
       WHERE id = ${id}
     `);
-    return { regularization_id: id, requester_id: reg.user_id, org_id: reg.org_id, work_date: reg.work_date, day_flipped: false };
+    return {
+      regularization_id: id,
+      requester_id: reg.user_id,
+      org_id: reg.org_id,
+      work_date: reg.work_date,
+      day_flipped: false,
+      final: true,
+      next_approver_id: null,
+    };
   });
 }
 

@@ -10,8 +10,10 @@ import {
   canManageShifts,
   canViewTeamAttendance,
   canOverrideAttendanceApproval,
+  isTenantHrAdmin,
 } from '@hr/authz';
 import { ForbiddenError, ValidationError } from '../../../lib/errors.js';
+import { regularizationWindowError } from '../../../lib/attendance/regularization-window.js';
 import { publishAttendanceEvent } from '../../../lib/events.js';
 import * as repo from './attendance.repository.js';
 import type { AttendanceCtx } from './attendance.repository.js';
@@ -111,6 +113,13 @@ export async function updateRules(ctx: AttendanceCtx, data: AttendanceRulesAdmin
   if (!canManageAttendance(ctx)) {
     throw new ForbiddenError('Only HR admins or org admins can manage attendance rules');
   }
+  // Two different authorities. The capability above says "may configure
+  // attendance"; writing the TENANT-WIDE row additionally changes what every
+  // other org inherits, which is a tenancy question answered by the platform
+  // role — an org's own hr_admin must not be able to reconfigure its siblings.
+  if (data.scope === 'tenant' && !isTenantHrAdmin(ctx.role)) {
+    throw new ForbiddenError('Only tenant admins can set attendance rules for every organization');
+  }
   const result = await repo.upsertRules(ctx, data);
   void logActivity({
     action_type: 'attendance_rules_updated',
@@ -118,12 +127,16 @@ export async function updateRules(ctx: AttendanceCtx, data: AttendanceRulesAdmin
     org_id: ctx.org_id,
     // The day-classification thresholds decide whether a day counts as present,
     // half or absent, so a change to them is as consequential as a payroll edit
-    // and belongs in the trail alongside the capture rules.
+    // and belongs in the trail alongside the capture rules. `scope` is recorded
+    // because the same values mean something different when they apply tenant-wide.
     new_value: {
+      scope: data.scope ?? 'org',
       geofence_radius_meters: result.geofence_radius_meters,
       require_photo: result.require_photo,
       min_half_day_minutes: result.min_half_day_minutes,
       min_full_day_minutes: result.min_full_day_minutes,
+      regularization_max_backdate_days: result.regularization_max_backdate_days,
+      regularization_approval_levels: result.regularization_approval_levels,
     },
   });
   return result;
@@ -265,6 +278,11 @@ export async function recomputeAttendance(ctx: AttendanceCtx, data: RecomputeAtt
 
 // ── Regularizations ───────────────────────────────────────────────────────────
 export async function createRegularization(ctx: AttendanceCtx, data: CreateRegularizationInput) {
+  // Checked here and nowhere else: updateRegularization deliberately cannot
+  // change work_date (moving a request to another date is a new request), so a
+  // request cannot drift out of its window after it is filed.
+  const windowError = regularizationWindowError(data.work_date, await repo.getEffectiveRules(ctx));
+  if (windowError) throw new ValidationError(windowError);
   const result = await repo.createRegularization(ctx, data);
   void logActivity({
     action_type: 'attendance_regularization_requested',
