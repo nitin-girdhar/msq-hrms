@@ -1,16 +1,18 @@
 import { redirect } from 'next/navigation';
 import { buildLoginUrl } from '@platform/ui-kit';
+import { adminWebOrigin } from '@platform/ui-kit/middleware';
 import { getServerSession } from '@platform/ui-kit/server';
-import { canManageAttendanceAdmin, AttendanceAdminShell, getHrRank } from '@hr/web';
+import { canManageAttendanceAdmin } from '@hr/web';
 
 export const dynamic = 'force-dynamic';
 
+// Attendance admin moved to admin-web (Team/API Tokens/Leave/Attendance
+// console for org_admin/tenant_admin). This route stays as a redirect for old
+// bookmarks — the capability gate runs BEFORE redirecting so a denied user
+// still sees denial here rather than an open redirect into admin-web.
 export default async function AttendanceAdminPage() {
   const result = await getServerSession();
   if (!result) redirect(buildLoginUrl());
-  // Tier C3: gated on the hr.attendance.admin capability — the same grant
-  // hr-service checks — so this page and its calls can never disagree.
   if (!canManageAttendanceAdmin(result.session)) redirect('/attendance');
-  const hrRank = await getHrRank(result.cookieHeader);
-  return <AttendanceAdminShell actor={result.session} hrRank={hrRank} />;
+  redirect(`${adminWebOrigin()}/dashboard/attendance/admin`);
 }
