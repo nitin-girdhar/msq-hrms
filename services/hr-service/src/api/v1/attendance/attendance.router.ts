@@ -13,6 +13,9 @@ import {
   updateShiftSchema,
   createShiftAssignmentSchema,
   updateShiftAssignmentSchema,
+  createGeoExceptionSchema,
+  updateGeoExceptionSchema,
+  listGeoExceptionsSchema,
   recomputeAttendanceSchema,
   createRegularizationSchema,
   updateRegularizationSchema,
@@ -95,6 +98,15 @@ export async function attendanceRouter(app: FastifyInstance) {
   app.get('/shift-assignments', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_ADMIN_ASSIGNMENTS_VIEW)] }, ctrl.listShiftAssignments);
   app.post('/shift-assignments', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_ADMIN_ASSIGNMENTS_MANAGE, 'You do not have permission to assign shifts'), validate({ body: createShiftAssignmentSchema })] }, ctrl.createShiftAssignment);
   app.patch('/shift-assignments/:id', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_ADMIN_ASSIGNMENTS_MANAGE, 'You do not have permission to assign shifts'), validate({ body: updateShiftAssignmentSchema })] }, ctrl.updateShiftAssignment);
+
+  // ── Geofence exceptions ───────────────────────────────────────────────────────
+  // Who may punch from outside the office radius: a rotating field role, or an
+  // approved work-from-home stretch. Its OWN capability, not the attendance-admin
+  // one — exempting a person from location verification is a narrower authority
+  // than setting the radius everyone else is held to.
+  app.get('/geo-exceptions', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_ADMIN_GEO_EXCEPTIONS_VIEW), validate({ query: listGeoExceptionsSchema })] }, ctrl.listGeoExceptions);
+  app.post('/geo-exceptions', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_ADMIN_GEO_EXCEPTIONS_MANAGE, 'You do not have permission to manage geofence exceptions'), validate({ body: createGeoExceptionSchema })] }, ctrl.createGeoException);
+  app.patch('/geo-exceptions/:id', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_ADMIN_GEO_EXCEPTIONS_MANAGE, 'You do not have permission to manage geofence exceptions'), validate({ body: updateGeoExceptionSchema })] }, ctrl.updateGeoException);
 
   // Re-resolve already-resolved days after a shift assignment changed. The
   // nightly job cannot do this (it only fills days with no row yet), so this is

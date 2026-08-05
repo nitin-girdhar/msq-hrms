@@ -289,7 +289,7 @@ export default function RulesEditor({ actor, onNotice }: Props) {
           <ToggleRow
             id="re-wfh"
             label="Allow WFH check-in"
-            description="Lets employees check in from outside the geofence."
+            description="Gives EVERYONE in this branch a self-declared checkbox to check in from outside the geofence. To exempt only a few named people, use the Exceptions tab instead."
             checked={rules.allow_wfh_checkin}
             onChange={(v) => setRules({ ...rules, allow_wfh_checkin: v })}
           />

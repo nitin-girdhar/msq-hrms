@@ -56,6 +56,20 @@ export interface FaceSelfContext {
   next_change_allowed_at: string | null;
 }
 
+// Why an employee is allowed to punch from outside the office radius.
+// 'remote_role' = a rotating/field role tied to no location; 'wfh' = an approved
+// work-from-home stretch. Both skip the fence; only 'wfh' also marks the punch
+// as worked-from-home, so a field visit is never filed as WFH.
+export type GeoExceptionType = 'remote_role' | 'wfh';
+
+// The exemption in force for the signed-in user today, as resolved by the server
+// with the SAME query the punch endpoint uses.
+export interface ActiveGeoException {
+  exception_type: GeoExceptionType;
+  effective_to: string | null;
+  reason: string;
+}
+
 export interface PunchResult {
   event_id: string;
   work_date: string;
@@ -63,6 +77,7 @@ export interface PunchResult {
   distance_from_org_m: number | null;
   is_within_geofence: boolean | null;
   is_wfh: boolean;
+  geo_exception_type: GeoExceptionType | null;
   photo_url: string | null;
   day_status: string;
 }
@@ -118,6 +133,10 @@ export interface DayEventView {
   distance_from_org_m: number | null;
   geo_lat: number | null;
   geo_lng: number | null;
+  is_wfh: boolean;
+  // Why an out-of-fence punch was accepted; null when the punch was in-fence (or
+  // predates the fence being switched on).
+  geo_exception_type: GeoExceptionType | null;
   has_photo: boolean;
 }
 
@@ -216,6 +235,28 @@ export interface TodayPunchState {
   has_open_session: boolean;
   segments_punched: number;
   segments_total: number;
+  // Non-null when this employee may punch from outside the geofence today. The
+  // punch UI reads it to tell them BEFORE they try, rather than letting them get
+  // as far as an OUTSIDE_GEOFENCE rejection that would never have happened.
+  geo_exception: ActiveGeoException | null;
+}
+
+export interface GeoExceptionView {
+  id: string;
+  user_id: string;
+  user_full_name: string;
+  employee_code: string | null;
+  exception_type: GeoExceptionType;
+  effective_from: string;
+  effective_to: string | null;
+  reason: string;
+  is_active: boolean;
+  // Server-computed "in force right now" — is_active AND today falls inside the
+  // dates. Not derived client-side, so the list cannot disagree with the punch.
+  is_in_force: boolean;
+  created_by: string | null;
+  created_by_name: string | null;
+  created_at: string;
 }
 
 export interface ShiftAssignmentView {

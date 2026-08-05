@@ -18,6 +18,16 @@ export function canManageAttendanceAdmin(actor: CapabilityHolder): boolean {
 }
 
 /**
+ * Who may see the geofence-exceptions tab. Its own capability, not the
+ * attendance-admin one — exempting a named person from location verification is
+ * a narrower authority than setting the radius, so an org may grant it to fewer
+ * people. Mirrors exactly what the routes behind the tab require.
+ */
+export function canViewGeoExceptions(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_ATTENDANCE_ADMIN_GEO_EXCEPTIONS_VIEW);
+}
+
+/**
  * Who may act on a flagged face match. Mirrors the capability the clear/reject
  * routes require, so the queue is not rendered to someone the service will refuse
  * — and, like the helper above, asks the session's resolved capability list rather
@@ -145,10 +155,14 @@ export function describePunchError(err: unknown): string {
     case 'OUTSIDE_GEOFENCE': {
       const distance = details?.distance_m;
       const radius = details?.allowed_radius_m;
+      // Name the remedy: for someone whose role genuinely keeps them away from
+      // the office, the fix is an exception on their record, not a retry.
+      const remedy =
+        ' If your role takes you away from the office, ask HR to add a remote or work-from-home exception for you.';
       if (distance != null && radius != null) {
-        return `You are ${Math.round(distance)}m from the office; check-in is allowed within ${radius}m.`;
+        return `You are ${Math.round(distance)}m from the office; check-in is allowed within ${radius}m.${remedy}`;
       }
-      return "You're outside the allowed check-in radius.";
+      return `You're outside the allowed check-in radius.${remedy}`;
     }
     case 'PHOTO_REQUIRED':
       return 'A photo is required to check in.';

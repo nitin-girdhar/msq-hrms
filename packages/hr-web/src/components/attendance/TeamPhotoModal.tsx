@@ -57,7 +57,19 @@ function PunchPhoto({ event }: { event: DayEventView }) {
         {pending && <span className="font-semibold text-amber-700">Awaiting review</span>}
         {rejected && <span className="font-semibold text-red-700">Rejected</span>}
         {event.is_off_segment && <span className="text-amber-700">Outside window</span>}
-        {event.is_within_geofence === false && <span className="text-red-700">Outside geofence</span>}
+        {/* An out-of-fence punch is only a red flag when nothing authorised it.
+            With an exception on record it is expected, so it reads as the kind of
+            work it was — not as a violation the reviewer has to chase. */}
+        {event.is_within_geofence === false &&
+          (event.geo_exception_type === 'remote_role' ? (
+            <span className="text-indigo-700">Remote</span>
+          ) : event.geo_exception_type === 'wfh' ? (
+            <span className="text-amber-700">WFH</span>
+          ) : event.is_wfh ? (
+            <span className="text-amber-700">WFH (self-declared)</span>
+          ) : (
+            <span className="text-red-700">Outside geofence</span>
+          ))}
       </div>
 
       {!event.has_photo ? (

@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Modal } from '@platform/ui-kit';
 import { attendance as attendanceApi } from '../../lib/api/client';
 import type { PunchResult } from '../../lib/attendance/types';
-import type { AttendanceRules } from '../../lib/attendance/types';
-import { describePunchError } from '../../lib/attendance/format';
+import type { ActiveGeoException, AttendanceRules } from '../../lib/attendance/types';
+import { describePunchError, formatDay } from '../../lib/attendance/format';
 import { useGeolocation } from '../../hooks/useGeolocation';
 import { useCameraCapture } from '../../hooks/useCameraCapture';
 
@@ -13,11 +13,13 @@ interface Props {
   open: boolean;
   mode: 'check_in' | 'check_out';
   rules: AttendanceRules;
+  /** Non-null when this employee may punch from outside the geofence today. */
+  geoException: ActiveGeoException | null;
   onClose: () => void;
   onSuccess: (result: PunchResult) => void;
 }
 
-export default function PunchModal({ open, mode, rules, onClose, onSuccess }: Props) {
+export default function PunchModal({ open, mode, rules, geoException, onClose, onSuccess }: Props) {
   const geo = useGeolocation();
   const camera = useCameraCapture();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -105,17 +107,39 @@ export default function PunchModal({ open, mode, rules, onClose, onSuccess }: Pr
           </div>
         )}
 
-        {rules.allow_wfh_checkin && (
-          <label className="flex items-center gap-2 text-sm text-[#0F172A]">
-            <input
-              type="checkbox"
-              checked={isWfh}
-              onChange={(e) => setIsWfh(e.target.checked)}
-              disabled={submitting}
-              className="h-4 w-4 rounded border-[#E2E8F0] text-[#0b6cbf]"
-            />
-            <span>Working from home</span>
-          </label>
+        {/* An exemption replaces the checkbox rather than joining it: a 'wfh'
+            exemption already marks the punch as work-from-home server-side, so
+            re-asking would be a question whose answer is ignored. */}
+        {geoException ? (
+          <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-800">
+            {geoException.exception_type === 'wfh' ? (
+              <>
+                <span className="font-semibold">Approved work from home</span>
+                {geoException.effective_to ? ` until ${formatDay(geoException.effective_to)}` : ''}. This punch will be
+                recorded as work from home.
+              </>
+            ) : (
+              <>
+                <span className="font-semibold">Remote check-in is enabled for you</span>
+                {geoException.effective_to ? ` until ${formatDay(geoException.effective_to)}` : ''}. You can check in
+                from anywhere.
+              </>
+            )}{' '}
+            Your location is still recorded.
+          </div>
+        ) : (
+          rules.allow_wfh_checkin && (
+            <label className="flex items-center gap-2 text-sm text-[#0F172A]">
+              <input
+                type="checkbox"
+                checked={isWfh}
+                onChange={(e) => setIsWfh(e.target.checked)}
+                disabled={submitting}
+                className="h-4 w-4 rounded border-[#E2E8F0] text-[#0b6cbf]"
+              />
+              <span>Working from home</span>
+            </label>
+          )
         )}
 
         {/* ── Location ─────────────────────────────────────────────────────── */}

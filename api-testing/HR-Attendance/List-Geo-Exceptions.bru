@@ -1,0 +1,21 @@
+meta {
+  name: List Geo Exceptions
+  type: http
+  seq: 36
+}
+
+get {
+  url: {{baseUrl}}/hr/geo-exceptions
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: auth_token={{authToken}}
+}
+
+docs {
+  Who may check in from outside the office radius. Defaults to what is IN FORCE
+  today; add ?include_inactive=true to see ended and switched-off rows too.
+  Requires hr.attendance.admin.geo_exceptions.view.
+}

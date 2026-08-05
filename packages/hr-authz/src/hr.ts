@@ -74,6 +74,17 @@ export function canManageShifts(actor: CapabilityHolder): boolean {
   return canManageAttendance(actor);
 }
 
+/**
+ * Exempt a named person from the geofence — a rotating field role, or an
+ * approved work-from-home stretch. Deliberately its OWN capability rather than
+ * riding on canManageAttendance: this is the authority to let someone's
+ * attendance stop being location-verified, which an org may want to keep with
+ * fewer people than the ones who set the radius.
+ */
+export function canManageGeoExceptions(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_ATTENDANCE_ADMIN_GEO_EXCEPTIONS_MANAGE);
+}
+
 /** See a team/subtree attendance view at all — this gates the Team tab. */
 export function canViewTeamAttendance(actor: CapabilityHolder): boolean {
   return can(actor, CAPABILITY.HR_ATTENDANCE_VIEW_TEAM);

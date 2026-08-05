@@ -1,0 +1,29 @@
+meta {
+  name: End Geo Exception
+  type: http
+  seq: 39
+}
+
+patch {
+  url: {{baseUrl}}/hr/geo-exceptions/{{geoExceptionId}}
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: auth_token={{authToken}}
+}
+
+body:json {
+  {
+    "effective_to": "2026-01-15"
+  }
+}
+
+docs {
+  Ends an exception by setting its end date, never by deleting it - the punches
+  already made under it must keep pointing at a row that explains them.
+
+  exception_type is not accepted here: changing the kind would rewrite the
+  recorded reason for those punches. End this one and add another instead.
+}

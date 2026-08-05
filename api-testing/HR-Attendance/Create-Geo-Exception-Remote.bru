@@ -1,0 +1,30 @@
+meta {
+  name: Create Geo Exception (remote role)
+  type: http
+  seq: 37
+}
+
+post {
+  url: {{baseUrl}}/hr/geo-exceptions
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: auth_token={{authToken}}
+}
+
+body:json {
+  {
+    "user_id": "{{targetUserId}}",
+    "exception_type": "remote_role",
+    "effective_from": "2026-01-01",
+    "reason": "Rotating field role - not tied to a branch"
+  }
+}
+
+docs {
+  Open-ended (no effective_to): the normal shape for someone whose role rotates
+  across locations. Their punches record geo_exception_type = 'remote_role' and
+  is_wfh = false - a field visit is outside the fence but is not work from home.
+}

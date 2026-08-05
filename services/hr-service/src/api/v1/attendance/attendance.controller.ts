@@ -11,6 +11,9 @@ import type {
   UpdateShiftInput,
   CreateShiftAssignmentInput,
   UpdateShiftAssignmentInput,
+  CreateGeoExceptionInput,
+  UpdateGeoExceptionInput,
+  ListGeoExceptionsInput,
   RecomputeAttendanceInput,
   CreateRegularizationInput,
   UpdateRegularizationInput,
@@ -145,6 +148,22 @@ export class AttendanceController {
   updateShiftAssignment = async (request: FastifyRequest, reply: FastifyReply) => {
     const { id } = request.params as { id: string };
     await service.updateShiftAssignment(ctxOf(request), id, request.body as UpdateShiftAssignmentInput);
+    return reply.status(204).send();
+  };
+
+  listGeoExceptions = async (request: FastifyRequest, reply: FastifyReply) => {
+    const data = await service.listGeoExceptions(ctxOf(request), request.query as ListGeoExceptionsInput);
+    return reply.send({ success: true, data });
+  };
+
+  createGeoException = async (request: FastifyRequest, reply: FastifyReply) => {
+    const result = await service.createGeoException(ctxOf(request), request.body as CreateGeoExceptionInput);
+    return reply.status(201).send({ success: true, data: result });
+  };
+
+  updateGeoException = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = request.params as { id: string };
+    await service.updateGeoException(ctxOf(request), id, request.body as UpdateGeoExceptionInput);
     return reply.status(204).send();
   };
 

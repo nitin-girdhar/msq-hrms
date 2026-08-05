@@ -26,6 +26,8 @@ import type {
   ShiftView,
   ShiftSegmentView,
   ShiftAssignmentView,
+  GeoExceptionView,
+  GeoExceptionType,
   DayEventView,
   FaceReviewView,
   RegularizationView,
@@ -447,4 +449,30 @@ export const shiftAssignments = {
       '/hr/attendance/recompute',
       { method: 'POST', body: JSON.stringify(body) },
     ),
+};
+
+// ── Geofence exceptions ─────────────────────────────────────────────────────
+// The named people who may check in from outside the office radius.
+
+export interface CreateGeoExceptionBody {
+  user_id: string;
+  exception_type: GeoExceptionType;
+  effective_from: string;
+  effective_to?: string | null | undefined;
+  reason: string;
+}
+
+export const geoExceptions = {
+  list: (params: { user_id?: string; exception_type?: GeoExceptionType; include_inactive?: boolean } = {}) =>
+    request<Envelope<GeoExceptionView[]>>(`/hr/geo-exceptions${qs(params)}`),
+
+  create: (body: CreateGeoExceptionBody) =>
+    request<Envelope<{ id: string }>>('/hr/geo-exceptions', { method: 'POST', body: JSON.stringify(body) }),
+
+  // exception_type is not updatable on purpose: changing the kind would rewrite
+  // the stated reason for punches already made under it. End it and add another.
+  update: (
+    id: string,
+    body: { effective_from?: string; effective_to?: string | null; reason?: string; is_active?: boolean },
+  ) => request<void>(`/hr/geo-exceptions/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
 };

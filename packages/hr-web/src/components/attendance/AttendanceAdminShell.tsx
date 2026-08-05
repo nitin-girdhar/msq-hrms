@@ -8,24 +8,28 @@ import AttendanceTabs from './AttendanceTabs';
 import RulesEditor from './admin/RulesEditor';
 import ShiftsManager from './admin/ShiftsManager';
 import ShiftAssignmentsManager from './admin/ShiftAssignmentsManager';
+import GeoExceptionsManager from './admin/GeoExceptionsManager';
 import MonthlySummaryReport from './admin/MonthlySummaryReport';
+import { canViewGeoExceptions } from '../../lib/attendance/format';
 
 interface Props {
   actor: SessionUser;
   hrRank: HrRank;
 }
 
-type Section = 'rules' | 'shifts' | 'assignments' | 'reports';
-
-const SECTIONS: { id: Section; label: string }[] = [
-  { id: 'rules', label: 'Rules' },
-  { id: 'shifts', label: 'Shifts' },
-  { id: 'assignments', label: 'Assignments' },
-  { id: 'reports', label: 'Reports' },
-];
+type Section = 'rules' | 'shifts' | 'assignments' | 'exceptions' | 'reports';
 
 export default function AttendanceAdminShell({ actor, hrRank }: Props) {
   const [section, setSection] = useState<Section>('rules');
+  // Exceptions carry their own capability, so an attendance admin without it
+  // never sees the tab the service would refuse them.
+  const sections: { id: Section; label: string }[] = [
+    { id: 'rules', label: 'Rules' },
+    { id: 'shifts', label: 'Shifts' },
+    { id: 'assignments', label: 'Assignments' },
+    ...(canViewGeoExceptions(actor) ? [{ id: 'exceptions' as const, label: 'Exceptions' }] : []),
+    { id: 'reports', label: 'Reports' },
+  ];
   const [notice, setNotice] = useState<string | null>(null);
 
   const onNotice = (msg: string) => setNotice(msg);
@@ -42,7 +46,7 @@ export default function AttendanceAdminShell({ actor, hrRank }: Props) {
         {notice && <Alert tone="success">{notice}</Alert>}
 
         <div className="flex flex-wrap gap-1 rounded-xl border border-[#E2E8F0] bg-white p-1 shadow-sm">
-          {SECTIONS.map((s) => (
+          {sections.map((s) => (
             <button
               key={s.id}
               type="button"
@@ -61,6 +65,7 @@ export default function AttendanceAdminShell({ actor, hrRank }: Props) {
         {section === 'rules' && <RulesEditor actor={actor} onNotice={onNotice} />}
         {section === 'shifts' && <ShiftsManager onNotice={onNotice} />}
         {section === 'assignments' && <ShiftAssignmentsManager onNotice={onNotice} />}
+        {section === 'exceptions' && canViewGeoExceptions(actor) && <GeoExceptionsManager onNotice={onNotice} />}
         {section === 'reports' && <MonthlySummaryReport />}
       </PageBody>
     </div>

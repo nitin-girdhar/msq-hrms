@@ -8,6 +8,7 @@ import { logActivity } from '@platform/audit-log';
 import {
   canManageAttendance,
   canManageShifts,
+  canManageGeoExceptions,
   canViewTeamAttendance,
   canOverrideAttendanceApproval,
   isTenantHrAdmin,
@@ -25,6 +26,9 @@ import type {
   UpdateShiftInput,
   CreateShiftAssignmentInput,
   UpdateShiftAssignmentInput,
+  CreateGeoExceptionInput,
+  UpdateGeoExceptionInput,
+  ListGeoExceptionsInput,
   RecomputeAttendanceInput,
   CreateRegularizationInput,
   UpdateRegularizationInput,
@@ -248,6 +252,55 @@ export async function createShiftAssignment(ctx: AttendanceCtx, data: CreateShif
 export async function updateShiftAssignment(ctx: AttendanceCtx, id: string, data: UpdateShiftAssignmentInput) {
   assertCanManageShifts(ctx);
   await repo.updateShiftAssignment(ctx, id, data);
+}
+
+// ── Geofence exceptions ──────────────────────────────────────────────────────
+// Who may punch from outside the office radius. Every write is audited: this is
+// the switch that stops a person's attendance being location-verified, so "who
+// turned it on, for whom, and when" has to survive the people who did it.
+function assertCanManageGeoExceptions(ctx: AttendanceCtx) {
+  if (!canManageGeoExceptions(ctx)) {
+    throw new ForbiddenError('You do not have permission to manage geofence exceptions');
+  }
+}
+
+export async function listGeoExceptions(ctx: AttendanceCtx, query: ListGeoExceptionsInput) {
+  // Without team visibility a user may only see their own — the same rule shift
+  // assignments use, and enough for the dashboard to explain why they are exempt.
+  if (!canViewTeamAttendance(ctx)) {
+    return repo.listGeoExceptions(ctx, { ...query, user_id: ctx.user_id });
+  }
+  return repo.listGeoExceptions(ctx, query);
+}
+
+export async function createGeoException(ctx: AttendanceCtx, data: CreateGeoExceptionInput) {
+  assertCanManageGeoExceptions(ctx);
+  const result = await repo.createGeoException(ctx, data);
+  void logActivity({
+    action_type: 'attendance_geo_exception_granted',
+    performed_by: ctx.user_id,
+    subject_user_id: data.user_id,
+    org_id: ctx.org_id,
+    new_value: {
+      exception_id: result.id,
+      exception_type: data.exception_type,
+      effective_from: data.effective_from,
+      effective_to: data.effective_to ?? null,
+      reason: data.reason,
+    },
+  });
+  return result;
+}
+
+export async function updateGeoException(ctx: AttendanceCtx, id: string, data: UpdateGeoExceptionInput) {
+  assertCanManageGeoExceptions(ctx);
+  await repo.updateGeoException(ctx, id, data);
+  void logActivity({
+    action_type: 'attendance_geo_exception_updated',
+    performed_by: ctx.user_id,
+    org_id: ctx.org_id,
+    new_value: { exception_id: id, ...data },
+  });
 }
 
 /**

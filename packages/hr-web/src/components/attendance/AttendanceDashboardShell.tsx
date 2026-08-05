@@ -222,6 +222,7 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
           open={punchMode !== null}
           mode={punchMode}
           rules={rules}
+          geoException={punchState?.geo_exception ?? null}
           onClose={() => setPunchMode(null)}
           onSuccess={handlePunchSuccess}
         />

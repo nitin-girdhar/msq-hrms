@@ -216,6 +216,43 @@ export const updateShiftAssignmentSchema = z.object({
   is_active: z.boolean().optional(),
 });
 
+// ── Geofence exceptions ─────────────────────────────────────────────────────
+// Who may punch from outside the office radius, between which dates, and why.
+// Mirrors the CHECK on hr.attendance_geo_exceptions.exception_type.
+export const geoExceptionType = z.enum(['remote_role', 'wfh']);
+
+// A reason is REQUIRED, not optional: an exemption from location verification is
+// the kind of record that has to explain itself months later, to whoever asks
+// why this person's attendance was never checked against the office.
+const geoExceptionReason = z.string().trim().min(3).max(500);
+
+export const createGeoExceptionSchema = z.object({
+  user_id: z.string().uuid(),
+  exception_type: geoExceptionType,
+  effective_from: dateString,
+  // NULL / omitted = open-ended, which is the normal shape for a rotating role.
+  effective_to: dateString.nullable().optional(),
+  reason: geoExceptionReason,
+});
+
+// exception_type is deliberately absent: changing the KIND of an existing
+// exception rewrites what already happened under it. End this one and add
+// another instead — the punches it covered keep pointing at the right reason.
+export const updateGeoExceptionSchema = z.object({
+  effective_from: dateString.optional(),
+  effective_to: dateString.nullable().optional(),
+  reason: geoExceptionReason.optional(),
+  is_active: z.boolean().optional(),
+});
+
+export const listGeoExceptionsSchema = z.object({
+  user_id: z.string().uuid().optional(),
+  exception_type: geoExceptionType.optional(),
+  // Default false so the admin list opens on what is in force today; the tab's
+  // "include ended" toggle asks for the rest.
+  include_inactive: z.coerce.boolean().default(false),
+});
+
 // ── Recompute ───────────────────────────────────────────────────────────────
 // Re-resolve already-resolved days. Needed because the nightly job only fills
 // days that have NO row yet, so changing a shift assignment never re-classified
@@ -344,6 +381,10 @@ export type CreateShiftInput = z.infer<typeof createShiftSchema>;
 export type UpdateShiftInput = z.infer<typeof updateShiftSchema>;
 export type CreateShiftAssignmentInput = z.infer<typeof createShiftAssignmentSchema>;
 export type UpdateShiftAssignmentInput = z.infer<typeof updateShiftAssignmentSchema>;
+export type GeoExceptionType = z.infer<typeof geoExceptionType>;
+export type CreateGeoExceptionInput = z.infer<typeof createGeoExceptionSchema>;
+export type UpdateGeoExceptionInput = z.infer<typeof updateGeoExceptionSchema>;
+export type ListGeoExceptionsInput = z.infer<typeof listGeoExceptionsSchema>;
 export type RecomputeAttendanceInput = z.infer<typeof recomputeAttendanceSchema>;
 export type CreateRegularizationInput = z.infer<typeof createRegularizationSchema>;
 export type UpdateRegularizationInput = z.infer<typeof updateRegularizationSchema>;

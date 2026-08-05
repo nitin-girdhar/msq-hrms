@@ -31,6 +31,7 @@ import {
 import { DEFAULT_THRESHOLDS, thresholdsFrom, type ShiftThresholds } from '../../../lib/attendance/resolve.js';
 import { matchSegment, validateSegments, type ShiftSegment } from '../../../lib/attendance/segments.js';
 import { punchEligibility } from '../../../lib/attendance/punch-eligibility.js';
+import { resolveGeoBypass } from '../../../lib/attendance/geo-bypass.js';
 // Regularizations escalate up the same hierarchy leave does — one resolver,
 // reading iam.reporting_lines, shared by both.
 import { resolveApprovers } from '../../../lib/leave/resolve-approvers.js';
@@ -52,6 +53,10 @@ import type {
   UpdateShiftInput,
   CreateShiftAssignmentInput,
   UpdateShiftAssignmentInput,
+  CreateGeoExceptionInput,
+  UpdateGeoExceptionInput,
+  ListGeoExceptionsInput,
+  GeoExceptionType,
   CreateRegularizationInput,
   UpdateRegularizationInput,
   ListRegularizationsInput,
@@ -240,6 +245,44 @@ async function currentShift(tx: DrizzleTx, orgId: string, userId: string, date: 
   return rows[0] ?? null;
 }
 
+// ── Geofence exceptions ─────────────────────────────────────────────────────
+
+export interface ActiveGeoException {
+  exception_type: GeoExceptionType;
+  effective_to: string | null;
+  reason: string;
+}
+
+/**
+ * The geofence exemption in force for this user on `date`, or null.
+ *
+ * Deliberately NOT folded into getCachedRules: that cache is keyed by org_id, so
+ * a per-user answer stored in it would be served to every other employee of the
+ * same org — an exemption granted to one person would silently exempt all of them.
+ */
+async function activeGeoException(
+  tx: DrizzleTx,
+  orgId: string,
+  userId: string,
+  date: string,
+): Promise<ActiveGeoException | null> {
+  const rows = (await tx.execute(sql`
+    SELECT g.exception_type, g.effective_to::text AS effective_to, g.reason
+    FROM hr.attendance_geo_exceptions g
+    WHERE g.user_id = ${userId} AND g.org_id = ${orgId}
+      AND NOT g.is_deleted AND g.is_active
+      AND g.effective_from <= ${date}::date
+      AND (g.effective_to IS NULL OR g.effective_to >= ${date}::date)
+    -- Both kinds bypass identically, so this only decides how the punch is
+    -- LABELLED when someone holds both. remote_role wins: it is the standing
+    -- fact about how they work, and calling a field visit "work from home"
+    -- would be the wrong record.
+    ORDER BY (g.exception_type = 'remote_role') DESC
+    LIMIT 1
+  `)) as unknown as ActiveGeoException[];
+  return rows[0] ?? null;
+}
+
 /** Count of one punch type already recorded for a (user, work_date). */
 async function countPunches(
   tx: DrizzleTx,
@@ -290,6 +333,9 @@ export interface PunchResult {
   distance_from_org_m: number | null;
   is_within_geofence: boolean | null;
   is_wfh: boolean;
+  // Which exemption let this punch past the fence, or null for an ordinary
+  // in-fence punch (and for the org-wide self-declared WFH bypass).
+  geo_exception_type: GeoExceptionType | null;
   photo_url: string | null;
   day_status: string;
   face_match_score: number | null;
@@ -353,6 +399,14 @@ export async function punch(
   const prep = await serviceTxWithContext(ctx, async (tx) => {
     const org = await loadOrg(tx, ctx.org_id);
 
+    // Resolved here rather than further down (where the work date is computed)
+    // because the geofence decision below needs the calendar date FIRST, and it
+    // has to be the date in the ORG's timezone — an exemption ending "today"
+    // must expire when today ends there, not in UTC.
+    const now = new Date();
+    const localToday = localDateOf(now, org.timezone);
+    const geoException = await activeGeoException(tx, ctx.org_id, ctx.user_id, localToday);
+
     // Geo enforcement (identical for both punch types).
     const hasCoords = data.geo_lat != null && data.geo_lng != null;
     if (rules.require_geo && !hasCoords) {
@@ -361,14 +415,22 @@ export async function punch(
 
     let distance: number | null = null;
     let isWithin: boolean | null = null;
-    const wfhBypass = data.is_wfh && rules.allow_wfh_checkin;
+    // Two ways past the fence — the org-wide self-declared checkbox, or this
+    // employee's own exemption row — plus how the punch is then labelled. All
+    // stated in one place (lib/attendance/geo-bypass) so the labelling rule is
+    // testable without a database.
+    const { bypass, isWfh, geoExceptionType } = resolveGeoBypass({
+      declaredWfh: data.is_wfh,
+      allowWfhCheckin: rules.allow_wfh_checkin,
+      exceptionType: geoException?.exception_type ?? null,
+    });
 
     if (hasCoords && org.geo_lat != null && org.geo_lng != null) {
       distance = Math.round(haversineMeters(org.geo_lat, org.geo_lng, data.geo_lat!, data.geo_lng!) * 100) / 100;
       isWithin = distance <= rules.geofence_radius_meters;
     }
 
-    if (rules.geofence_enabled && !wfhBypass) {
+    if (rules.geofence_enabled && !bypass) {
       if (org.geo_lat == null || org.geo_lng == null) {
         throw new ValidationError(
           'ORG_LOCATION_NOT_SET: the organization has no geo coordinates. An org admin must set geo_lat/geo_lng before attendance can be captured.',
@@ -396,9 +458,8 @@ export async function punch(
       throw new ValidationError('PHOTO_REQUIRED', { code: 'PHOTO_REQUIRED' });
     }
 
-    // Determine the work date (org tz + night-shift crossing).
-    const now = new Date();
-    const localToday = localDateOf(now, org.timezone);
+    // Determine the work date (org tz + night-shift crossing). `now` and
+    // `localToday` were resolved above, before the geofence check.
     const shift = await currentShift(tx, ctx.org_id, ctx.user_id, localToday);
     const shiftStartMin = shift ? parseTimeToMinutes(shift.start_time) : 0;
     const isNight = shift?.is_night_shift ?? false;
@@ -436,7 +497,8 @@ export async function punch(
       rules.require_face_match && photoBuf ? await loadFaceSubjectId(tx, ctx.org_id, ctx.user_id) : null;
 
     return {
-      org, distance, isWithin, photoKey, photoBuf, workDate, isNight, shiftStartMin, shift,
+      org, distance, isWithin, isWfh, geoExceptionType,
+      photoKey, photoBuf, workDate, isNight, shiftStartMin, shift,
       faceSubjectId, isOffSegment, segmentCount: segments.length,
     };
   });
@@ -508,13 +570,14 @@ export async function punch(
     const inserted = (await tx.execute(sql`
       INSERT INTO hr.attendance_events
         (user_id, org_id, event_type, source, geo_lat, geo_lng, distance_from_org_m,
-         is_within_geofence, is_wfh, photo_url, face_match_score, face_match_passed, face_review_status,
-         is_off_segment, ip, device_info)
+         is_within_geofence, is_wfh, geo_exception_type, photo_url, face_match_score, face_match_passed,
+         face_review_status, is_off_segment, ip, device_info)
       VALUES
         (${ctx.user_id}, ${ctx.org_id}, ${eventType}, ${data.source},
          ${data.geo_lat ?? null}, ${data.geo_lng ?? null}, ${prep.distance}, ${prep.isWithin},
-         ${data.is_wfh}, ${prep.photoKey}, ${face.score}, ${face.passed}, ${face.reviewStatus},
-         ${prep.isOffSegment}, ${meta.ip}, ${sql`${JSON.stringify({ user_agent: meta.userAgent })}::jsonb`})
+         ${prep.isWfh}, ${prep.geoExceptionType}, ${prep.photoKey}, ${face.score}, ${face.passed},
+         ${face.reviewStatus}, ${prep.isOffSegment}, ${meta.ip},
+         ${sql`${JSON.stringify({ user_agent: meta.userAgent })}::jsonb`})
       RETURNING id::text
     `)) as unknown as Array<{ id: string }>;
     const eventId = inserted[0]!.id;
@@ -540,7 +603,8 @@ export async function punch(
       event_type: eventType,
       distance_from_org_m: prep.distance,
       is_within_geofence: prep.isWithin,
-      is_wfh: data.is_wfh,
+      is_wfh: prep.isWfh,
+      geo_exception_type: prep.geoExceptionType,
       photo_url: prep.photoKey,
       day_status: dayStatus,
       face_match_score: face.score,
@@ -756,6 +820,11 @@ export async function getTodayPunchState(ctx: AttendanceCtx) {
     const checkIns = await countPunches(tx, ctx, workDate, org.timezone, isNight, shiftStartMin, 'check_in');
     const checkOuts = await countPunches(tx, ctx, workDate, org.timezone, isNight, shiftStartMin, 'check_out');
 
+    // Resolved through the SAME function the punch path uses, on the same date,
+    // so what the dashboard promises the employee and what the punch will
+    // actually accept cannot drift apart.
+    const geoException = await activeGeoException(tx, ctx.org_id, ctx.user_id, localToday);
+
     const e = punchEligibility(
       { checkIns, checkOuts },
       { hasShift: !!shift, isSplit: shift?.is_split ?? false, segmentCount: segments.length },
@@ -775,6 +844,7 @@ export async function getTodayPunchState(ctx: AttendanceCtx) {
       has_open_session: e.hasOpenSession,
       segments_punched: e.segmentsPunched,
       segments_total: e.segmentsTotal,
+      geo_exception: geoException,
     };
   });
 }
@@ -1007,6 +1077,10 @@ export async function listDayEvents(ctx: AttendanceCtx, userId: string, date: st
              e.face_match_passed, e.face_review_status, e.is_off_segment,
              e.is_within_geofence, e.distance_from_org_m::float8 AS distance_from_org_m,
              e.geo_lat::float8 AS geo_lat, e.geo_lng::float8 AS geo_lng,
+             -- Why an out-of-fence punch was accepted. Without these, a reviewer
+             -- seeing is_within_geofence = false cannot tell an approved field
+             -- visit from a punch made before the fence was ever switched on.
+             e.is_wfh, e.geo_exception_type,
              (e.photo_url IS NOT NULL) AS has_photo
       FROM hr.attendance_events e
       WHERE e.user_id = ${userId} AND e.org_id = ${ctx.org_id}
@@ -1246,6 +1320,93 @@ export async function updateShiftAssignment(ctx: AttendanceCtx, id: string, data
     } catch (err) {
       if ((err as { code?: string }).code === '23P01') {
         throw new ConflictError('This change would overlap another shift assignment for the user');
+      }
+      throw err;
+    }
+  });
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// GEOFENCE EXCEPTIONS
+// ═════════════════════════════════════════════════════════════════════════════
+export async function listGeoExceptions(ctx: AttendanceCtx, query: ListGeoExceptionsInput) {
+  return withServiceTx(async (tx) => {
+    const userClause = query.user_id ? sql`AND g.user_id = ${query.user_id}` : sql``;
+    const typeClause = query.exception_type ? sql`AND g.exception_type = ${query.exception_type}` : sql``;
+    // "Inactive" here means switched off OR already elapsed — from the admin's
+    // side both read as "no longer in force", so one toggle hides both.
+    const activeClause = query.include_inactive
+      ? sql``
+      : sql`AND g.is_active AND (g.effective_to IS NULL OR g.effective_to >= CURRENT_DATE)`;
+    return (await tx.execute(sql`
+      SELECT g.id::text, g.user_id::text, u.full_name AS user_full_name, ep.employee_code,
+             g.exception_type, g.effective_from::text, g.effective_to::text, g.reason, g.is_active,
+             -- Computed, not stored: "in force right now" is a function of the
+             -- dates, and a stored copy would go stale the day it elapsed.
+             (g.is_active
+                AND g.effective_from <= CURRENT_DATE
+                AND (g.effective_to IS NULL OR g.effective_to >= CURRENT_DATE)) AS is_in_force,
+             g.created_by::text, cb.full_name AS created_by_name, g.created_at
+      FROM hr.attendance_geo_exceptions g
+      JOIN iam.users u ON u.id = g.user_id
+      LEFT JOIN hr.employee_profiles ep ON ep.user_id = g.user_id AND ep.org_id = g.org_id AND NOT ep.is_deleted
+      LEFT JOIN iam.users cb ON cb.id = g.created_by
+      WHERE g.org_id = ${ctx.org_id} AND NOT g.is_deleted
+        ${userClause} ${typeClause} ${activeClause}
+      ORDER BY g.effective_from DESC, u.full_name
+    `)) as unknown as Row[];
+  });
+}
+
+export async function createGeoException(ctx: AttendanceCtx, data: CreateGeoExceptionInput): Promise<{ id: string }> {
+  return withRoleTx(ctx, async (tx) => {
+    // The employee must actually work in this org. Without this an admin could
+    // exempt a user id from another branch, and the punch-time lookup — which is
+    // scoped by (user_id, org_id) — would silently never find the row.
+    const memberOk = (await tx.execute(sql`
+      SELECT 1 FROM iam.user_org_mapping
+      WHERE user_id = ${data.user_id} AND org_id = ${ctx.org_id} AND is_active LIMIT 1
+    `)) as unknown as Row[];
+    if (memberOk.length === 0) throw new BadRequestError('User not found in this org');
+    try {
+      const rows = (await tx.execute(sql`
+        INSERT INTO hr.attendance_geo_exceptions
+          (user_id, org_id, exception_type, effective_from, effective_to, reason, created_by)
+        VALUES (${data.user_id}, ${ctx.org_id}, ${data.exception_type}, ${data.effective_from},
+                ${data.effective_to ?? null}, ${data.reason}, ${ctx.user_id})
+        RETURNING id::text
+      `)) as unknown as Array<{ id: string }>;
+      return { id: rows[0]!.id };
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === '23P01' || code === '23505') {
+        throw new ConflictError(
+          `This user already has a ${data.exception_type === 'wfh' ? 'work-from-home' : 'remote'} exception overlapping those dates`,
+        );
+      }
+      throw err;
+    }
+  });
+}
+
+export async function updateGeoException(ctx: AttendanceCtx, id: string, data: UpdateGeoExceptionInput): Promise<void> {
+  await withRoleTx(ctx, async (tx) => {
+    const sets: ReturnType<typeof sql>[] = [];
+    if (data.effective_from !== undefined) sets.push(sql`effective_from = ${data.effective_from}`);
+    if (data.effective_to !== undefined) sets.push(sql`effective_to = ${data.effective_to}`);
+    if (data.reason !== undefined) sets.push(sql`reason = ${data.reason}`);
+    if (data.is_active !== undefined) sets.push(sql`is_active = ${data.is_active}`);
+    if (sets.length === 0) return;
+    try {
+      const res = (await tx.execute(sql`
+        UPDATE hr.attendance_geo_exceptions SET ${sql.join(sets, sql`, `)}
+        WHERE id = ${id} AND org_id = ${ctx.org_id} AND NOT is_deleted
+        RETURNING id::text
+      `)) as unknown as Row[];
+      if (res.length === 0) throw new NotFoundError('Geofence exception not found');
+    } catch (err) {
+      if ((err as { code?: string }).code === '23P01') {
+        throw new ConflictError('This change would overlap another exception of the same kind for the user');
       }
       throw err;
     }
