@@ -3,7 +3,7 @@
 import type { SessionUser } from '@platform/types';
 import { PageTabs, type PageTab } from '@platform/ui-kit';
 import type { HrRank } from '../../lib/hr-rank';
-import { canDecideLeave, canManageLeaveAdmin } from '../../lib/leave/format';
+import { canDecideLeave } from '../../lib/leave/format';
 
 interface Props {
   // The caller's resolved rank on the unified iam ladder. See lib/hr-rank.ts.
@@ -25,9 +25,6 @@ export default function LeaveTabs({ hrRank, actor }: Props) {
   // that 403s.
   if (canDecideLeave(actor)) {
     tabs.push({ href: '/leave/approvals', label: 'Approvals' });
-  }
-  if (canManageLeaveAdmin(actor)) {
-    tabs.push({ href: '/leave/admin', label: 'Admin' });
   }
 
   return <PageTabs tabs={tabs} label="Leave sections" />;

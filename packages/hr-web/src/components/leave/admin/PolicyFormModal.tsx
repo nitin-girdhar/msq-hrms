@@ -1,10 +1,15 @@
 'use client';
 
-import { useState } from 'react';
-import { Modal } from '@platform/ui-kit';
+import { useEffect, useState } from 'react';
+import { Modal, orgs as orgsApi } from '@platform/ui-kit';
 import type { SessionUser } from '@platform/types';
 import { leave as leaveApi, type CreatePolicyBody } from '../../../lib/api/client';
 import { canManageTenantLeave, LEAVE_TYPE_LABELS, ACCRUAL_FREQUENCY_LABELS } from '../../../lib/leave/format';
+
+interface BranchOption {
+  id: string;
+  name: string;
+}
 
 interface Props {
   open: boolean;
@@ -24,6 +29,8 @@ function todayIso(): string {
 export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props) {
   const [leaveTypeName, setLeaveTypeName] = useState('');
   const [scope, setScope] = useState<'org' | 'tenant'>('org');
+  const [targetOrgId, setTargetOrgId] = useState(actor.org_id);
+  const [branches, setBranches] = useState<BranchOption[] | null>(null);
   const [accrualFrequency, setAccrualFrequency] = useState('none');
   const [accrualAmount, setAccrualAmount] = useState('0');
   const [maxBalance, setMaxBalance] = useState('');
@@ -40,9 +47,18 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
 
   const num = (v: string): number | null => (v.trim() === '' ? null : Number(v));
 
+  useEffect(() => {
+    if (!open || !canManageTenantLeave(actor.rank)) return;
+    orgsApi
+      .list()
+      .then((res) => setBranches(res.data.map((o) => ({ id: o.org_id ?? o.id, name: o.org_name ?? o.name }))))
+      .catch(() => setBranches([]));
+  }, [open, actor.rank]);
+
   const reset = () => {
     setLeaveTypeName('');
     setScope('org');
+    setTargetOrgId(actor.org_id);
     setAccrualFrequency('none');
     setAccrualAmount('0');
     setMaxBalance('');
@@ -72,7 +88,7 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
     try {
       const body: CreatePolicyBody = {
         leave_type_name: leaveTypeName.trim(),
-        org_id: scope === 'tenant' ? null : actor.org_id,
+        org_id: scope === 'tenant' ? null : targetOrgId,
         accrual_frequency: accrualFrequency,
         accrual_amount: Number(accrualAmount) || 0,
         max_balance: num(maxBalance),
@@ -142,8 +158,24 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
             <p className="text-[11px] text-[#94A3B8]">
               {scope === 'tenant'
                 ? 'Applies to every branch unless a specific branch has its own policy.'
-                : 'Applies only to this branch.'}
+                : (branches?.length ?? 0) > 1
+                  ? 'Applies only to the branch selected below.'
+                  : 'Applies only to your current branch.'}
             </p>
+
+            {scope === 'org' && (branches?.length ?? 0) > 1 && (
+              <select
+                id="pf-branch"
+                value={targetOrgId}
+                onChange={(e) => setTargetOrgId(e.target.value)}
+                disabled={submitting}
+                className={inputCls}
+              >
+                {branches!.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            )}
           </div>
         )}
 

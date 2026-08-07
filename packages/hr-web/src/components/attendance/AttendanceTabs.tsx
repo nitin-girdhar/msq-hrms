@@ -4,7 +4,7 @@ import type { SessionUser } from '@platform/types';
 import { PageTabs, type PageTab } from '@platform/ui-kit';
 import type { HrRank } from '../../lib/hr-rank';
 import { canViewTeamAttendance } from '@hr/authz';
-import { canManageAttendanceAdmin, canReviewFaceMatches } from '../../lib/attendance/format';
+import { canReviewFaceMatches } from '../../lib/attendance/format';
 import { usePendingFaceReviews } from '../../hooks/usePendingFaceReviews';
 
 interface Props {
@@ -32,9 +32,6 @@ export default function AttendanceTabs({ hrRank, actor }: Props) {
     // face_review_pending event is published but nothing consumes or stores it,
     // so without this a flagged punch sits unexamined and uncredited.
     tabs.push({ href: '/attendance/team', label: 'Team', badge: pendingFaceReviews });
-  }
-  if (canManageAttendanceAdmin(actor)) {
-    tabs.push({ href: '/attendance/admin', label: 'Admin' });
   }
 
   return <PageTabs tabs={tabs} label="Attendance sections" />;
