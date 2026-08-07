@@ -4,7 +4,6 @@ import { useState } from 'react';
 import type { SessionUser } from '@platform/types';
 import { Alert, PageBody, PageHeader } from '@platform/ui-kit';
 import type { HrRank } from '../../lib/hr-rank';
-import AttendanceTabs from './AttendanceTabs';
 import RulesEditor from './admin/RulesEditor';
 import ShiftsManager from './admin/ShiftsManager';
 import ShiftAssignmentsManager from './admin/ShiftAssignmentsManager';
@@ -39,7 +38,6 @@ export default function AttendanceAdminShell({ actor, hrRank }: Props) {
       <PageHeader
         title="Attendance Administration"
         subtitle="Capture rules, shifts, shift assignments and payroll reports."
-        tabs={<AttendanceTabs hrRank={hrRank} actor={actor} />}
       />
 
       <PageBody>

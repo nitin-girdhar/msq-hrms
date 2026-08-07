@@ -4,7 +4,6 @@ import { useState } from 'react';
 import type { SessionUser } from '@platform/types';
 import { Alert, PageBody, PageHeader } from '@platform/ui-kit';
 import type { HrRank } from '../../lib/hr-rank';
-import LeaveTabs from './LeaveTabs';
 import PoliciesManager from './admin/PoliciesManager';
 import LeaveCycleSetting from './admin/LeaveCycleSetting';
 import HolidaysManager from './admin/HolidaysManager';
@@ -37,7 +36,6 @@ export default function LeaveAdminShell({ actor, hrRank }: Props) {
       <PageHeader
         title="Leave Administration"
         subtitle="Policies, leave cycle, holidays, manual adjustments and employee profiles."
-        tabs={<LeaveTabs hrRank={hrRank} actor={actor} />}
       />
 
       <PageBody>

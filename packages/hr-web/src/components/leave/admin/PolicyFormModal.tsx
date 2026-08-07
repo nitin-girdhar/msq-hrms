@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Modal } from '@platform/ui-kit';
 import type { SessionUser } from '@platform/types';
 import { leave as leaveApi, type CreatePolicyBody } from '../../../lib/api/client';
-import { canManageTenantLeave } from '../../../lib/leave/format';
+import { canManageTenantLeave, LEAVE_TYPE_LABELS, ACCRUAL_FREQUENCY_LABELS } from '../../../lib/leave/format';
 
 interface Props {
   open: boolean;
@@ -12,10 +12,6 @@ interface Props {
   onClose: () => void;
   onSaved: (message: string) => void;
 }
-
-// Seeded global leave types (hr.leave_types) — offered as suggestions; the field
-// accepts any active type name (server validates against the lookup).
-const LEAVE_TYPE_SUGGESTIONS = ['casual', 'sick', 'earned', 'maternity', 'paternity', 'bereavement', 'comp_off', 'loss_of_pay'];
 
 // The submit button lives in the Modal's pinned footer, outside the <form>;
 // the HTML `form` attribute is what still wires it to this form.
@@ -27,7 +23,7 @@ function todayIso(): string {
 
 export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props) {
   const [leaveTypeName, setLeaveTypeName] = useState('');
-  const [tenantWide, setTenantWide] = useState(false);
+  const [scope, setScope] = useState<'org' | 'tenant'>('org');
   const [accrualFrequency, setAccrualFrequency] = useState('none');
   const [accrualAmount, setAccrualAmount] = useState('0');
   const [maxBalance, setMaxBalance] = useState('');
@@ -46,7 +42,7 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
 
   const reset = () => {
     setLeaveTypeName('');
-    setTenantWide(false);
+    setScope('org');
     setAccrualFrequency('none');
     setAccrualAmount('0');
     setMaxBalance('');
@@ -76,7 +72,7 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
     try {
       const body: CreatePolicyBody = {
         leave_type_name: leaveTypeName.trim(),
-        org_id: tenantWide ? null : actor.org_id,
+        org_id: scope === 'tenant' ? null : actor.org_id,
         accrual_frequency: accrualFrequency,
         accrual_amount: Number(accrualAmount) || 0,
         max_balance: num(maxBalance),
@@ -125,10 +121,10 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">
             <label htmlFor="pf-type" className={labelCls}>Leave type *</label>
-            <input id="pf-type" list="pf-type-list" value={leaveTypeName} onChange={(e) => setLeaveTypeName(e.target.value)} disabled={submitting} className={inputCls} placeholder="e.g. casual" />
-            <datalist id="pf-type-list">
-              {LEAVE_TYPE_SUGGESTIONS.map((t) => <option key={t} value={t} />)}
-            </datalist>
+            <select id="pf-type" value={leaveTypeName} onChange={(e) => setLeaveTypeName(e.target.value)} disabled={submitting} className={inputCls}>
+              <option value="">Select…</option>
+              {Object.entries(LEAVE_TYPE_LABELS).map(([name, label]) => <option key={name} value={name}>{label}</option>)}
+            </select>
           </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="pf-from" className={labelCls}>Applicable from *</label>
@@ -137,17 +133,25 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
         </div>
 
         {canManageTenantLeave(actor.rank) && (
-          <label className="flex items-center gap-2 text-xs text-[#0F172A]">
-            <input type="checkbox" checked={tenantWide} onChange={(e) => setTenantWide(e.target.checked)} disabled={submitting} className="h-4 w-4 rounded border-[#E2E8F0] text-[#0b6cbf]" />
-            <span>Tenant-wide default (applies to all orgs unless a per-org policy overrides it)</span>
-          </label>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="pf-scope" className={labelCls}>Applies to</label>
+            <select id="pf-scope" value={scope} onChange={(e) => setScope(e.target.value as 'org' | 'tenant')} disabled={submitting} className={inputCls}>
+              <option value="org">Specific branch</option>
+              <option value="tenant">{`All ${actor.tenant_name} Branches`}</option>
+            </select>
+            <p className="text-[11px] text-[#94A3B8]">
+              {scope === 'tenant'
+                ? 'Applies to every branch unless a specific branch has its own policy.'
+                : 'Applies only to this branch.'}
+            </p>
+          </div>
         )}
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <div className="flex flex-col gap-1.5">
             <label htmlFor="pf-freq" className={labelCls}>Accrual frequency</label>
             <select id="pf-freq" value={accrualFrequency} onChange={(e) => setAccrualFrequency(e.target.value)} disabled={submitting} className={inputCls}>
-              {['none', 'monthly', 'quarterly', 'yearly'].map((f) => <option key={f} value={f}>{f}</option>)}
+              {Object.entries(ACCRUAL_FREQUENCY_LABELS).map(([f, label]) => <option key={f} value={f}>{label}</option>)}
             </select>
           </div>
           <NumField id="pf-amount" label="Accrual amount" value={accrualAmount} onChange={setAccrualAmount} disabled={submitting} />

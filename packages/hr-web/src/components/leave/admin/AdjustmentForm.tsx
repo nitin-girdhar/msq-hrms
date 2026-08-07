@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { users as usersApi } from '@platform/ui-kit';
 import { leave as leaveApi } from '../../../lib/api/client';
+import { LEAVE_TYPE_LABELS } from '../../../lib/leave/format';
 
 interface Props {
   onNotice: (msg: string) => void;
@@ -12,8 +13,6 @@ interface UserOption {
   id: string;
   label: string;
 }
-
-const LEAVE_TYPE_SUGGESTIONS = ['casual', 'sick', 'earned', 'maternity', 'paternity', 'bereavement', 'comp_off', 'loss_of_pay'];
 
 export default function AdjustmentForm({ onNotice }: Props) {
   const [users, setUsers] = useState<UserOption[]>([]);
@@ -102,10 +101,10 @@ export default function AdjustmentForm({ onNotice }: Props) {
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="af-type" className={labelCls}>Leave type *</label>
-          <input id="af-type" list="af-type-list" value={leaveTypeName} onChange={(e) => setLeaveTypeName(e.target.value)} disabled={confirming} className={inputCls} placeholder="e.g. casual" />
-          <datalist id="af-type-list">
-            {LEAVE_TYPE_SUGGESTIONS.map((t) => <option key={t} value={t} />)}
-          </datalist>
+          <select id="af-type" value={leaveTypeName} onChange={(e) => setLeaveTypeName(e.target.value)} disabled={confirming} className={inputCls}>
+            <option value="">Select…</option>
+            {Object.entries(LEAVE_TYPE_LABELS).map(([name, label]) => <option key={name} value={name}>{label}</option>)}
+          </select>
         </div>
         <div className="flex flex-col gap-1.5">
           <label htmlFor="af-amount" className={labelCls}>Amount * <span className="font-normal text-[#94A3B8]">(+ credit / − deduct)</span></label>
@@ -124,7 +123,7 @@ export default function AdjustmentForm({ onNotice }: Props) {
       {confirming ? (
         <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
           <p className="text-sm text-amber-800">
-            Confirm: adjust <strong>{selectedUser?.label}</strong>’s <strong>{leaveTypeName}</strong> balance by{' '}
+            Confirm: adjust <strong>{selectedUser?.label}</strong>’s <strong>{LEAVE_TYPE_LABELS[leaveTypeName] ?? leaveTypeName}</strong> balance by{' '}
             <strong>{Number(amount) > 0 ? `+${amount}` : amount}</strong> day(s)?
           </p>
           <div className="flex justify-end gap-2">

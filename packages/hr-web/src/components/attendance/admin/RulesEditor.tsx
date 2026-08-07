@@ -179,8 +179,8 @@ export default function RulesEditor({ actor, onNotice }: Props) {
                 onChange={(e) => setScope(e.target.value as 'org' | 'tenant')}
                 className={`${inputCls} w-72 pr-8`}
               >
-                <option value="org">This organization only</option>
-                <option value="tenant">All organizations (tenant-wide default)</option>
+                <option value="org">Specific branch</option>
+                <option value="tenant">{`All ${actor.tenant_name} Branches`}</option>
               </select>
             </div>
             <p className="mt-2 text-xs text-[#64748B]">

@@ -69,8 +69,8 @@ export default function LeaveCycleSetting({ actor, onNotice }: Props) {
         <div className="flex flex-col gap-1.5">
           <label htmlFor="lc-scope" className="text-xs font-semibold text-[#0F172A]">Scope</label>
           <select id="lc-scope" value={scope} onChange={(e) => setScope(e.target.value as 'org' | 'tenant')} disabled={saving} className={inputCls}>
-            <option value="org">This org</option>
-            <option value="tenant">Tenant-wide default</option>
+            <option value="org">Specific branch</option>
+            <option value="tenant">{`All ${actor.tenant_name} Branches`}</option>
           </select>
         </div>
       )}

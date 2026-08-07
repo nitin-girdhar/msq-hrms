@@ -92,6 +92,28 @@ export const LEAVE_STATUS_STYLES: Record<LeaveStatusName, { bg: string; fg: stri
   withdrawn: { bg: 'bg-slate-100', fg: 'text-slate-500' },
 };
 
+// Seeded default leave type names (hr.leave_types) with display labels — the
+// field still accepts any active type name (server validates against the
+// tenant's lookup), this just gives the seeded set a readable dropdown instead
+// of raw snake_case keys.
+export const LEAVE_TYPE_LABELS: Record<string, string> = {
+  casual: 'Casual',
+  sick: 'Sick',
+  earned: 'Earned',
+  maternity: 'Maternity',
+  paternity: 'Paternity',
+  bereavement: 'Bereavement',
+  comp_off: 'Comp Off',
+  loss_of_pay: 'Loss of Pay',
+};
+
+export const ACCRUAL_FREQUENCY_LABELS: Record<string, string> = {
+  none: 'None',
+  monthly: 'Monthly',
+  quarterly: 'Quarterly',
+  yearly: 'Yearly',
+};
+
 export const LEAVE_STATUS_FILTERS: { value: string; label: string }[] = [
   { value: '', label: 'All statuses' },
   { value: 'pending', label: 'Pending' },

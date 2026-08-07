@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { NotificationProvider, productOrigins, authOrigin, usableProducts, landingFor } from '@platform/ui-kit';
+import { NotificationProvider, productOrigins, authOrigin, adminWebOrigin, usableProducts, landingFor } from '@platform/ui-kit';
 import { AppNavbar, AppSidebar, MobileSidebar } from '@platform/ui-kit/shell';
 import { requireSession, getEnabledModules, type PlatformModule } from '@platform/ui-kit/server';
 import { HR_NAV } from '@/src/config/navigation';
@@ -43,6 +43,7 @@ export default async function HrModuleShell({ module, children }: Props) {
           activeProduct="hr"
           homeHref="/attendance"
           title="Fitclass - People & Attendance"
+          adminWebUrl={adminWebOrigin()}
         />
         <MobileSidebar actor={session} items={HR_NAV} />
         <div className="flex w-full flex-1 lg:min-h-0 lg:overflow-hidden">
