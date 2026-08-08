@@ -46,6 +46,10 @@ export async function leaveRouter(app: FastifyInstance) {
   app.get('/leave/requests/preview', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_REQUEST_CREATE), validate({ query: previewLeaveRequestSchema })] }, ctrl.preview);
   app.get('/leave/requests', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_VIEW), validate({ query: listLeaveRequestsSchema })] }, ctrl.listMine);
   app.get('/leave/requests/team', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_VIEW), validate({ query: listLeaveRequestsSchema })] }, ctrl.listTeam);
+  // Own-request detail: full approval chain (all levels, approver names, comments)
+  // plus who it's currently pending with. Ownership is enforced in the repository
+  // query, so this shares HR_LEAVE_VIEW rather than an approver capability.
+  app.get('/leave/requests/:id', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_VIEW)] }, ctrl.getMine);
   // Amending your own still-pending request. Gated on the same capability as
   // applying: whoever may raise a request may correct it before it is decided.
   app.patch('/leave/requests/:id', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_REQUEST_CREATE, 'You do not have permission to edit leave requests'), validate({ body: updateLeaveRequestSchema })] }, ctrl.update);

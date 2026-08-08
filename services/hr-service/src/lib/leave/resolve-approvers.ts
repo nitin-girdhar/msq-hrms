@@ -28,7 +28,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { sql } from 'drizzle-orm';
-import type { DrizzleTx } from '@platform/db';
+import { hasCapability, type DrizzleTx } from '@platform/db';
+import { CAPABILITY } from '@platform/rbac';
 
 export interface ApproverAssignment {
   level: number;
@@ -91,6 +92,7 @@ export function buildApproverChain(
 export async function resolveApprovers(
   tx: DrizzleTx,
   orgId: string,
+  tenantId: string,
   requesterId: string,
   levels: number,
   // Defaults to today. Pass the request's apply date for a backdated request so
@@ -124,30 +126,34 @@ export async function resolveApprovers(
     WHERE org_id = ${orgId} AND is_active
   `)) as unknown as Array<{ user_id: string }>;
 
-  // KNOWN GAP (flagged 2026-08-09, not yet fixed): this matches on role NAME
-  // only — it does not check CAPABILITY.HR_LEAVE / hr.member_roles. A tenant
-  // could name a non-HR role literally 'org_admin' or 'hr_admin' (roles are
-  // tenant-owned and freely creatable, see iam.user_roles) and that user would
-  // be picked as the final leave approver despite having no HR access. Same
-  // root cause and same fix shape as the LMS/Tasks assignee-picker bug fixed
-  // in msq-core/services/identity-service/.../users.repository.ts
-  // (filterRowsByCapability, gating on hasCapability(tenantId, roleName,
-  // CAPABILITY.HR_LEAVE)) — apply the same pattern here if picked up.
-  const fallbackRows = (await tx.execute(sql`
-    SELECT uom.user_id::text AS user_id
+  // Candidates by role NAME ('org_admin' / 'hr_admin') alone are not enough:
+  // roles are tenant-owned and freely creatable (iam.user_roles), so a tenant
+  // could name an unrelated role literally 'org_admin'. Each candidate is
+  // further gated on CAPABILITY.HR_LEAVE (fixed 2026-08-09 — was previously a
+  // known gap; same root cause and fix shape as the LMS/Tasks assignee-picker
+  // bug in msq-core/services/identity-service/.../users.repository.ts,
+  // filterRowsByCapability).
+  const fallbackCandidateRows = (await tx.execute(sql`
+    SELECT uom.user_id::text AS user_id, ur.name AS role_name
     FROM iam.user_org_mapping uom
     JOIN iam.user_roles ur ON ur.id = uom.role_id
     WHERE uom.org_id = ${orgId}
       AND uom.is_active
       AND ur.name IN ('org_admin', 'hr_admin')
     ORDER BY uom.user_id ASC
-    LIMIT 1
-  `)) as unknown as Array<{ user_id: string }>;
+  `)) as unknown as Array<{ user_id: string; role_name: string }>;
+
+  let fallbackAdmin: string | null = null;
+  for (const candidate of fallbackCandidateRows) {
+    if (await hasCapability(tenantId, candidate.role_name, CAPABILITY.HR_LEAVE)) {
+      fallbackAdmin = candidate.user_id;
+      break;
+    }
+  }
 
   const managerOf = new Map<string, string>(reportingRows.map((r) => [r.user_id, r.manager_id]));
   const globallyActive = new Set(activeRows.map((r) => r.id));
   const orgActive = new Set(orgActiveRows.map((r) => r.user_id));
-  const fallbackAdmin = fallbackRows[0]?.user_id ?? null;
 
   const graph: ApproverGraph = {
     managerOf: (userId) => managerOf.get(userId) ?? null,

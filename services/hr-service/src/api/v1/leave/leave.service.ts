@@ -63,6 +63,10 @@ export async function listOwnRequests(ctx: LeaveCtx, filters: ListLeaveRequestsI
   return repo.listOwnRequests(ctx, filters);
 }
 
+export async function getOwnRequestDetail(ctx: LeaveCtx, id: string) {
+  return repo.getOwnRequestDetail(ctx, id);
+}
+
 export async function listTeamRequests(ctx: LeaveCtx, filters: ListLeaveRequestsInput) {
   // No blanket rank gate here: the repository query already self-scopes to
   // rows where the acting user is the resolved (reporting-line) approver or a

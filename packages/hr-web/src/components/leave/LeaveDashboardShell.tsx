@@ -11,6 +11,7 @@ import LeaveTabs from './LeaveTabs';
 import BalanceCards from './BalanceCards';
 import MyRequestsTable from './MyRequestsTable';
 import ApplyLeaveModal from './ApplyLeaveModal';
+import LeaveRequestDetailModal from './LeaveRequestDetailModal';
 
 interface Props {
   actor: SessionUser;
@@ -28,6 +29,7 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
   // The pending request being amended; null means the modal is in apply mode.
   const [editing, setEditing] = useState<LeaveRequestView | null>(null);
   const [cancelBusyId, setCancelBusyId] = useState<string | null>(null);
+  const [viewingId, setViewingId] = useState<string | null>(null);
 
   // One call: /leave/balances carries everything an employee may see — the number
   // per leave type as of today, plus whether it is bookable and half-day-able.
@@ -124,7 +126,7 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
           {loading ? (
             <div className="flex items-center justify-center py-12 text-sm text-[#94A3B8]">Loading…</div>
           ) : (
-            <MyRequestsTable items={requests} onEdit={handleEdit} onCancel={handleCancel} busyId={cancelBusyId} />
+            <MyRequestsTable items={requests} onView={(r) => setViewingId(r.id)} onEdit={handleEdit} onCancel={handleCancel} busyId={cancelBusyId} />
           )}
         </PageSection>
       </PageBody>
@@ -136,6 +138,8 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
         onApplied={handleApplied}
         editing={editing}
       />
+
+      <LeaveRequestDetailModal requestId={viewingId} onClose={() => setViewingId(null)} />
     </div>
   );
 }

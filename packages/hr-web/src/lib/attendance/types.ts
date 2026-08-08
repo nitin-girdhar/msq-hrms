@@ -290,6 +290,28 @@ export interface RegularizationView {
   created_at: string;
 }
 
+export type RegularizationApprovalAction = 'pending' | 'approved' | 'rejected';
+
+export interface RegularizationApprovalStep {
+  level: number;
+  approver_id: string;
+  approver_name: string;
+  action: RegularizationApprovalAction;
+  acted_at: string | null;
+  comment: string | null;
+}
+
+export interface RegularizationPendingWith {
+  level: number;
+  approver_id: string;
+  approver_name: string;
+}
+
+export interface RegularizationDetail extends RegularizationView {
+  approval_chain: RegularizationApprovalStep[];
+  pending_with: RegularizationPendingWith | null;
+}
+
 export interface MonthlySummaryRow {
   user_id: string;
   user_full_name: string;

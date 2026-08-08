@@ -65,6 +65,10 @@ export async function attendanceRouter(app: FastifyInstance) {
   // ── Regularizations (registered before nothing else conflicts) ──────────────
   app.post('/attendance/regularizations', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_REQUEST, 'You do not have permission to request a correction'), validate({ body: createRegularizationSchema })] }, ctrl.createRegularization);
   app.get('/attendance/regularizations', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_VIEW), validate({ query: listRegularizationsSchema })] }, ctrl.listRegularizations);
+  // Own-request detail: full approval chain (all levels, approver names, comments)
+  // plus who it's currently pending with. Ownership is enforced in the repository
+  // query, so this shares HR_ATTENDANCE_VIEW rather than an approver capability.
+  app.get('/attendance/regularizations/:id', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_VIEW)] }, ctrl.getRegularization);
   // Requester-side edit / withdraw: same capability as filing one, because the
   // authority being exercised is "this is my request", not an approval.
   app.patch('/attendance/regularizations/:id', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_REQUEST, 'You do not have permission to change this request'), validate({ body: updateRegularizationSchema })] }, ctrl.updateRegularization);

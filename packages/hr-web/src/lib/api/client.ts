@@ -8,6 +8,7 @@ import { createApiClient } from '@platform/ui-kit';
 import type {
   LeaveBalance,
   LeaveRequestView,
+  LeaveRequestDetail,
   LeavePreview,
   LeavePolicyView,
   HolidayView,
@@ -31,6 +32,7 @@ import type {
   DayEventView,
   FaceReviewView,
   RegularizationView,
+  RegularizationDetail,
   MonthlySummaryRow,
   FaceSelfContext,
 } from '../attendance/types';
@@ -120,6 +122,8 @@ export const leave = {
 
   myRequests: (params: ListRequestsParams = {}) =>
     request<ListEnvelope<LeaveRequestView>>(`/hr/leave/requests${qs(params)}`),
+
+  getById: (id: string) => request<Envelope<LeaveRequestDetail>>(`/hr/leave/requests/${id}`),
 
   teamRequests: (params: ListRequestsParams = {}) =>
     request<ListEnvelope<LeaveRequestView>>(`/hr/leave/requests/team${qs(params)}`),
@@ -365,6 +369,9 @@ export const attendance = {
 
     list: (params: ListRegularizationsParams = {}) =>
       request<ListEnvelope<RegularizationView>>(`/hr/attendance/regularizations${qs(params)}`),
+
+    getById: (id: string) =>
+      request<Envelope<RegularizationDetail>>(`/hr/attendance/regularizations/${id}`),
 
     // Requester-side, own pending request only (server enforces both).
     update: (id: string, body: UpdateRegularizationBody) =>

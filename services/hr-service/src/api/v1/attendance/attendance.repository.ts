@@ -1467,7 +1467,7 @@ export async function createRegularization(ctx: AttendanceCtx, data: CreateRegul
       // Resolving at submit time means a later re-org cannot strand the request.
       const levels = await regularizationApprovalLevels(ctx.org_id);
       const approvers = await resolveApprovers(
-        tx, ctx.org_id, ctx.user_id, levels, new Date(data.work_date),
+        tx, ctx.org_id, ctx.tenant_id, ctx.user_id, levels, new Date(data.work_date),
       );
       for (const a of approvers) {
         await tx.execute(sql`
@@ -1600,6 +1600,52 @@ export async function listRegularizations(ctx: AttendanceCtx, filters: ListRegul
       WHERE r.org_id = ${ctx.org_id} AND NOT r.is_deleted ${statusClause} ${scopeClause}
     `)) as unknown as Array<{ count: number }>;
     return { data: rows, total: countRows[0]?.count ?? 0, page, limit };
+  });
+}
+
+export interface RegApprovalStep {
+  level: number;
+  approver_id: string;
+  approver_name: string;
+  action: string;
+  acted_at: string | null;
+  comment: string | null;
+}
+
+export interface RegPendingWith {
+  level: number;
+  approver_id: string;
+  approver_name: string;
+}
+
+export async function getOwnRegularizationDetail(ctx: AttendanceCtx, id: string) {
+  return withRoleTx(ctx, async (tx) => {
+    const rows = (await tx.execute(sql`
+      SELECT r.id::text, r.user_id::text, r.work_date::text, r.requested_status_id::text,
+             st.name AS requested_status_name, r.requested_in, r.requested_out, r.reason,
+             r.status, r.approver_id::text, r.acted_at, r.approver_comment, r.created_at
+      FROM hr.attendance_regularizations r
+      LEFT JOIN hr.attendance_statuses st ON st.id = r.requested_status_id
+      WHERE r.id = ${id} AND r.user_id = ${ctx.user_id} AND NOT r.is_deleted
+    `)) as unknown as Row[];
+    const regularization = rows[0];
+    if (!regularization) throw new NotFoundError('Regularization not found');
+
+    const chain = (await tx.execute(sql`
+      SELECT a.level, a.approver_id::text, u.full_name AS approver_name,
+             a.action, a.acted_at, a.comment
+      FROM hr.attendance_regularization_approvals a
+      JOIN iam.users u ON u.id = a.approver_id
+      WHERE a.regularization_id = ${id}
+      ORDER BY a.level ASC
+    `)) as unknown as RegApprovalStep[];
+
+    const pending = chain.find((s) => s.action === 'pending');
+    const pending_with: RegPendingWith | null = pending
+      ? { level: pending.level, approver_id: pending.approver_id, approver_name: pending.approver_name }
+      : null;
+
+    return { ...regularization, approval_chain: chain, pending_with };
   });
 }
 

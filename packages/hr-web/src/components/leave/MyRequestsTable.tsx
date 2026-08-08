@@ -5,12 +5,13 @@ import StatusChip from './StatusChip';
 
 interface Props {
   items: LeaveRequestView[];
+  onView: (req: LeaveRequestView) => void;
   onEdit: (req: LeaveRequestView) => void;
   onCancel: (req: LeaveRequestView) => void;
   busyId?: string | null;
 }
 
-export default function MyRequestsTable({ items, onEdit, onCancel, busyId }: Props) {
+export default function MyRequestsTable({ items, onView, onEdit, onCancel, busyId }: Props) {
   if (items.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-[#E2E8F0] bg-white px-4 py-8 text-center text-sm text-[#94A3B8]">
@@ -47,6 +48,9 @@ export default function MyRequestsTable({ items, onEdit, onCancel, busyId }: Pro
               <td className="px-4 py-3 text-[11px] text-[#94A3B8]">{formatDateTime(r.created_at)}</td>
               <td className="px-4 py-3">
                 <div className="flex justify-end gap-2">
+                  <Button variant="secondary" onClick={() => onView(r)} disabled={busyId === r.id}>
+                    View
+                  </Button>
                   {canEditRequest(r.status_name) && (
                     <Button variant="secondary" onClick={() => onEdit(r)} disabled={busyId === r.id}>
                       Edit
@@ -56,9 +60,6 @@ export default function MyRequestsTable({ items, onEdit, onCancel, busyId }: Pro
                     <Button variant="danger" onClick={() => onCancel(r)} disabled={busyId === r.id}>
                       {busyId === r.id ? 'Cancelling…' : 'Cancel'}
                     </Button>
-                  )}
-                  {!canEditRequest(r.status_name) && !canCancelRequest(r.status_name) && (
-                    <span className="text-xs text-[#CBD5E1]">—</span>
                   )}
                 </div>
               </td>

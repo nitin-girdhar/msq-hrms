@@ -50,6 +50,12 @@ export class LeaveController {
     return reply.send({ success: true, ...result });
   };
 
+  getMine = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = request.params as { id: string };
+    const result = await service.getOwnRequestDetail(ctxOf(request), id);
+    return reply.send({ success: true, data: result });
+  };
+
   listTeam = async (request: FastifyRequest, reply: FastifyReply) => {
     const result = await service.listTeamRequests(ctxOf(request), request.query as ListLeaveRequestsInput);
     return reply.send({ success: true, ...result });

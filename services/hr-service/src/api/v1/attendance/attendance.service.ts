@@ -379,6 +379,10 @@ export async function listRegularizations(ctx: AttendanceCtx, filters: ListRegul
   return repo.listRegularizations(ctx, filters, seeAllOrg);
 }
 
+export async function getOwnRegularizationDetail(ctx: AttendanceCtx, id: string) {
+  return repo.getOwnRegularizationDetail(ctx, id);
+}
+
 export async function approveRegularization(ctx: AttendanceCtx, id: string, comment: string | null) {
   const isOverride = canOverrideAttendanceApproval(ctx);
   const result = await repo.approveRegularization(ctx, id, comment, isOverride);

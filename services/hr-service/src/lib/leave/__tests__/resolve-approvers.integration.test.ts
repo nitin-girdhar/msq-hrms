@@ -2,6 +2,17 @@ import { describe, it, expect, vi } from 'vitest';
 import type { SQL, SQLChunk } from 'drizzle-orm';
 import { resolveApprovers } from '../resolve-approvers';
 import type { DrizzleTx } from '@platform/db';
+import { hasCapability } from '@platform/db';
+
+// hasCapability resolves against its own connection pool (appDrizzle()), entirely
+// separate from the `tx` mocked below — so the fallback-admin capability gate must
+// be mocked directly rather than routed through makeTx's execute dispatch.
+vi.mock('@platform/db', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@platform/db')>();
+  return { ...actual, hasCapability: vi.fn() };
+});
+const mockedHasCapability = vi.mocked(hasCapability);
+const tenantId = 'tenant-1';
 
 // Reconstructs the literal SQL text of a drizzle `sql` template so a test can assert
 // *which tables a query touches* without a live database. resolveApprovers builds every
@@ -30,7 +41,7 @@ function makeTx(rows: {
   reportingLines: Array<{ user_id: string; manager_id: string }>;
   activeUsers: Array<{ id: string }>;
   orgActiveUsers: Array<{ user_id: string }>;
-  fallbackAdmin: Array<{ user_id: string }>;
+  fallbackAdmin: Array<{ user_id: string; role_name: string }>;
 }) {
   const seenTables: string[] = [];
   const execute = vi.fn(async (query: SQL) => {
@@ -61,7 +72,7 @@ describe('resolveApprovers — the single platform hierarchy', () => {
       fallbackAdmin: [],
     });
 
-    await resolveApprovers(tx, orgId, 'emp', 1);
+    await resolveApprovers(tx, orgId, tenantId, 'emp', 1);
 
     expect(seenTables).toContain('iam.reporting_lines');
   });
@@ -74,7 +85,7 @@ describe('resolveApprovers — the single platform hierarchy', () => {
       fallbackAdmin: [],
     });
 
-    await resolveApprovers(tx, orgId, 'emp', 1);
+    await resolveApprovers(tx, orgId, tenantId, 'emp', 1);
 
     for (const call of execute.mock.calls) {
       const text = queryText(call[0] as SQL);
@@ -97,7 +108,7 @@ describe('resolveApprovers — the single platform hierarchy', () => {
       fallbackAdmin: [],
     });
 
-    const approvers = await resolveApprovers(tx, orgId, 'emp', 2);
+    const approvers = await resolveApprovers(tx, orgId, tenantId, 'emp', 2);
 
     expect(approvers).toEqual([
       { level: 1, approverId: 'mgr' },
@@ -108,15 +119,33 @@ describe('resolveApprovers — the single platform hierarchy', () => {
   it('falls back to the org_admin/hr_admin when the requester has no reporting line', async () => {
     // No line means no manager — the fallback is deterministic rather than
     // inferred, so a user outside the tree still has someone who can approve.
+    mockedHasCapability.mockResolvedValue(true);
     const { tx } = makeTx({
       reportingLines: [],
       activeUsers: [{ id: 'emp' }, { id: 'org-admin-1' }],
       orgActiveUsers: [{ user_id: 'emp' }, { user_id: 'org-admin-1' }],
-      fallbackAdmin: [{ user_id: 'org-admin-1' }],
+      fallbackAdmin: [{ user_id: 'org-admin-1', role_name: 'org_admin' }],
     });
 
-    const approvers = await resolveApprovers(tx, orgId, 'emp', 1);
+    const approvers = await resolveApprovers(tx, orgId, tenantId, 'emp', 1);
     expect(approvers).toEqual([{ level: 1, approverId: 'org-admin-1' }]);
+    expect(mockedHasCapability).toHaveBeenCalledWith(tenantId, 'org_admin', 'hr.leave');
+  });
+
+  it('skips a fallback candidate whose role name matches but lacks CAPABILITY.HR_LEAVE', async () => {
+    // A tenant can freely create a role literally named 'org_admin' that carries
+    // no HR access (roles are tenant-owned, iam.user_roles) — the fallback must
+    // not pick that role just because its name matches.
+    mockedHasCapability.mockResolvedValue(false);
+    const { tx } = makeTx({
+      reportingLines: [],
+      activeUsers: [{ id: 'emp' }, { id: 'fake-org-admin' }],
+      orgActiveUsers: [{ user_id: 'emp' }, { user_id: 'fake-org-admin' }],
+      fallbackAdmin: [{ user_id: 'fake-org-admin', role_name: 'org_admin' }],
+    });
+
+    const approvers = await resolveApprovers(tx, orgId, tenantId, 'emp', 1);
+    expect(approvers).toEqual([]);
   });
 
   it('resolves as of the supplied date, not today, so a backdated request keeps its own chain', async () => {
@@ -133,14 +162,14 @@ describe('resolveApprovers — the single platform hierarchy', () => {
 
     // Default path: the effective-date predicate is the literal CURRENT_DATE.
     const today = makeTx(fixture);
-    await resolveApprovers(today.tx, orgId, 'emp', 1);
+    await resolveApprovers(today.tx, orgId, tenantId, 'emp', 1);
     expect(lineQueryOf(today.execute)).toContain('CURRENT_DATE');
 
     // With an as-of date it becomes a bound parameter instead. queryText only
     // recovers string chunks, so the parameter itself is invisible here — the
     // observable signal is that CURRENT_DATE is gone.
     const backdated = makeTx(fixture);
-    await resolveApprovers(backdated.tx, orgId, 'emp', 1, new Date('2026-03-14T00:00:00Z'));
+    await resolveApprovers(backdated.tx, orgId, tenantId, 'emp', 1, new Date('2026-03-14T00:00:00Z'));
     expect(lineQueryOf(backdated.execute)).not.toContain('CURRENT_DATE');
   });
 });

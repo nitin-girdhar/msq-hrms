@@ -57,6 +57,28 @@ export interface LeaveRequestView {
   updated_at: string;
 }
 
+export type ApprovalAction = 'pending' | 'approved' | 'rejected';
+
+export interface LeaveApprovalStep {
+  level: number;
+  approver_id: string;
+  approver_name: string;
+  action: ApprovalAction;
+  acted_at: string | null;
+  comment: string | null;
+}
+
+export interface ApprovalPendingWith {
+  level: number;
+  approver_id: string;
+  approver_name: string;
+}
+
+export interface LeaveRequestDetail extends LeaveRequestView {
+  approval_chain: LeaveApprovalStep[];
+  pending_with: ApprovalPendingWith | null;
+}
+
 export interface LeavePreview {
   days_count: number;
   balance: number;

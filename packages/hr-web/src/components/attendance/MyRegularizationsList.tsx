@@ -7,13 +7,15 @@ import { REGULARIZATION_STATUS_STYLES, formatDay, formatDateTime } from '../../l
 interface Props {
   items: RegularizationView[];
   loading: boolean;
+  /** Opens the detail view. Always available, regardless of status. */
+  onView: (item: RegularizationView) => void;
   /** Opens the form in edit mode. Omit to render the list read-only. */
   onEdit?: (item: RegularizationView) => void;
   /** Withdraws the request. Resolves once the server has accepted it. */
   onCancel?: (item: RegularizationView) => Promise<void>;
 }
 
-export default function MyRegularizationsList({ items, loading, onEdit, onCancel }: Props) {
+export default function MyRegularizationsList({ items, loading, onView, onEdit, onCancel }: Props) {
   // Which row's cancel is in flight — the row disables itself rather than the
   // whole table, so a slow request never blocks acting on a different row.
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -28,8 +30,6 @@ export default function MyRegularizationsList({ items, loading, onEdit, onCancel
       </p>
     );
   }
-
-  const actionable = !!onEdit || !!onCancel;
 
   const handleCancel = async (item: RegularizationView) => {
     if (!onCancel) return;
@@ -51,7 +51,7 @@ export default function MyRegularizationsList({ items, loading, onEdit, onCancel
             <th className="px-4 py-3">Reason</th>
             <th className="px-4 py-3">Status</th>
             <th className="px-4 py-3">Submitted</th>
-            {actionable && <th className="px-4 py-3 text-right">Actions</th>}
+            <th className="px-4 py-3 text-right">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -71,37 +71,39 @@ export default function MyRegularizationsList({ items, loading, onEdit, onCancel
                   <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${style.bg} ${style.fg}`}>{r.status}</span>
                 </td>
                 <td className="px-4 py-3 text-[11px] text-[#94A3B8]">{formatDateTime(r.created_at)}</td>
-                {actionable && (
-                  <td className="px-4 py-3">
-                    {editable ? (
-                      <div className="flex items-center justify-end gap-1">
-                        {onEdit && (
-                          <button
-                            type="button"
-                            onClick={() => onEdit(r)}
-                            disabled={busy}
-                            className="rounded-lg px-2 py-1 text-xs font-semibold text-[#0b6cbf] hover:bg-[#EFF6FF] disabled:opacity-50"
-                          >
-                            Edit
-                          </button>
-                        )}
-                        {onCancel && (
-                          <button
-                            type="button"
-                            onClick={() => void handleCancel(r)}
-                            disabled={busy}
-                            aria-busy={busy}
-                            className="rounded-lg px-2 py-1 text-xs font-semibold text-[#B91C1C] hover:bg-red-50 disabled:opacity-50"
-                          >
-                            {busy ? 'Cancelling…' : 'Cancel'}
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="text-right text-xs text-[#CBD5E1]">—</div>
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-end gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onView(r)}
+                      disabled={busy}
+                      className="rounded-lg px-2 py-1 text-xs font-semibold text-[#0b6cbf] hover:bg-[#EFF6FF] disabled:opacity-50"
+                    >
+                      View
+                    </button>
+                    {editable && onEdit && (
+                      <button
+                        type="button"
+                        onClick={() => onEdit(r)}
+                        disabled={busy}
+                        className="rounded-lg px-2 py-1 text-xs font-semibold text-[#0b6cbf] hover:bg-[#EFF6FF] disabled:opacity-50"
+                      >
+                        Edit
+                      </button>
                     )}
-                  </td>
-                )}
+                    {editable && onCancel && (
+                      <button
+                        type="button"
+                        onClick={() => void handleCancel(r)}
+                        disabled={busy}
+                        aria-busy={busy}
+                        className="rounded-lg px-2 py-1 text-xs font-semibold text-[#B91C1C] hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {busy ? 'Cancelling…' : 'Cancel'}
+                      </button>
+                    )}
+                  </div>
+                </td>
               </tr>
             );
           })}

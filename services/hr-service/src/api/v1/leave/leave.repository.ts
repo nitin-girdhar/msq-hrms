@@ -272,7 +272,7 @@ export async function applyLeave(ctx: LeaveCtx, data: ApplyLeaveRequestInput): P
     const requestId = inserted[0]!.id;
 
     // Approval chain from the effective policy's depth.
-    const approvers = await resolveApprovers(tx, ctx.org_id, ctx.user_id, approvalLevels);
+    const approvers = await resolveApprovers(tx, ctx.org_id, ctx.tenant_id, ctx.user_id, approvalLevels);
     for (const a of approvers) {
       await tx.execute(sql`
         INSERT INTO hr.leave_request_approvals (leave_request_id, org_id, level, approver_id)
@@ -613,7 +613,7 @@ export async function updateLeaveRequest(
     `);
 
     await tx.execute(sql`DELETE FROM hr.leave_request_approvals WHERE leave_request_id = ${id}`);
-    const approvers = await resolveApprovers(tx, ctx.org_id, ctx.user_id, approvalLevels);
+    const approvers = await resolveApprovers(tx, ctx.org_id, ctx.tenant_id, ctx.user_id, approvalLevels);
     for (const a of approvers) {
       await tx.execute(sql`
         INSERT INTO hr.leave_request_approvals (leave_request_id, org_id, level, approver_id)
@@ -674,6 +674,48 @@ export async function createAdjustment(ctx: LeaveCtx, data: CreateAdjustmentInpu
 // ═════════════════════════════════════════════════════════════════════════════
 // READS — own scope (withRoleTx, RLS applies)
 // ═════════════════════════════════════════════════════════════════════════════
+export interface ApprovalStep {
+  level: number;
+  approver_id: string;
+  approver_name: string;
+  action: string;
+  acted_at: string | null;
+  comment: string | null;
+}
+
+export interface PendingWith {
+  level: number;
+  approver_id: string;
+  approver_name: string;
+}
+
+export async function getOwnRequestDetail(ctx: LeaveCtx, id: string) {
+  return withRoleTx(ctx, async (tx) => {
+    const rows = (await tx.execute(sql`
+      SELECT * FROM hr.vw_leave_requests_enriched e
+      WHERE e.id = ${id} AND e.user_id = ${ctx.user_id}
+    `)) as unknown as Row[];
+    const request = rows[0];
+    if (!request) throw new NotFoundError('Leave request not found');
+
+    const chain = (await tx.execute(sql`
+      SELECT a.level, a.approver_id::text, u.full_name AS approver_name,
+             a.action, a.acted_at, a.comment
+      FROM hr.leave_request_approvals a
+      JOIN iam.users u ON u.id = a.approver_id
+      WHERE a.leave_request_id = ${id}
+      ORDER BY a.level ASC
+    `)) as unknown as ApprovalStep[];
+
+    const pending = chain.find((s) => s.action === 'pending');
+    const pending_with: PendingWith | null = pending
+      ? { level: pending.level, approver_id: pending.approver_id, approver_name: pending.approver_name }
+      : null;
+
+    return { ...request, approval_chain: chain, pending_with };
+  });
+}
+
 export async function listOwnRequests(ctx: LeaveCtx, filters: ListLeaveRequestsInput) {
   return withRoleTx(ctx, async (tx) => {
     const { page, limit, status, from, to } = filters;

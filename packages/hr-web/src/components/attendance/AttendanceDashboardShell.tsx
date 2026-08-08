@@ -14,6 +14,7 @@ import MyMonthCalendar from './MyMonthCalendar';
 import DayDetailPopover from './DayDetailPopover';
 import RegularizationFormModal from './RegularizationFormModal';
 import MyRegularizationsList from './MyRegularizationsList';
+import RegularizationDetailModal from './RegularizationDetailModal';
 
 interface Props {
   actor: SessionUser;
@@ -43,6 +44,7 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
   const [regFormDate, setRegFormDate] = useState<string | null>(null);
   // Set = the form modal is open in edit mode over this pending request.
   const [regEditing, setRegEditing] = useState<RegularizationView | null>(null);
+  const [viewingRegId, setViewingRegId] = useState<string | null>(null);
 
   // Derive "today" in the org timezone (from rules) so it matches the
   // server-computed work_date. Falls back to browser-local until rules load.
@@ -211,6 +213,7 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
           <MyRegularizationsList
             items={regularizations}
             loading={regLoading}
+            onView={(item) => setViewingRegId(item.id)}
             onEdit={(item) => { setNotice(null); setRegEditing(item); }}
             onCancel={handleCancelRegularization}
           />
@@ -255,6 +258,8 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
           setRefreshKey((k) => k + 1);
         }}
       />
+
+      <RegularizationDetailModal regularizationId={viewingRegId} onClose={() => setViewingRegId(null)} />
     </div>
   );
 }

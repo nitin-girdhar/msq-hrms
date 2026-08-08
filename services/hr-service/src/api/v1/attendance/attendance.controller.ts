@@ -183,6 +183,12 @@ export class AttendanceController {
     return reply.send({ success: true, ...result });
   };
 
+  getRegularization = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = request.params as { id: string };
+    const result = await service.getOwnRegularizationDetail(ctxOf(request), id);
+    return reply.send({ success: true, data: result });
+  };
+
   updateRegularization = async (request: FastifyRequest, reply: FastifyReply) => {
     const { id } = request.params as { id: string };
     await service.updateRegularization(ctxOf(request), id, request.body as UpdateRegularizationInput);
