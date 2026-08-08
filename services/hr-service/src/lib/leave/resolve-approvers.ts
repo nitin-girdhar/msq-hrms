@@ -124,6 +124,15 @@ export async function resolveApprovers(
     WHERE org_id = ${orgId} AND is_active
   `)) as unknown as Array<{ user_id: string }>;
 
+  // KNOWN GAP (flagged 2026-08-09, not yet fixed): this matches on role NAME
+  // only — it does not check CAPABILITY.HR_LEAVE / hr.member_roles. A tenant
+  // could name a non-HR role literally 'org_admin' or 'hr_admin' (roles are
+  // tenant-owned and freely creatable, see iam.user_roles) and that user would
+  // be picked as the final leave approver despite having no HR access. Same
+  // root cause and same fix shape as the LMS/Tasks assignee-picker bug fixed
+  // in msq-core/services/identity-service/.../users.repository.ts
+  // (filterRowsByCapability, gating on hasCapability(tenantId, roleName,
+  // CAPABILITY.HR_LEAVE)) — apply the same pattern here if picked up.
   const fallbackRows = (await tx.execute(sql`
     SELECT uom.user_id::text AS user_id
     FROM iam.user_org_mapping uom

@@ -76,10 +76,13 @@ export async function leaveRouter(app: FastifyInstance) {
   app.put('/leave/settings', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_ADMIN_CYCLE_MANAGE, 'You do not have permission to change the leave year'), validate({ body: updateLeaveSettingsSchema })] }, ctrl.updateSettings);
 
   // ── Holidays & calendars ─────────────────────────────────────────────────────
-  app.get('/holidays', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_ADMIN_HOLIDAYS_VIEW), validate({ query: listHolidaysSchema })] }, ctrl.listHolidays);
+  // Read-only reference data: anyone who can see leave needs the holiday
+  // calendar (e.g. TeamLeaveCalendar), not just holidays admins — matches
+  // /leave/balances, /leave/ledger, etc. Creating/editing stays admin-only.
+  app.get('/holidays', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_VIEW), validate({ query: listHolidaysSchema })] }, ctrl.listHolidays);
   app.post('/holidays', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_ADMIN_HOLIDAYS_MANAGE, 'You do not have permission to manage holidays'), validate({ body: createHolidaySchema })] }, ctrl.createHoliday);
   app.patch('/holidays/:id', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_ADMIN_HOLIDAYS_MANAGE, 'You do not have permission to manage holidays'), validate({ body: updateHolidaySchema })] }, ctrl.updateHoliday);
-  app.get('/holiday-calendars', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_ADMIN_HOLIDAYS_VIEW)] }, ctrl.listCalendars);
+  app.get('/holiday-calendars', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_VIEW)] }, ctrl.listCalendars);
   app.post('/holiday-calendars', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_ADMIN_HOLIDAYS_MANAGE, 'You do not have permission to manage holidays'), validate({ body: createHolidayCalendarSchema })] }, ctrl.createCalendar);
   app.patch('/holiday-calendars/:id', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_ADMIN_HOLIDAYS_MANAGE, 'You do not have permission to manage holidays'), validate({ body: updateHolidayCalendarSchema })] }, ctrl.updateCalendar);
 }

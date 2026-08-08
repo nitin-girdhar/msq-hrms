@@ -386,6 +386,22 @@ async function loadManagerId(tx: DrizzleTx, userId: string, orgId: string): Prom
   return rows[0]?.manager_id ?? null;
 }
 
+// Someone mapped to more than one branch (iam.user_org_mapping) can switch
+// their session's active org via POST /switch-org and still have this
+// service called with that org as ctx.org_id. A punch must land on the
+// user's HOME branch (iam.users.org_id) regardless of which branch is
+// currently active — a single-branch user's active org can never differ from
+// their home org, so this is a no-op for them.
+async function assertHomeBranch(tx: DrizzleTx, userId: string, activeOrgId: string): Promise<void> {
+  const rows = (await tx.execute(sql`
+    SELECT org_id::text AS org_id FROM iam.users WHERE id = ${userId}::uuid AND NOT is_deleted
+  `)) as unknown as Array<{ org_id: string }>;
+  const homeOrgId = rows[0]?.org_id;
+  if (homeOrgId && homeOrgId !== activeOrgId) {
+    throw new ForbiddenError('Attendance can only be recorded on your home branch. Switch back to your home branch to check in or out.');
+  }
+}
+
 export async function punch(
   ctx: AttendanceCtx,
   eventType: 'check_in' | 'check_out',
@@ -397,6 +413,7 @@ export async function punch(
   // ── Phase 1: validate geo/photo, persist the photo, resolve the work date and
   //    the face subject. All reads/FS — no long-held tx across the network call. ──
   const prep = await serviceTxWithContext(ctx, async (tx) => {
+    await assertHomeBranch(tx, ctx.user_id, ctx.org_id);
     const org = await loadOrg(tx, ctx.org_id);
 
     // Resolved here rather than further down (where the work date is computed)

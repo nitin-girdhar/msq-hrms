@@ -32,6 +32,17 @@ export function canDecideLeave(actor: CapabilityHolder): boolean {
   return can(actor, CAPABILITY.HR_LEAVE_APPROVE) || can(actor, CAPABILITY.HR_LEAVE_REJECT);
 }
 
+/**
+ * Apply for / edit your OWN leave — this gates the self-service Dashboard tab
+ * (balances, my requests, apply leave), not just the Apply button on it.
+ * Admin roles (org_admin/tenant_admin/hr_admin) don't hold this: they decide
+ * on other people's leave, they don't file their own requests through this
+ * role, so the tab itself has nothing left to show them.
+ */
+export function canApplyLeave(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_LEAVE_REQUEST_CREATE);
+}
+
 /** A tenant admin may additionally write tenant-wide policies/settings. */
 export function canManageTenantLeave(rank: number): boolean {
   return rank >= ANCHOR_RANK.TENANT_ADMIN;

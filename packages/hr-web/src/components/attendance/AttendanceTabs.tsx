@@ -3,7 +3,7 @@
 import type { SessionUser } from '@platform/types';
 import { PageTabs, type PageTab } from '@platform/ui-kit';
 import type { HrRank } from '../../lib/hr-rank';
-import { canViewTeamAttendance } from '@hr/authz';
+import { canPunchAttendance, canViewTeamAttendance, isOnHomeBranch } from '@hr/authz';
 import { canReviewFaceMatches } from '../../lib/attendance/format';
 import { usePendingFaceReviews } from '../../hooks/usePendingFaceReviews';
 
@@ -21,12 +21,19 @@ export default function AttendanceTabs({ hrRank, actor }: Props) {
   // anyone else would 403 on every poll.
   const { count: pendingFaceReviews } = usePendingFaceReviews(canReviewFaceMatches(actor));
 
-  const tabs: PageTab[] = [
-    { href: '/attendance', label: 'Dashboard', exact: true },
-  ];
+  const tabs: PageTab[] = [];
   // Tier C3: a tab exists when the DB grants the capability behind it — the same
   // list hr-service gates on. Previously unconditional, on the incorrect
   // assumption that the backend returns an empty view; it throws instead.
+  // Dashboard is the self-service screen (check-in/out, my month, my
+  // regularizations) — an actor without hr.attendance.punch (e.g. org_admin,
+  // tenant_admin, hr_admin) has nothing to do there. Someone mapped to more
+  // than one branch also loses it the moment they switch their active branch
+  // away from home: they cannot punch there (attendance.repository.ts
+  // enforces this server-side), so there is nothing left for the tab to do.
+  if (canPunchAttendance(actor) && isOnHomeBranch(actor)) {
+    tabs.push({ href: '/attendance', label: 'Dashboard', exact: true });
+  }
   if (canViewTeamAttendance(actor)) {
     // The badge is the only thing that tells a manager a punch is waiting: the
     // face_review_pending event is published but nothing consumes or stores it,

@@ -236,8 +236,25 @@ async function validateRequestInput(
   return { leaveTypeId: leaveType.id, approvalLevels: policy.approval_levels, daysCount };
 }
 
+// Someone mapped to more than one branch (iam.user_org_mapping) can switch
+// their session's active org via POST /switch-org and still have this
+// service called with that org as ctx.org_id. A leave request must be filed
+// against the user's HOME branch (iam.users.org_id) regardless of which
+// branch is currently active — a single-branch user's active org can never
+// differ from their home org, so this is a no-op for them.
+async function assertHomeBranch(tx: DrizzleTx, userId: string, activeOrgId: string): Promise<void> {
+  const rows = (await tx.execute(sql`
+    SELECT org_id::text AS org_id FROM iam.users WHERE id = ${userId}::uuid AND NOT is_deleted
+  `)) as unknown as Array<{ org_id: string }>;
+  const homeOrgId = rows[0]?.org_id;
+  if (homeOrgId && homeOrgId !== activeOrgId) {
+    throw new ForbiddenError('Leave can only be applied for on your home branch. Switch back to your home branch to apply.');
+  }
+}
+
 export async function applyLeave(ctx: LeaveCtx, data: ApplyLeaveRequestInput): Promise<ApplyResult> {
   return serviceTxWithContext(ctx, data.reason ?? null, async (tx) => {
+    await assertHomeBranch(tx, ctx.user_id, ctx.org_id);
     const { leaveTypeId, approvalLevels, daysCount } = await validateRequestInput(tx, ctx, data, null);
 
     const pendingStatusId = await resolveStatusId(tx, ctx.tenant_id, 'pending');
@@ -583,6 +600,7 @@ export async function updateLeaveRequest(
     if (req.status_name !== 'pending') {
       throw new ConflictError(`Cannot edit a request that is ${req.status_name}`);
     }
+    await assertHomeBranch(tx, ctx.user_id, ctx.org_id);
 
     const { leaveTypeId, approvalLevels, daysCount } = await validateRequestInput(tx, ctx, data, id);
 

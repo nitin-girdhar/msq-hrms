@@ -90,6 +90,37 @@ export function canViewTeamAttendance(actor: CapabilityHolder): boolean {
   return can(actor, CAPABILITY.HR_ATTENDANCE_VIEW_TEAM);
 }
 
+/**
+ * Record your OWN attendance — this gates the self-service Dashboard tab
+ * (check-in/out, my month, my regularizations), not just the punch button on
+ * it. Admin roles (org_admin/tenant_admin/hr_admin) don't hold this: they
+ * view and decide on other people's attendance, they don't clock in through
+ * this role, so the tab itself has nothing left to show them.
+ */
+export function canPunchAttendance(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_ATTENDANCE_PUNCH);
+}
+
+// A user carrying both the active and home org, e.g. `SessionUser`.
+export interface BranchHolder {
+  org_id: string;
+  home_org_id: string;
+}
+
+/**
+ * True when the caller's currently-active branch (org_id, set by
+ * POST /switch-org) is their home branch (iam.users.org_id). A person mapped
+ * to more than one branch can switch which one is active for their session;
+ * they cannot mark attendance or apply for leave against a branch other than
+ * their own — the punch/apply screens gate on this alongside
+ * canPunchAttendance/canApplyLeave so the tab disappears the moment they
+ * switch away from home, matching the server-side enforcement in
+ * attendance.repository.ts / leave.repository.ts.
+ */
+export function isOnHomeBranch(actor: BranchHolder): boolean {
+  return actor.org_id === actor.home_org_id;
+}
+
 /** Act as approval-override on any in-org attendance regularization. */
 export function canOverrideAttendanceApproval(actor: CapabilityHolder): boolean {
   return can(actor, CAPABILITY.HR_ATTENDANCE_ADMIN);
