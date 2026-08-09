@@ -48,11 +48,18 @@ export class UnauthorizedError extends AppError {
  * carrying the raw DB string — for the known constraint/RAISE cases. Returns null
  * when the error is not a recognised DB error, so the handler falls through to a
  * generic 500. See Issue #3.
+ *
+ * drizzle-orm wraps the driver's real error in `DrizzleQueryError`, whose own
+ * `message` is just "Failed query: ...params: ..." — the actual Postgres
+ * `code`/`message` (what this function needs) live on `.cause`, one level
+ * down. Checking only the top-level error meant every constraint/exclusion
+ * violation quietly missed this backstop and fell through as an unhandled
+ * 500 leaking the raw query/params to the client instead of a clean 4xx.
  */
 export function translatePgError(error: unknown): AppError | null {
-  const e = error as { code?: string; message?: string };
-  const code = e?.code;
-  const message = e?.message ?? '';
+  const top = error as { code?: string; message?: string; cause?: { code?: string; message?: string } };
+  const code = top?.code ?? top?.cause?.code;
+  const message = `${top?.message ?? ''} ${top?.cause?.message ?? ''}`;
 
   if (/does not belong to org|has no active mapping to org|has been deleted/i.test(message)) {
     return new NotFoundError('The referenced record was not found or is not accessible');
