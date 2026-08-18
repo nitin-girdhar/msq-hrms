@@ -1,14 +1,12 @@
 import { z } from 'zod';
 
-export const createHrRoleSchema = z.object({
+export const createLeaveRequestStatusSchema = z.object({
   name: z.string().min(1).max(200).trim(),
   label: z.string().min(1).max(200).trim(),
   description: z.string().trim().optional(),
-  rank: z.number().int().min(0).max(100),
-  sort_order: z.number().int().default(0),
 });
 
-export const updateHrRoleSchema = createHrRoleSchema.partial().extend({
+export const updateLeaveRequestStatusSchema = createLeaveRequestStatusSchema.partial().extend({
   is_active: z.boolean().optional(),
 });
 
@@ -19,6 +17,6 @@ export const tenantScopedQuerySchema = z.object({
   tenant_id: z.string().uuid(),
 });
 
-export type CreateHrRoleInput = z.infer<typeof createHrRoleSchema>;
-export type UpdateHrRoleInput = z.infer<typeof updateHrRoleSchema>;
+export type CreateLeaveRequestStatusInput = z.infer<typeof createLeaveRequestStatusSchema>;
+export type UpdateLeaveRequestStatusInput = z.infer<typeof updateLeaveRequestStatusSchema>;
 export type TenantScopedQuery = z.infer<typeof tenantScopedQuerySchema>;
