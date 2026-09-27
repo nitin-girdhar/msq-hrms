@@ -1,0 +1,44 @@
+meta {
+  name: Internal - Sync Employee Profile
+  type: http
+  seq: 90
+}
+
+post {
+  url: {{hrServiceUrl}}/api/v1/internal/employees/sync
+  body: json
+  auth: none
+}
+
+headers {
+  X-Internal-Secret: {{internalServiceSecret}}
+}
+
+body:json {
+  {
+    "user_id": "{{userId}}",
+    "tenant_id": "{{tenantId}}",
+    "home_org_id": "{{orgId}}",
+    "is_active": true,
+    "date_of_joining": "2026-09-27",
+    "actor_id": "{{secondUserId}}"
+  }
+}
+
+docs {
+  Service-to-service only: identity-service calls this after Team create/edit.
+  Hits hr-service DIRECTLY (not the gateway — the route is not proxied there).
+  Set hrServiceUrl to hr-service's own origin, e.g. http://localhost:4007.
+
+  Idempotent upsert of hr.employee_profiles. Returns data.outcome:
+    created   — no profile existed; filed under home_org_id with date_of_joining
+                (default today)
+    updated   — org_id moved to home_org_id and/or is_active changed
+    unchanged — already in step
+    deleted   — HR soft-deleted this profile; it is not resurrected
+  Joining date, code, department, designation and weekly off are never
+  overwritten on an existing profile.
+
+  400 when home_org_id is not a branch of tenant_id, or the user has no active
+  mapping there. 401 without the correct X-Internal-Secret.
+}
