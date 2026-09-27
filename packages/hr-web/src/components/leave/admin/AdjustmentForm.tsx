@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { users as usersApi } from '@platform/ui-kit';
+import { users as usersApi, SpeechInputButton, appendDictation } from '@platform/ui-kit';
 import { leave as leaveApi } from '../../../lib/api/client';
 import { LEAVE_TYPE_LABELS } from '../../../lib/leave/format';
 
@@ -116,7 +116,10 @@ export default function AdjustmentForm({ onNotice }: Props) {
         </div>
       </div>
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="af-note" className={labelCls}>Note *</label>
+        <div className="flex items-center justify-between gap-2">
+          <label htmlFor="af-note" className={labelCls}>Note *</label>
+          <SpeechInputButton onText={(t) => setNote((p) => appendDictation(p, t))} disabled={confirming} />
+        </div>
         <textarea id="af-note" value={note} onChange={(e) => setNote(e.target.value)} disabled={confirming} rows={2} className={inputCls} />
       </div>
 

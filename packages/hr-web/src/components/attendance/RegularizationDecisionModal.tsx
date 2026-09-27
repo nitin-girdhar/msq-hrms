@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Modal } from '@platform/ui-kit';
+import { Modal, SpeechInputButton, appendDictation } from '@platform/ui-kit';
 import { attendance as attendanceApi } from '../../lib/api/client';
 import type { RegularizationView } from '../../lib/attendance/types';
 import { formatDay, formatDateTime } from '../../lib/attendance/format';
@@ -79,9 +79,12 @@ export default function RegularizationDecisionModal({ request, onClose, onDecide
         </dl>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="rd-comment" className="text-xs font-semibold text-[#0F172A]">
-            Comment <span className="font-normal text-[#94A3B8]">(required to reject)</span>
-          </label>
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor="rd-comment" className="text-xs font-semibold text-[#0F172A]">
+              Comment <span className="font-normal text-[#94A3B8]">(required to reject)</span>
+            </label>
+            <SpeechInputButton onText={(t) => setComment((p) => appendDictation(p, t))} disabled={busy !== null} />
+          </div>
           <textarea id="rd-comment" value={comment} onChange={(e) => setComment(e.target.value)} rows={2} className={inputCls} disabled={busy !== null} />
         </div>
 

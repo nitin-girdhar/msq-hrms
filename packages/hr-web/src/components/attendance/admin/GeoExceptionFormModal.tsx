@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Modal } from '@platform/ui-kit';
+import { Modal, SpeechInputButton, appendDictation } from '@platform/ui-kit';
 import { geoExceptions as geoExceptionsApi, hrEmployees } from '../../../lib/api/client';
 import type { GeoExceptionType, GeoExceptionView } from '../../../lib/attendance/types';
 import type { EmployeeProfileView } from '../../../lib/leave/types';
@@ -173,7 +173,10 @@ export default function GeoExceptionFormModal({ open, exception, onClose, onSave
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="ge-reason" className="text-xs font-semibold text-[#0F172A]">Reason *</label>
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor="ge-reason" className="text-xs font-semibold text-[#0F172A]">Reason *</label>
+            <SpeechInputButton onText={(t) => setReason((p) => appendDictation(p, t, 500))} disabled={submitting} />
+          </div>
           <textarea
             id="ge-reason"
             value={reason}

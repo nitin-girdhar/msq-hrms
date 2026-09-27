@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Modal } from '@platform/ui-kit';
+import { Modal, SpeechInputButton, appendDictation } from '@platform/ui-kit';
 import { leave as leaveApi } from '../../lib/api/client';
 import type { LeaveBalance, LeavePreview, HalfDay, LeaveRequestView } from '../../lib/leave/types';
 import { formatDays } from '../../lib/leave/format';
@@ -313,7 +313,10 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied, ed
             )}
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="al-reason" className="text-xs font-semibold text-[#0F172A]">Reason</label>
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor="al-reason" className="text-xs font-semibold text-[#0F172A]">Reason</label>
+                <SpeechInputButton onText={(t) => setReason((p) => appendDictation(p, t))} disabled={submitting} />
+              </div>
               <textarea
                 id="al-reason"
                 value={reason}
