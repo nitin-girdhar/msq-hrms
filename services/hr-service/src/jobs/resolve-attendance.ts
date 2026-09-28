@@ -11,12 +11,20 @@
 //   2. weekly off       → 'weekly_off'  (employee weekly_off_pattern)
 //   3. approved leave    → 'on_leave' (+ leave_request_id); a HALF-DAY leave with
 //                          no punches resolves to 'half_day' (documented rule).
-//   4. events exist      → 'present' / 'half_day' per shift thresholds; is_late from
+//   4. events exist      → 'present' / 'half_day' / 'absent' per shift thresholds,
+//                          'missed_punch' if a check-in was never closed; is_late from
 //                          shift start + grace, is_early_exit from shift end.
 //   5. else              → 'absent'.
 //
 // A date already resolved is skipped (idempotent); a row whose resolution_source
 // is 'regularization' is NEVER overwritten. "Unresolved" = no attendance_days row.
+//
+// Second pass — FINALIZE OPEN DAYS. A day the live punch wrote with a check-in
+// never closed was stored as a tentative 'present'. Once the work day is over
+// (isDayFinished; a night shift ends the next morning) it is recomputed and
+// becomes 'missed_punch'. Only punch-resolved rows are touched, and they are
+// re-derived from their punches alone (resolveFromEvents), so a check-in on a
+// holiday or weekly off is finalized too instead of re-resolving to 'weekly_off'.
 //
 // Timezone: "today", "yesterday" and event→date mapping are all in the org's
 // timezone (entity.organizations.timezone) via Postgres AT TIME ZONE.
@@ -27,6 +35,7 @@ import { withServiceTx, closeAllPools, type DrizzleTx } from '@platform/db';
 import { orgToday, addDays } from '../lib/attendance/time.js';
 import {
   computeDayResolution,
+  resolveFromEvents,
   dayRowExists,
   upsertResolvedDay,
   type DayEmployee,
@@ -97,6 +106,22 @@ async function loadOrgThresholds(tx: DrizzleTx): Promise<Map<string, ShiftThresh
   );
 }
 
+/** Punch-resolved days in [from, to] still holding an unclosed check-in. */
+async function openDaysToFinalize(tx: DrizzleTx, userId: string, from: string, to: string): Promise<string[]> {
+  const rows = (await tx.execute(sql`
+    SELECT ad.work_date::text AS work_date
+    FROM hr.attendance_days ad
+    JOIN hr.attendance_statuses st ON st.id = ad.status_id
+    WHERE ad.user_id = ${userId}
+      AND ad.work_date BETWEEN ${from}::date AND ${to}::date
+      AND ad.has_open_session
+      AND ad.resolution_source = 'events'
+      AND st.name <> 'missed_punch'
+    ORDER BY ad.work_date
+  `)) as unknown as Array<{ work_date: string }>;
+  return rows.map((r) => r.work_date);
+}
+
 function dateRange(from: string, to: string): string[] {
   const out: string[] = [];
   let d = from;
@@ -129,6 +154,13 @@ async function main() {
         const r = await computeDayResolution(tx, emp, date, orgThresholds.get(emp.org_id));
         await upsertResolvedDay(tx, emp, date, r, { overwrite: false });
         counts[r.status] = (counts[r.status] ?? 0) + 1;
+      }
+
+      for (const date of await openDaysToFinalize(tx, emp.user_id, from, to)) {
+        const r = await resolveFromEvents(tx, emp, date, orgThresholds.get(emp.org_id));
+        if (r?.status !== 'missed_punch') continue;
+        await upsertResolvedDay(tx, emp, date, r, { overwrite: true });
+        counts['finalized_missed_punch'] = (counts['finalized_missed_punch'] ?? 0) + 1;
       }
     }
   });

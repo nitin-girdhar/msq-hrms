@@ -3,6 +3,7 @@ import { can, CAPABILITY } from '@platform/rbac';
 import * as service from './attendance.service.js';
 import type { AttendanceCtx } from './attendance.repository.js';
 import { getPhotoStorage, contentTypeForKey } from '../../../lib/storage/photo-storage.js';
+import { SUMMARY_COLUMNS, numericSummaryRows, toCsv, detailCsv, detailXlsx } from '../../../lib/attendance/report-export.js';
 import type {
   CheckInInput,
   CheckOutInput,
@@ -24,9 +25,12 @@ import type {
   AttendanceTeamQueryInput,
   DayEventsQueryInput,
   ReportsSummaryQueryInput,
+  ReportsDetailQueryInput,
   FaceEnrollInput,
   FaceReviewsQueryInput,
 } from '@hr/validation';
+
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 function ctxOf(request: FastifyRequest): AttendanceCtx {
   const { org_id, user_id, role, tenant_id, rank, capabilities } = request.auth;
@@ -276,53 +280,42 @@ export class AttendanceController {
       return reply.send({ success: true, data: rows });
     }
 
-    const columns: Array<{ key: string; header: string }> = [
-      { key: 'user_full_name', header: 'Employee' },
-      { key: 'user_email', header: 'Email' },
-      { key: 'month', header: 'Month' },
-      { key: 'present_count', header: 'Present' },
-      { key: 'absent_count', header: 'Absent' },
-      { key: 'half_day_count', header: 'Half Day' },
-      { key: 'on_leave_count', header: 'On Leave' },
-      { key: 'holiday_count', header: 'Holiday' },
-      { key: 'weekly_off_count', header: 'Weekly Off' },
-      { key: 'wfh_count', header: 'WFH' },
-      { key: 'late_count', header: 'Late' },
-      { key: 'early_exit_count', header: 'Early Exit' },
-      { key: 'avg_worked_minutes', header: 'Avg Worked (min)' },
-    ];
-
+    const rowsOut = numericSummaryRows(rows as Array<Record<string, unknown>>);
     if (format === 'csv') {
-      const esc = (v: unknown) => {
-        const s = v == null ? '' : String(v);
-        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-      };
-      const lines = [
-        columns.map((c) => c.header).join(','),
-        ...rows.map((r) => columns.map((c) => esc((r as Record<string, unknown>)[c.key])).join(',')),
-      ];
       return reply
         .header('Content-Type', 'text/csv')
         .header('Content-Disposition', `attachment; filename="attendance-${m}.csv"`)
-        .send(lines.join('\n'));
+        .send(toCsv(SUMMARY_COLUMNS, rowsOut));
     }
 
-    // xlsx
-    // SECURITY NOTE: exceljs pins uuid@8.3.2, which has an open advisory
-    // (missing buffer bounds check). It affects uuid v3/v5/v6 ONLY when a
-    // `buf` argument is passed; exceljs imports just v4
-    // (`const {v4: uuidv4} = require('uuid')`), so it is not reachable. Left
-    // un-overridden deliberately: forcing uuid 8 -> 11 is a three-major jump
-    // inside exceljs for no security gain. Re-check if exceljs is upgraded.
+    // xlsx (exceljs security note: lib/attendance/report-export.ts)
     const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet(`Attendance ${m}`);
-    ws.columns = columns.map((c) => ({ header: c.header, key: c.key }));
-    for (const r of rows) ws.addRow(r as Record<string, unknown>);
+    ws.columns = SUMMARY_COLUMNS.map((c) => ({ header: c.header, key: c.key }));
+    for (const r of rowsOut) ws.addRow(r);
     const buffer = await wb.xlsx.writeBuffer();
     return reply
-      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Type', XLSX_TYPE)
       .header('Content-Disposition', `attachment; filename="attendance-${m}.xlsx"`)
       .send(Buffer.from(buffer));
+  };
+
+  reportsDetail = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { month, format } = request.query as ReportsDetailQueryInput;
+    const m = month ?? currentMonth();
+    const { summary, report } = await service.detailReport(ctxOf(request), m);
+
+    if (format === 'csv') {
+      return reply
+        .header('Content-Type', 'text/csv; charset=utf-8')
+        .header('Content-Disposition', `attachment; filename="attendance-detail-${m}.csv"`)
+        .send(detailCsv(report));
+    }
+    const buffer = await detailXlsx(m, summary as Array<Record<string, unknown>>, report);
+    return reply
+      .header('Content-Type', XLSX_TYPE)
+      .header('Content-Disposition', `attachment; filename="attendance-detail-${m}.xlsx"`)
+      .send(buffer);
   };
 }

@@ -15,6 +15,7 @@ import {
 } from '@hr/authz';
 import { ForbiddenError, ValidationError } from '../../../lib/errors.js';
 import { regularizationWindowError } from '../../../lib/attendance/regularization-window.js';
+import { buildDetailReport } from '../../../lib/attendance/report-detail.js';
 import { publishAttendanceEvent } from '../../../lib/events.js';
 import * as repo from './attendance.repository.js';
 import type { AttendanceCtx } from './attendance.repository.js';
@@ -415,6 +416,18 @@ export async function monthlySummary(ctx: AttendanceCtx, month: string) {
     throw new ForbiddenError('Only HR admins or org admins can access attendance reports');
   }
   return repo.monthlySummary(ctx, month);
+}
+
+/**
+ * Everything the detailed month download needs: the summary rows plus every
+ * employee-day and every punch session. Same authority as the summary.
+ */
+export async function detailReport(ctx: AttendanceCtx, month: string) {
+  if (!canManageAttendance(ctx)) {
+    throw new ForbiddenError('Only HR admins or org admins can access attendance reports');
+  }
+  const [summary, data] = await Promise.all([repo.monthlySummary(ctx, month), repo.reportDetail(ctx, month)]);
+  return { summary, report: buildDetailReport(data) };
 }
 
 // ── Face enrollment / status / reviews ────────────────────────────────────────

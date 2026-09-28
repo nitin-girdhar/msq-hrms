@@ -28,8 +28,10 @@ export default function MonthlySummaryReport() {
 
   useEffect(() => { load(); }, [load]);
 
+  // The download is the DETAILED report (every employee-day + every check-in /
+  // check-out session); its xlsx also carries this summary as its first sheet.
   const handleExport = (format: ExportFormat) => {
-    const url = attendanceApi.reportDownloadUrl({ month, format });
+    const url = attendanceApi.reportDetailDownloadUrl({ month, format });
     const a = document.createElement('a');
     a.href = url;
     a.rel = 'noopener';
@@ -66,13 +68,14 @@ export default function MonthlySummaryReport() {
         <p className={emptyBlockCls}>No attendance data for {month}.</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
-          <table className="w-full min-w-[960px] text-sm">
+          <table className="w-full min-w-[1060px] text-sm">
             <thead>
               <tr className="border-b border-[#E2E8F0] text-left text-xs font-semibold uppercase tracking-wide text-[#64748B]">
                 <th className="px-4 py-3">Employee</th>
                 <th className="px-4 py-3">Present</th>
                 <th className="px-4 py-3">Absent</th>
                 <th className="px-4 py-3">Half day</th>
+                <th className="px-4 py-3" title="Checked in but never checked out — not counted as present until regularized">Missed punch</th>
                 <th className="px-4 py-3">On leave</th>
                 <th className="px-4 py-3">Holiday</th>
                 <th className="px-4 py-3">Weekly off</th>
@@ -92,6 +95,7 @@ export default function MonthlySummaryReport() {
                   <td className="px-4 py-3 text-[#475569]">{r.present_count}</td>
                   <td className="px-4 py-3 text-[#475569]">{r.absent_count}</td>
                   <td className="px-4 py-3 text-[#475569]">{r.half_day_count}</td>
+                  <td className={`px-4 py-3 ${Number(r.missed_punch_count) > 0 ? 'font-medium text-orange-700' : 'text-[#475569]'}`}>{r.missed_punch_count}</td>
                   <td className="px-4 py-3 text-[#475569]">{r.on_leave_count}</td>
                   <td className="px-4 py-3 text-[#475569]">{r.holiday_count}</td>
                   <td className="px-4 py-3 text-[#475569]">{r.weekly_off_count}</td>

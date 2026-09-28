@@ -361,6 +361,14 @@ export const reportsSummaryQuerySchema = z.object({
   format: z.enum(['json', 'csv', 'xlsx']).default('json'),
 });
 
+// The detailed month download: every employee-day plus every punch session.
+// File formats only — xlsx carries Summary / Daily Detail / Punches sheets, csv
+// is the Daily Detail sheet alone.
+export const reportsDetailQuerySchema = z.object({
+  month: monthString.optional(),
+  format: z.enum(['csv', 'xlsx']).default('xlsx'),
+});
+
 // Every punch of one employee's work date. A split shift has 4+ punches, but the
 // team view only ever exposes the first check-in and last check-out, so without
 // this the middle punches' selfies are stored yet unreachable.
@@ -394,4 +402,5 @@ export type ListRegularizationsInput = z.infer<typeof listRegularizationsSchema>
 export type AttendanceMeQueryInput = z.infer<typeof attendanceMeQuerySchema>;
 export type AttendanceTeamQueryInput = z.infer<typeof attendanceTeamQuerySchema>;
 export type ReportsSummaryQueryInput = z.infer<typeof reportsSummaryQuerySchema>;
+export type ReportsDetailQueryInput = z.infer<typeof reportsDetailQuerySchema>;
 export type DayEventsQueryInput = z.infer<typeof dayEventsQuerySchema>;
