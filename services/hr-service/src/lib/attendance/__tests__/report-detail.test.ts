@@ -7,6 +7,7 @@ const TODAY = '2026-09-10';
 function day(work_date: string, over: Partial<ReportDayRow> = {}): ReportDayRow {
   return {
     user_id: 'u1', user_full_name: 'Rachna', user_email: 'r@example.com', weekly_off_pattern: [0],
+    date_of_joining: '2026-01-01', date_of_exit: null,
     work_date, status_name: null, status_label: null, first_in_local: null, last_out_local: null,
     worked_minutes: null, is_late: null, is_early_exit: null, has_open_session: null,
     has_pending_face_review: null, has_off_window_punch: null, resolution_source: null,
@@ -111,6 +112,21 @@ describe('buildDetailReport', () => {
     expect(counted).toHaveLength(1);
     expect(counted[0]!.minutes).toBe(540);
     expect(r.sessions.find((s) => s.seq === null)?.note).toMatch(/Rejected/);
+  });
+});
+
+describe('buildDetailReport — employment window', () => {
+  it('marks days before joining and after exit as not employed, not not-marked', () => {
+    const r = buildDetailReport({
+      today: TODAY,
+      days: [
+        day('2026-09-01', { date_of_joining: '2026-09-02' }),
+        day('2026-09-02', { date_of_joining: '2026-09-02' }),
+        day('2026-09-09', { date_of_exit: '2026-09-08' }),
+      ],
+      events: [],
+    });
+    expect(r.days.map((d) => d.status_key)).toEqual(['not_employed', 'not_marked', 'not_employed']);
   });
 });
 

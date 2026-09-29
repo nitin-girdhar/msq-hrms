@@ -986,11 +986,10 @@ export interface TodaySummary {
 // numbers.
 //
 // `wfh` is derived from hr.attendance_events.is_wfh, not from a status: the
-// attendance_statuses catalog has no 'wfh' member (present / half_day / on_leave
-// / absent / holiday / weekly_off), and a work-from-home punch is an ordinary
-// present day flagged on the event. It therefore OVERLAPS `present` by design —
-// the same person is both — which is how vw_attendance_monthly_summary already
-// reports wfh_count.
+// catalog's 'wfh' status is only ever set by an approved regularization, and a
+// work-from-home punch is an ordinary present day flagged on the event. It
+// therefore OVERLAPS `present` by design — the same person is both — which is
+// how vw_attendance_monthly_summary reports wfh_count (since 1.52.0).
 export async function getTodaySummary(
   ctx: AttendanceCtx,
   date: string,
@@ -1957,6 +1956,7 @@ export async function reportDetail(ctx: AttendanceCtx, month: string): Promise<R
       )
       SELECT r.user_id::text, u.full_name AS user_full_name, u.email AS user_email,
              prof.weekly_off_pattern,
+             prof.date_of_joining::text AS date_of_joining, prof.date_of_exit::text AS date_of_exit,
              d.d::date::text AS work_date,
              st.name AS status_name, st.label AS status_label,
              ${localFmt(sql`ad.first_in`)} AS first_in_local,
@@ -1977,7 +1977,7 @@ export async function reportDetail(ctx: AttendanceCtx, month: string): Promise<R
       JOIN iam.users u ON u.id = r.user_id
       CROSS JOIN generate_series(${monthStart}::date::timestamp, ${lastDay}::timestamp, INTERVAL '1 day') AS d(d)
       LEFT JOIN LATERAL (
-        SELECT ep.weekly_off_pattern FROM hr.employee_profiles ep
+        SELECT ep.weekly_off_pattern, ep.date_of_joining, ep.date_of_exit FROM hr.employee_profiles ep
         WHERE ep.user_id = r.user_id AND ep.org_id = ${ctx.org_id} AND NOT ep.is_deleted
         ORDER BY ep.is_active DESC LIMIT 1
       ) prof ON TRUE

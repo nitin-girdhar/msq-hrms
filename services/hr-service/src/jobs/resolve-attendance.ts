@@ -60,14 +60,20 @@ function parseArgs(argv: string[]): Args {
   return { from, to };
 }
 
-async function loadEmployees(tx: DrizzleTx): Promise<DayEmployee[]> {
+interface JobEmployee extends DayEmployee {
+  date_of_joining: string;
+  date_of_exit: string | null;
+}
+
+async function loadEmployees(tx: DrizzleTx): Promise<JobEmployee[]> {
   return (await tx.execute(sql`
     SELECT ep.user_id::text, ep.org_id::text, ep.tenant_id::text, o.timezone,
-           ep.weekly_off_pattern AS weekly_off_pattern
+           ep.weekly_off_pattern AS weekly_off_pattern,
+           ep.date_of_joining::text AS date_of_joining, ep.date_of_exit::text AS date_of_exit
     FROM hr.employee_profiles ep
     JOIN entity.organizations o ON o.id = ep.org_id
     WHERE ep.is_active AND NOT ep.is_deleted
-  `)) as unknown as DayEmployee[];
+  `)) as unknown as JobEmployee[];
 }
 
 /**
@@ -144,8 +150,13 @@ async function main() {
     for (const emp of employees) {
       const today = orgToday(emp.timezone);
       const yesterday = addDays(today, -1);
-      const from = args.from ?? addDays(yesterday, -(DEFAULT_LOOKBACK_DAYS - 1));
-      const to = args.to ?? yesterday;
+      // Never resolve a day outside employment: before this, every day before
+      // joining (or after exit) in the window was written as 'absent' and
+      // counted on the payroll summary.
+      const wantFrom = args.from ?? addDays(yesterday, -(DEFAULT_LOOKBACK_DAYS - 1));
+      const wantTo = args.to ?? yesterday;
+      const from = wantFrom < emp.date_of_joining ? emp.date_of_joining : wantFrom;
+      const to = emp.date_of_exit && wantTo > emp.date_of_exit ? emp.date_of_exit : wantTo;
       if (from > to) continue;
 
       for (const date of dateRange(from, to)) {

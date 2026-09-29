@@ -114,6 +114,7 @@ export function detailCsv(report: DetailReport): string {
 // Row fill per displayed status (ARGB). Anything unlisted stays white.
 const STATUS_FILL: Record<string, string> = {
   weekly_off: 'FFF1F5F9',
+  not_employed: 'FFF8FAFC',
   holiday: 'FFE2E8F0',
   on_leave: 'FFDBEAFE',
   half_day: 'FFFEF9C3',

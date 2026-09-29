@@ -21,6 +21,8 @@ export interface ReportDayRow {
   user_full_name: string;
   user_email: string;
   weekly_off_pattern: number[] | null;
+  date_of_joining: string | null;
+  date_of_exit: string | null;
   work_date: string;
   status_name: string | null;
   status_label: string | null;
@@ -68,7 +70,7 @@ export interface DetailDay {
   user_email: string;
   work_date: string;
   weekday: string;
-  /** Machine key: a status name, or in_progress / not_marked / not_marked_yet (today) / unresolved. */
+  /** Machine key: a status name, or in_progress / not_marked / not_marked_yet (today) / not_employed / unresolved. */
   status_key: string;
   status_label: string;
   remarks: string;
@@ -147,6 +149,9 @@ function displayStatus(d: ReportDayRow, today: string, hasEvents: boolean): Disp
       return { key: 'in_progress', label: 'In Progress' };
     }
     return { key: d.status_name, label: d.status_label ?? d.status_name };
+  }
+  if ((d.date_of_joining && d.work_date < d.date_of_joining) || (d.date_of_exit && d.work_date > d.date_of_exit)) {
+    return { key: 'not_employed', label: 'Not Employed' };
   }
   if (d.holiday_name && !d.holiday_is_optional) return { key: 'holiday', label: 'Holiday' };
   if ((d.weekly_off_pattern ?? []).includes(weekdayOf(d.work_date))) return { key: 'weekly_off', label: 'Weekly Off' };

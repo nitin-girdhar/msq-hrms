@@ -80,7 +80,7 @@ type EventRow = {
 
 interface World {
   holidays?: unknown[];
-  leave?: Array<{ id: string; start_half: string; end_half: string }>;
+  leave?: Array<{ id: string; start_date: string; end_date: string; start_half: string; end_half: string }>;
   shift?: ShiftRow | null;
   events?: EventRow[];
 }
@@ -475,11 +475,26 @@ describe('e2e: precedence above events', () => {
 
   it('approved full-day leave wins over punches', async () => {
     const { resolution } = await resolveAndPersist({
-      leave: [{ id: 'leave-1', start_half: 'full', end_half: 'full' }],
+      leave: [{ id: 'leave-1', start_date: WORKDAY, end_date: WORKDAY, start_half: 'full', end_half: 'full' }],
       events: [punch('09:00', 'check_in'), punch('18:00', 'check_out')],
     });
     expect(resolution.status).toBe('on_leave');
     expect(resolution.leaveRequestId).toBe('leave-1');
+  });
+
+  it('a full day inside a leave that ENDS on a half day is still on_leave', async () => {
+    // Mon 27 - Wed 29 July, Wednesday first half only. Tuesday 28 is a full day.
+    const { resolution } = await resolveAndPersist({
+      leave: [{ id: 'leave-2', start_date: '2026-07-27', end_date: '2026-07-29', start_half: 'full', end_half: 'first_half' }],
+    });
+    expect(resolution.status).toBe('on_leave');
+  });
+
+  it('the half-day end of a leave is half_day', async () => {
+    const { resolution } = await resolveAndPersist({
+      leave: [{ id: 'leave-3', start_date: '2026-07-27', end_date: WORKDAY, start_half: 'full', end_half: 'second_half' }],
+    });
+    expect(resolution.status).toBe('half_day');
   });
 
   it('a weekly off wins over punches', async () => {

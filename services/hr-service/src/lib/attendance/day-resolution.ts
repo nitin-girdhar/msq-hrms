@@ -107,6 +107,25 @@ export async function dayRowExists(tx: DrizzleTx, userId: string, date: string):
   return rows.length > 0;
 }
 
+interface LeaveCover {
+  id: string;
+  start_date: string;
+  end_date: string;
+  start_half: string;
+  end_half: string;
+}
+
+/**
+ * Is `date` a HALF day of this leave? Only the leave's own first day can be a
+ * start half and only its last day an end half. Before this, a leave that merely
+ * STARTED or ENDED on a half marked every day it covered as half_day — a Mon-Wed
+ * leave ending Wednesday first-half paid Monday and Tuesday as half days.
+ */
+export function isHalfLeaveDay(leave: Omit<LeaveCover, 'id'>, date: string): boolean {
+  return (date === leave.start_date && leave.start_half !== 'full')
+    || (date === leave.end_date && leave.end_half !== 'full');
+}
+
 /**
  * Resolve the status for one (employee, date) via the full precedence. Never
  * returns null — callers decide whether to apply it (see dayRowExists). Event
@@ -135,16 +154,17 @@ export async function computeDayResolution(
 
   // 3. Approved leave covering the date.
   const leave = (await tx.execute(sql`
-    SELECT lr.id::text AS id, lr.start_half, lr.end_half
+    SELECT lr.id::text AS id, lr.start_date::text AS start_date, lr.end_date::text AS end_date,
+           lr.start_half, lr.end_half
     FROM hr.leave_requests lr
     JOIN hr.leave_request_statuses s ON s.id = lr.status_id
     WHERE lr.user_id = ${emp.user_id} AND lr.org_id = ${emp.org_id} AND NOT lr.is_deleted
       AND s.name = 'approved'
       AND ${date}::date BETWEEN lr.start_date AND lr.end_date
     LIMIT 1
-  `)) as unknown as Array<{ id: string; start_half: string; end_half: string }>;
+  `)) as unknown as LeaveCover[];
   if (leave[0]) {
-    const isHalf = leave[0].start_half !== 'full' || leave[0].end_half !== 'full';
+    const isHalf = isHalfLeaveDay(leave[0], date);
     const status = isHalf ? 'half_day' : 'on_leave';
     return { status, source: 'leave', ...NO_EVENTS, leaveRequestId: leave[0].id };
   }
