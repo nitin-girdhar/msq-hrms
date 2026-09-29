@@ -25,6 +25,7 @@ import {
   attendanceMeQuerySchema,
   attendanceTeamQuerySchema,
   reportsSummaryQuerySchema,
+  reportsDetailQuerySchema,
   dayEventsQuerySchema,
   faceEnrollSchema,
   faceReviewsQuerySchema,
@@ -92,6 +93,8 @@ export async function attendanceRouter(app: FastifyInstance) {
 
   // ── Reports ───────────────────────────────────────────────────────────────────
   app.get('/attendance/reports/summary', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_ADMIN_REPORTS_VIEW, 'You do not have permission to view attendance reports'), validate({ query: reportsSummaryQuerySchema })] }, ctrl.reportsSummary);
+  // Detailed month download (xlsx: Summary / Daily Detail / Punches; csv: Daily Detail).
+  app.get('/attendance/reports/detail', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_ADMIN_REPORTS_VIEW, 'You do not have permission to view attendance reports'), validate({ query: reportsDetailQuerySchema })] }, ctrl.reportsDetail);
 
   // ── Shifts ──────────────────────────────────────────────────────────────────
   app.get('/shifts', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_ADMIN_SHIFTS_VIEW)] }, ctrl.listShifts);

@@ -16,7 +16,8 @@ interface Props {
   onRequestRegularization: (date: string) => void;
 }
 
-const REGULARIZABLE = new Set(['absent', 'not_marked', 'half_day']);
+// missed_punch: the whole point of the status is that the employee regularizes it.
+const REGULARIZABLE = new Set(['absent', 'not_marked', 'half_day', 'missed_punch']);
 
 export default function DayDetailPopover({ date, row, userId, onClose, onRequestRegularization }: Props) {
   // null = still loading (or unavailable, which renders the same as no punches).

@@ -1,0 +1,28 @@
+meta {
+  name: Reports Detail (xlsx/csv download)
+  type: http
+  seq: 40
+}
+
+get {
+  url: {{baseUrl}}/hr/attendance/reports/detail?month=2026-09&format=xlsx
+  body: none
+  auth: none
+}
+
+params:query {
+  month: 2026-09
+  format: xlsx
+}
+
+headers {
+  Cookie: auth_token={{authToken}}
+}
+
+docs {
+  Detailed month attendance for the caller's current branch. Needs
+  hr.attendance.admin.reports.view (route) and hr.attendance.admin (service).
+  xlsx = Summary / Daily Detail (one row per employee-day) / Punches (one row
+  per check-in -> check-out session); csv = the Daily Detail sheet only.
+  Expect 403 for a user without the capability.
+}

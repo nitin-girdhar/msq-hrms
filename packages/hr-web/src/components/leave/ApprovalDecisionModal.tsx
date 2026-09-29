@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Modal } from '@platform/ui-kit';
+import { Modal, SpeechInputButton, appendDictation } from '@platform/ui-kit';
 import { leave as leaveApi } from '../../lib/api/client';
 import type { LeaveRequestView, LeaveBalance } from '../../lib/leave/types';
 import { formatDateRange, formatDays } from '../../lib/leave/format';
@@ -94,9 +94,12 @@ export default function ApprovalDecisionModal({ request, onClose, onDecided }: P
         </dl>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="ad-comment" className="text-xs font-semibold text-[#0F172A]">
-            Comment <span className="font-normal text-[#94A3B8]">(required to reject)</span>
-          </label>
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor="ad-comment" className="text-xs font-semibold text-[#0F172A]">
+              Comment <span className="font-normal text-[#94A3B8]">(required to reject)</span>
+            </label>
+            <SpeechInputButton onText={(t) => setComment((p) => appendDictation(p, t))} disabled={busy !== null} />
+          </div>
           <textarea id="ad-comment" value={comment} onChange={(e) => setComment(e.target.value)} rows={2} className={inputCls} disabled={busy !== null} />
         </div>
 

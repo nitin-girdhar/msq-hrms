@@ -11,6 +11,9 @@ export type AttendanceStatusName =
   | 'holiday'
   | 'weekly_off'
   | 'wfh'
+  // A finished day with a check-in never closed by a check-out — not present,
+  // not paid, until regularized.
+  | 'missed_punch'
   | 'not_marked';
 
 export interface AttendanceRules {
@@ -326,5 +329,6 @@ export interface MonthlySummaryRow {
   wfh_count: number;
   late_count: number;
   early_exit_count: number;
+  missed_punch_count: number;
   avg_worked_minutes: number | null;
 }

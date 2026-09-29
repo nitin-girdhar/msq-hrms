@@ -401,6 +401,11 @@ export const attendance = {
 
   reportDownloadUrl: (params: { month?: string; format: 'csv' | 'xlsx' }) =>
     `/api/hr/attendance/reports/summary${qs(params)}`,
+
+  // Detailed month report: xlsx = Summary / Daily Detail / Punches sheets,
+  // csv = Daily Detail (one row per employee-day, sessions flattened).
+  reportDetailDownloadUrl: (params: { month?: string; format: 'csv' | 'xlsx' }) =>
+    `/api/hr/attendance/reports/detail${qs(params)}`,
 };
 
 // ── Shifts ───────────────────────────────────────────────────────────────────

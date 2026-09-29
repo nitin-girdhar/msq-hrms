@@ -80,7 +80,7 @@ type EventRow = {
 
 interface World {
   holidays?: unknown[];
-  leave?: Array<{ id: string; start_half: string; end_half: string }>;
+  leave?: Array<{ id: string; start_date: string; end_date: string; start_half: string; end_half: string }>;
   shift?: ShiftRow | null;
   events?: EventRow[];
 }
@@ -247,9 +247,10 @@ describe('e2e: day resolution — split shift cumulative time', () => {
 
     expect(resolution.workedMinutes).toBe(240);
     expect(resolution.hasOpenSession).toBe(true);
-    // Only the second segment counted, so the day lands on half_day and the
-    // employee can regularize it.
-    expect(resolution.status).toBe('half_day');
+    // Only the second segment counted, and the abandoned check-in makes the
+    // finished day a missed punch (product decision 2026-09-28) — whatever the
+    // closed sessions add up to — until the employee regularizes it.
+    expect(resolution.status).toBe('missed_punch');
   });
 });
 
@@ -394,14 +395,42 @@ describe('e2e: day resolution — regular shift lunch break', () => {
     expect(resolution.isEarlyExit).toBe(true);
   });
 
-  it('treats a day still open as tentatively present', async () => {
+  it('treats a day still open as tentatively present while it is running', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(`${WORKDAY}T12:00:00+05:30`));
+    try {
+      const { resolution } = await resolveAndPersist({
+        shift: DAY_SHIFT,
+        events: [punch('09:00', 'check_in')],
+      });
+      expect(resolution.workedMinutes).toBeNull();
+      expect(resolution.status).toBe('present');
+      expect(resolution.hasOpenSession).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('makes a finished day with an unclosed check-in a missed punch, not present', async () => {
     const { resolution } = await resolveAndPersist({
       shift: DAY_SHIFT,
       events: [punch('09:00', 'check_in')],
     });
     expect(resolution.workedMinutes).toBeNull();
-    expect(resolution.status).toBe('present');
     expect(resolution.hasOpenSession).toBe(true);
+    expect(resolution.status).toBe('missed_punch');
+  });
+
+  it('makes a finished day missed even when the closed sessions reach a full day', async () => {
+    const { resolution } = await resolveAndPersist({
+      shift: DAY_SHIFT,
+      events: [
+        punch('08:00', 'check_in'), punch('17:00', 'check_out'), // 540 min closed
+        punch('17:30', 'check_in'),                              // never closed
+      ],
+    });
+    expect(resolution.workedMinutes).toBe(540);
+    expect(resolution.status).toBe('missed_punch');
   });
 });
 
@@ -446,11 +475,26 @@ describe('e2e: precedence above events', () => {
 
   it('approved full-day leave wins over punches', async () => {
     const { resolution } = await resolveAndPersist({
-      leave: [{ id: 'leave-1', start_half: 'full', end_half: 'full' }],
+      leave: [{ id: 'leave-1', start_date: WORKDAY, end_date: WORKDAY, start_half: 'full', end_half: 'full' }],
       events: [punch('09:00', 'check_in'), punch('18:00', 'check_out')],
     });
     expect(resolution.status).toBe('on_leave');
     expect(resolution.leaveRequestId).toBe('leave-1');
+  });
+
+  it('a full day inside a leave that ENDS on a half day is still on_leave', async () => {
+    // Mon 27 - Wed 29 July, Wednesday first half only. Tuesday 28 is a full day.
+    const { resolution } = await resolveAndPersist({
+      leave: [{ id: 'leave-2', start_date: '2026-07-27', end_date: '2026-07-29', start_half: 'full', end_half: 'first_half' }],
+    });
+    expect(resolution.status).toBe('on_leave');
+  });
+
+  it('the half-day end of a leave is half_day', async () => {
+    const { resolution } = await resolveAndPersist({
+      leave: [{ id: 'leave-3', start_date: '2026-07-27', end_date: WORKDAY, start_half: 'full', end_half: 'second_half' }],
+    });
+    expect(resolution.status).toBe('half_day');
   });
 
   it('a weekly off wins over punches', async () => {
@@ -479,7 +523,12 @@ describe('e2e: persistence', () => {
     // An approved regularization must never be clobbered by a recompute.
     expect(insert!.text).toContain("resolution_source IS DISTINCT FROM 'regularization'");
     expect(insert!.params).toContain(240);
-    expect(insert!.params).toContain('half_day');
+    expect(insert!.params).toContain('missed_punch');
+    // A tenant the 1.52.0 one_time script has not reached yet has no
+    // missed_punch row; the write falls back to 'absent' instead of violating
+    // the NOT NULL status_id and failing the whole job.
+    expect(insert!.text).toContain('COALESCE');
+    expect(insert!.text).toContain("name = 'absent'");
   });
 
   it('does not overwrite an existing row when overwrite is false', async () => {

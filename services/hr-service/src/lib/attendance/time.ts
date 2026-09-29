@@ -109,6 +109,27 @@ export function workDateOf(
   return tod < shiftStartMinutes ? addDays(localDate, -1) : localDate;
 }
 
+/**
+ * Is the work day `date` over, in the org timezone? A day with an unclosed
+ * check-in only becomes 'missed_punch' once it is — before that the employee
+ * may still check out.
+ * - Day shift / no shift: over once the local calendar has moved past it.
+ * - Night shift: the shift ends the NEXT local morning, so over once local time
+ *   reaches `date + 1` at the shift's end time.
+ */
+export function isDayFinished(
+  date: string,
+  tz: string,
+  nightShiftEndMinutes: number | null,
+  now: Date = new Date(),
+): boolean {
+  const today = orgToday(tz, now);
+  if (nightShiftEndMinutes === null) return today > date;
+  const nextDay = addDays(date, 1);
+  if (today !== nextDay) return today > nextDay;
+  return localTimeMinutes(now, tz) >= nightShiftEndMinutes;
+}
+
 /** True when arrival (local minutes) is later than shift start + grace. */
 export function isLateArrival(arrivalMinutes: number, shiftStartMinutes: number, graceMinutes: number): boolean {
   return arrivalMinutes > shiftStartMinutes + graceMinutes;

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  isDayFinished,
   localDateOf,
   localTimeMinutes,
   weekdayOf,
@@ -102,5 +103,28 @@ describe('timezone with DST (America/New_York)', () => {
   it('handles a summer EDT instant (UTC-4)', () => {
     // 2026-07-15T02:00Z = 2026-07-14T22:00 EDT → local date 14th.
     expect(localDateOf(new Date('2026-07-15T02:00:00Z'), NY)).toBe('2026-07-14');
+  });
+});
+
+describe('isDayFinished', () => {
+  const tz = 'Asia/Kolkata';
+  const at = (iso: string) => new Date(iso);
+
+  it('day shift: over once the local date has moved on', () => {
+    expect(isDayFinished('2026-09-10', tz, null, at('2026-09-10T23:59:00+05:30'))).toBe(false);
+    expect(isDayFinished('2026-09-10', tz, null, at('2026-09-11T00:00:30+05:30'))).toBe(true);
+  });
+
+  it('uses the org timezone, not UTC', () => {
+    // 20:00 UTC on the 10th is already 01:30 on the 11th in India.
+    expect(isDayFinished('2026-09-10', tz, null, at('2026-09-10T20:00:00Z'))).toBe(true);
+  });
+
+  it('night shift: over only once the next morning reaches the shift end', () => {
+    const end = 6 * 60; // 06:00
+    expect(isDayFinished('2026-09-10', tz, end, at('2026-09-11T02:00:00+05:30'))).toBe(false);
+    expect(isDayFinished('2026-09-10', tz, end, at('2026-09-11T06:00:00+05:30'))).toBe(true);
+    expect(isDayFinished('2026-09-10', tz, end, at('2026-09-12T01:00:00+05:30'))).toBe(true);
+    expect(isDayFinished('2026-09-10', tz, end, at('2026-09-10T23:00:00+05:30'))).toBe(false);
   });
 });

@@ -10,7 +10,9 @@
 //   1. org holiday    → 'holiday'
 //   2. weekly off     → 'weekly_off'
 //   3. approved leave → 'on_leave' (half-day leave w/o punches → 'half_day')
-//   4. events exist   → 'present'/'half_day'/'absent' per the effective thresholds
+//   4. events exist   → 'present'/'half_day'/'absent' per the effective thresholds;
+//                       'missed_punch' when a check-in was left unclosed and the
+//                       work day is over (isDayFinished)
 //   5. else           → 'absent'
 //
 // A day with events CAN now resolve to 'absent' — when the summed session time
@@ -29,7 +31,7 @@
 
 import { sql } from 'drizzle-orm';
 import type { DrizzleTx } from '@platform/db';
-import { weekdayOf, parseTimeToMinutes, isLateArrival, isEarlyExit } from './time.js';
+import { weekdayOf, parseTimeToMinutes, isLateArrival, isEarlyExit, isDayFinished } from './time.js';
 import {
   resolveEventStatus,
   summarizeSessions,
@@ -105,6 +107,25 @@ export async function dayRowExists(tx: DrizzleTx, userId: string, date: string):
   return rows.length > 0;
 }
 
+interface LeaveCover {
+  id: string;
+  start_date: string;
+  end_date: string;
+  start_half: string;
+  end_half: string;
+}
+
+/**
+ * Is `date` a HALF day of this leave? Only the leave's own first day can be a
+ * start half and only its last day an end half. Before this, a leave that merely
+ * STARTED or ENDED on a half marked every day it covered as half_day — a Mon-Wed
+ * leave ending Wednesday first-half paid Monday and Tuesday as half days.
+ */
+export function isHalfLeaveDay(leave: Omit<LeaveCover, 'id'>, date: string): boolean {
+  return (date === leave.start_date && leave.start_half !== 'full')
+    || (date === leave.end_date && leave.end_half !== 'full');
+}
+
 /**
  * Resolve the status for one (employee, date) via the full precedence. Never
  * returns null — callers decide whether to apply it (see dayRowExists). Event
@@ -133,21 +154,44 @@ export async function computeDayResolution(
 
   // 3. Approved leave covering the date.
   const leave = (await tx.execute(sql`
-    SELECT lr.id::text AS id, lr.start_half, lr.end_half
+    SELECT lr.id::text AS id, lr.start_date::text AS start_date, lr.end_date::text AS end_date,
+           lr.start_half, lr.end_half
     FROM hr.leave_requests lr
     JOIN hr.leave_request_statuses s ON s.id = lr.status_id
     WHERE lr.user_id = ${emp.user_id} AND lr.org_id = ${emp.org_id} AND NOT lr.is_deleted
       AND s.name = 'approved'
       AND ${date}::date BETWEEN lr.start_date AND lr.end_date
     LIMIT 1
-  `)) as unknown as Array<{ id: string; start_half: string; end_half: string }>;
+  `)) as unknown as LeaveCover[];
   if (leave[0]) {
-    const isHalf = leave[0].start_half !== 'full' || leave[0].end_half !== 'full';
+    const isHalf = isHalfLeaveDay(leave[0], date);
     const status = isHalf ? 'half_day' : 'on_leave';
     return { status, source: 'leave', ...NO_EVENTS, leaveRequestId: leave[0].id };
   }
 
-  // 4. Events exist for the date (night-shift aware; excludes rejected punches).
+  // 4. Events exist for the date.
+  const fromEvents = await resolveFromEvents(tx, emp, date, orgThresholds);
+  if (fromEvents) return fromEvents;
+
+  // 5. Absent.
+  return { status: 'absent', source: 'job', ...NO_EVENTS };
+}
+
+/**
+ * Step 4 of the precedence on its own: the day as its punches alone resolve it,
+ * or null when it has none. Night-shift aware; excludes rejected punches.
+ *
+ * The nightly job's finalize pass calls this directly for a day the live punch
+ * already wrote from events: a punch on a holiday or weekly off must be
+ * finalized from its punches, not re-resolved to 'weekly_off' — which would
+ * both erase the worked times and leave an unclosed check-in counted.
+ */
+export async function resolveFromEvents(
+  tx: DrizzleTx,
+  emp: DayEmployee,
+  date: string,
+  orgThresholds?: ShiftThresholds,
+): Promise<Resolution | null> {
   const shift = await loadShift(tx, emp.org_id, emp.user_id, date);
   const shiftStartMin = shift ? parseTimeToMinutes(shift.start_time) : 0;
   const isNight = shift?.is_night_shift ?? false;
@@ -176,12 +220,11 @@ export async function computeDayResolution(
   `)) as unknown as DayEventRow[];
 
   if (rows.length > 0) {
-    const d = deriveFromEvents(rows, shift, isNight, thresholdsFrom(shift, orgThresholds));
+    const dayFinished = isDayFinished(date, emp.timezone, isNight && shift ? parseTimeToMinutes(shift.end_time) : null);
+    const d = deriveFromEvents(rows, shift, isNight, thresholdsFrom(shift, orgThresholds), dayFinished);
     return { ...d, source: 'events', leaveRequestId: null };
   }
-
-  // 5. Absent.
-  return { status: 'absent', source: 'job', ...NO_EVENTS };
+  return null;
 }
 
 export interface DayEventRow extends SessionEvent {
@@ -232,12 +275,17 @@ interface DayShift {
  * resolves exactly like a day with no punches — absent, no times — with
  * hasPendingFaceReview set to explain why. hasOffWindowPunch is the deliberate
  * exception: it is a review signal, so it considers every punch.
+ *
+ * `dayFinished` decides what an unclosed check-in means: still working (the live
+ * punch path, always false) or 'missed_punch' (the job / recompute, once
+ * isDayFinished says the work day is over).
  */
 export function deriveFromEvents(
   rows: DayEventRow[],
   shift: DayShift | null,
   isNight: boolean,
   thresholds: ShiftThresholds,
+  dayFinished: boolean,
 ): Omit<Resolution, 'source' | 'leaveRequestId'> {
   const counted = rows.filter(countsTowardDay);
   const hasPendingFaceReview = rows.some((r) => r.face_review_status === 'pending');
@@ -257,7 +305,7 @@ export function deriveFromEvents(
   const { workedMinutes, hasOpenSession } = summarizeSessions(counted);
 
   return {
-    status: resolveEventStatus(workedMinutes, thresholds),
+    status: resolveEventStatus(workedMinutes, thresholds, { hasOpenSession, dayFinished }),
     firstIn: firstInRow?.occurred_at ?? null,
     lastOut: lastOutRow?.occurred_at ?? null,
     workedMinutes,
@@ -273,6 +321,18 @@ export function deriveFromEvents(
     hasOpenSession,
     hasPendingFaceReview,
   };
+}
+
+/**
+ * The tenant's status id for `status`. 'missed_punch' was added in schema 1.52.0
+ * and reaches existing tenants through a one_time script; a tenant the script has
+ * not reached yet falls back to 'absent' (also unpaid) rather than failing the
+ * NOT NULL status_id write — and with it the nightly job for every tenant.
+ */
+export function statusIdSql(tenantId: string, status: string) {
+  const own = sql`(SELECT id FROM hr.attendance_statuses WHERE tenant_id = ${tenantId} AND name = ${status})`;
+  if (status !== 'missed_punch') return own;
+  return sql`COALESCE(${own}, (SELECT id FROM hr.attendance_statuses WHERE tenant_id = ${tenantId} AND name = 'absent'))`;
 }
 
 /**
@@ -306,7 +366,7 @@ export async function upsertResolvedDay(
        leave_request_id, resolved_at, resolution_source)
     VALUES
       (${emp.user_id}, ${emp.org_id}, ${date}::date, ${r.firstIn}, ${r.lastOut}, ${r.workedMinutes},
-       (SELECT id FROM hr.attendance_statuses WHERE tenant_id = ${emp.tenant_id} AND name = ${r.status}),
+       ${statusIdSql(emp.tenant_id, r.status)},
        ${r.isLate}, ${r.isEarlyExit}, ${r.hasOffWindowPunch}, ${r.hasOpenSession}, ${r.hasPendingFaceReview},
        ${r.leaveRequestId}, CLOCK_TIMESTAMP(), ${r.source})
     ${onConflict}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Modal } from '@platform/ui-kit';
+import { Modal, SpeechInputButton, appendDictation } from '@platform/ui-kit';
 import { attendance as attendanceApi } from '../../lib/api/client';
 import { todayIso, shiftIso } from '../../lib/attendance/format';
 import type { AttendanceRules, AttendanceStatusName, RegularizationView } from '../../lib/attendance/types';
@@ -239,7 +239,10 @@ export default function RegularizationFormModal({ open, date, item, rules, onClo
         )}
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="rg-reason" className="text-xs font-semibold text-[#0F172A]">Reason *</label>
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor="rg-reason" className="text-xs font-semibold text-[#0F172A]">Reason *</label>
+            <SpeechInputButton onText={(t) => setReason((p) => appendDictation(p, t))} disabled={submitting} />
+          </div>
           <textarea id="rg-reason" value={reason} onChange={(e) => setReason(e.target.value)} disabled={submitting} rows={3} className={inputCls} />
         </div>
 

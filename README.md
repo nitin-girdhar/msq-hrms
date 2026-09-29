@@ -28,6 +28,14 @@ Same gaps as msq-lms (see its README for full detail), applied here:
    via `pnpm --filter "./msq-hrms/**" run build|typecheck` from `msq-core`'s
    root instead.
 
+**HR profiles for Team-created members.** `hr.employee_profiles` rows are created
+and re-filed by identity-service calling hr-service's service-to-service
+`POST /api/v1/internal/employees/sync` (`src/api/v1/internal/`, `X-Internal-Secret`,
+not proxied by the gateway) after every Admin → Team create/edit. It only writes
+the home branch and active flag; joining date, code, department, designation and
+weekly off stay HR-owned on Leave Administration → Employees. See
+`docs/Architecture.md` in the platform root.
+
 CompreFace (self-hosted face verification for attendance punches) is owned
 entirely by this repo — it has zero shared/other-product dependencies.
 

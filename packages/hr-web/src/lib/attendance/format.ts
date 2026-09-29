@@ -62,6 +62,7 @@ export const ATTENDANCE_STATUS_STYLES: Record<AttendanceStatusName, { bg: string
   holiday: { bg: 'bg-purple-50', fg: 'text-purple-700', dot: '#7C3AED' },
   weekly_off: { bg: 'bg-slate-100', fg: 'text-slate-500', dot: '#94A3B8' },
   wfh: { bg: 'bg-cyan-50', fg: 'text-cyan-700', dot: '#0891B2' },
+  missed_punch: { bg: 'bg-orange-50', fg: 'text-orange-700', dot: '#EA580C' },
   not_marked: { bg: 'bg-slate-100', fg: 'text-slate-400', dot: '#CBD5E1' },
 };
 

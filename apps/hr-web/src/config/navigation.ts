@@ -8,6 +8,6 @@ import type { NavItem } from '@platform/ui-kit/shell';
 //
 // Tier C3: previously `roles: ROLES`, i.e. visible to everyone with the module.
 export const HR_NAV: readonly NavItem[] = [
-  { id: 'attendance', label: 'Attendance', href: '/attendance', capability: CAPABILITY.HR_ATTENDANCE },
-  { id: 'leave',      label: 'Leave',      href: '/leave',      capability: CAPABILITY.HR_LEAVE },
+  { id: 'attendance', label: 'Attendance', href: '/attendance', icon: 'clock', capability: CAPABILITY.HR_ATTENDANCE },
+  { id: 'leave',      label: 'Leave',      href: '/leave',      icon: 'plane', capability: CAPABILITY.HR_LEAVE },
 ] as const;

@@ -3,6 +3,7 @@ import {
   resolveEventStatus,
   thresholdsFrom,
   summarizeSessions,
+  pairSessions,
   DEFAULT_THRESHOLDS,
   type ShiftThresholds,
   type SessionEvent,
@@ -198,5 +199,54 @@ describe('resolveEventStatus + summarizeSessions together', () => {
     const { workedMinutes } = summarizeSessions(events);
     expect(workedMinutes).toBe(3);
     expect(resolveEventStatus(workedMinutes, STD)).toBe('absent');
+  });
+});
+
+describe('resolveEventStatus — unclosed check-in (missed punch)', () => {
+  it('is missed_punch once the day is over, whatever the closed minutes', () => {
+    const open = { hasOpenSession: true, dayFinished: true };
+    expect(resolveEventStatus(null, STD, open)).toBe('missed_punch');
+    expect(resolveEventStatus(600, STD, open)).toBe('missed_punch');
+    expect(resolveEventStatus(10, STD, open)).toBe('missed_punch');
+  });
+
+  it('stays tentatively present while the day is still running', () => {
+    const open = { hasOpenSession: true, dayFinished: false };
+    expect(resolveEventStatus(null, STD, open)).toBe('present');
+    expect(resolveEventStatus(60, STD, open)).toBe('present');
+  });
+
+  it('ignores dayFinished when every session is closed', () => {
+    expect(resolveEventStatus(300, STD, { hasOpenSession: false, dayFinished: true })).toBe('half_day');
+  });
+});
+
+describe('pairSessions — one row per session', () => {
+  it('pairs closed sessions with their minutes', () => {
+    const s = pairSessions([at('09:00', 'check_in'), at('13:00', 'check_out'), at('14:00', 'check_in'), at('18:30', 'check_out')]);
+    expect(s.map((x) => x.minutes)).toEqual([240, 270]);
+    expect(s.every((x) => !x.abandoned && x.checkOut)).toBe(true);
+  });
+
+  it('marks a check-in followed by another check-in as abandoned', () => {
+    const s = pairSessions([at('09:00', 'check_in'), at('14:00', 'check_in'), at('18:00', 'check_out')]);
+    expect(s).toHaveLength(2);
+    expect(s[0]).toMatchObject({ checkOut: null, minutes: null, abandoned: true });
+    expect(s[1]).toMatchObject({ minutes: 240, abandoned: false });
+  });
+
+  it('returns a trailing open check-in with no check-out, not abandoned', () => {
+    const s = pairSessions([at('09:00', 'check_in'), at('13:00', 'check_out'), at('14:00', 'check_in')]);
+    expect(s[1]).toMatchObject({ checkOut: null, minutes: null, abandoned: false });
+  });
+
+  it('drops an orphan check-out', () => {
+    expect(pairSessions([at('08:00', 'check_out'), at('09:00', 'check_in'), at('10:00', 'check_out')])).toHaveLength(1);
+  });
+
+  it('agrees with summarizeSessions', () => {
+    const events = [at('09:00', 'check_in'), at('13:00', 'check_out'), at('14:00', 'check_in')];
+    const closed = pairSessions(events).filter((x) => x.checkOut).reduce((n, x) => n + (x.minutes ?? 0), 0);
+    expect(summarizeSessions(events)).toEqual({ workedMinutes: closed, hasOpenSession: true });
   });
 });

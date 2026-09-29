@@ -42,6 +42,7 @@ import {
   type DayEmployee,
   type DayEventRow,
 } from '../../../lib/attendance/day-resolution.js';
+import type { ReportDayRow, ReportEventRow } from '../../../lib/attendance/report-detail.js';
 import { getPhotoStorage, detectImageExt } from '../../../lib/storage/photo-storage.js';
 import { getFaceDriver, FaceEnrollmentError } from '../../../lib/face/index.js';
 import { resolvePunchFace, FaceBlockedError, type FaceMatchAction, type FaceOutcome } from '../../../lib/face/punch-verification.js';
@@ -668,8 +669,11 @@ async function upsertDayFromEvents(
   `)) as unknown as DayEventRow[];
 
   // Same derivation the nightly job and the face-review recompute use, so all
-  // three write paths agree by construction.
-  const d = deriveFromEvents(rows, p.shift, p.isNight, thresholdsFrom(p.shift, p.orgThresholds));
+  // three write paths agree by construction. dayFinished is false: a punch is
+  // only ever accepted into the work day that is running now, so an open
+  // check-in here means "still working" — the nightly job turns it into
+  // 'missed_punch' once the day is over.
+  const d = deriveFromEvents(rows, p.shift, p.isNight, thresholdsFrom(p.shift, p.orgThresholds), false);
 
   await tx.execute(sql`
     INSERT INTO hr.attendance_days
@@ -982,11 +986,10 @@ export interface TodaySummary {
 // numbers.
 //
 // `wfh` is derived from hr.attendance_events.is_wfh, not from a status: the
-// attendance_statuses catalog has no 'wfh' member (present / half_day / on_leave
-// / absent / holiday / weekly_off), and a work-from-home punch is an ordinary
-// present day flagged on the event. It therefore OVERLAPS `present` by design —
-// the same person is both — which is how vw_attendance_monthly_summary already
-// reports wfh_count.
+// catalog's 'wfh' status is only ever set by an approved regularization, and a
+// work-from-home punch is an ordinary present day flagged on the event. It
+// therefore OVERLAPS `present` by design — the same person is both — which is
+// how vw_attendance_monthly_summary reports wfh_count (since 1.52.0).
 export async function getTodaySummary(
   ctx: AttendanceCtx,
   date: string,
@@ -1903,11 +1906,170 @@ export async function monthlySummary(ctx: AttendanceCtx, month: string) {
       SELECT user_id::text, user_full_name, user_email, month,
              present_count, absent_count, half_day_count, on_leave_count, holiday_count,
              weekly_off_count, wfh_count, late_count, early_exit_count,
+             missed_punch_count,
              avg_worked_minutes::float8 AS avg_worked_minutes
       FROM hr.vw_attendance_monthly_summary
       WHERE org_id = ${ctx.org_id} AND month = ${month}
       ORDER BY user_full_name
     `)) as unknown as Row[];
+  });
+}
+
+// ── Detailed month report (download) ─────────────────────────────────────────
+// Raw inputs for lib/attendance/report-detail.ts, which does all the shaping.
+// Service tx for the same reason as monthlySummary: attendance_days /
+// attendance_events RLS lets app_user read only its OWN rows, and this is an
+// org-wide read the service authorizes first (canManageAttendance). Every query
+// is pinned to the gateway-verified ctx.org_id — never a client-supplied id.
+
+export interface ReportDetailData {
+  timezone: string;
+  today: string;
+  days: ReportDayRow[];
+  events: ReportEventRow[];
+}
+
+export async function reportDetail(ctx: AttendanceCtx, month: string): Promise<ReportDetailData> {
+  return withServiceTx(async (tx) => {
+    const org = await loadOrg(tx, ctx.org_id);
+    const tz = org.timezone;
+    const todayRows = (await tx.execute(sql`
+      SELECT (CLOCK_TIMESTAMP() AT TIME ZONE ${tz})::date::text AS today
+    `)) as unknown as Array<{ today: string }>;
+    const today = todayRows[0]!.today;
+    const monthStart = `${month}-01`;
+    // Report through the month's end, or today for the running month. A future
+    // month yields an empty series.
+    const lastDay = sql`LEAST((${monthStart}::date + INTERVAL '1 month' - INTERVAL '1 day')::date, ${today}::date)`;
+    const localFmt = (col: ReturnType<typeof sql>) => sql`to_char(${col} AT TIME ZONE ${tz}, 'HH24:MI')`;
+
+    // Roster = every active employee of the branch, plus anyone who already has a
+    // resolved day here this month (left mid-month, profile since deactivated) —
+    // so the report never drops days the summary counts.
+    const days = (await tx.execute(sql`
+      WITH roster AS (
+        SELECT ep.user_id FROM hr.employee_profiles ep
+        WHERE ep.org_id = ${ctx.org_id} AND ep.is_active AND NOT ep.is_deleted
+        UNION
+        SELECT ad.user_id FROM hr.attendance_days ad
+        WHERE ad.org_id = ${ctx.org_id} AND ad.work_date BETWEEN ${monthStart}::date AND ${lastDay}
+      )
+      SELECT r.user_id::text, u.full_name AS user_full_name, u.email AS user_email,
+             prof.weekly_off_pattern,
+             prof.date_of_joining::text AS date_of_joining, prof.date_of_exit::text AS date_of_exit,
+             d.d::date::text AS work_date,
+             st.name AS status_name, st.label AS status_label,
+             ${localFmt(sql`ad.first_in`)} AS first_in_local,
+             ${localFmt(sql`ad.last_out`)} AS last_out_local,
+             ad.worked_minutes, ad.is_late, ad.is_early_exit, ad.has_open_session,
+             ad.has_pending_face_review, ad.has_off_window_punch, ad.resolution_source,
+             hol.name AS holiday_name, hol.is_optional AS holiday_is_optional,
+             lv.label AS leave_type_label, lv.half AS leave_half,
+             sh.name AS shift_name,
+             to_char(sh.start_time, 'HH24:MI') AS shift_start,
+             to_char(sh.end_time, 'HH24:MI')   AS shift_end,
+             rg.status AS reg_status, rgs.label AS reg_requested_status,
+             ${localFmt(sql`rg.requested_in`)}  AS reg_requested_in_local,
+             ${localFmt(sql`rg.requested_out`)} AS reg_requested_out_local,
+             rg.reason AS reg_reason, apr.full_name AS reg_approver_name,
+             rg.approver_comment AS reg_approver_comment
+      FROM roster r
+      JOIN iam.users u ON u.id = r.user_id
+      CROSS JOIN generate_series(${monthStart}::date::timestamp, ${lastDay}::timestamp, INTERVAL '1 day') AS d(d)
+      LEFT JOIN LATERAL (
+        SELECT ep.weekly_off_pattern, ep.date_of_joining, ep.date_of_exit FROM hr.employee_profiles ep
+        WHERE ep.user_id = r.user_id AND ep.org_id = ${ctx.org_id} AND NOT ep.is_deleted
+        ORDER BY ep.is_active DESC LIMIT 1
+      ) prof ON TRUE
+      LEFT JOIN hr.attendance_days ad ON ad.user_id = r.user_id AND ad.work_date = d.d::date
+      LEFT JOIN hr.attendance_statuses st ON st.id = ad.status_id
+      LEFT JOIN LATERAL (
+        SELECT h.name, h.is_optional FROM hr.holidays h
+        WHERE h.org_id = ${ctx.org_id} AND h.holiday_date = d.d::date AND h.is_active AND NOT h.is_deleted
+        ORDER BY h.is_optional LIMIT 1
+      ) hol ON TRUE
+      -- The leave the day was resolved from, else any approved leave covering it
+      -- (a day the job has not reached yet).
+      LEFT JOIN LATERAL (
+        SELECT lt.label,
+               CASE WHEN lr.start_date = d.d::date AND lr.start_half <> 'full' THEN lr.start_half
+                    WHEN lr.end_date   = d.d::date AND lr.end_half   <> 'full' THEN lr.end_half
+                    ELSE 'full' END AS half
+        FROM hr.leave_requests lr
+        JOIN hr.leave_types lt ON lt.id = lr.leave_type_id
+        JOIN hr.leave_request_statuses ls ON ls.id = lr.status_id
+        WHERE lr.user_id = r.user_id AND lr.org_id = ${ctx.org_id} AND NOT lr.is_deleted
+          AND (lr.id = ad.leave_request_id
+               OR (ls.name = 'approved' AND d.d::date BETWEEN lr.start_date AND lr.end_date))
+        ORDER BY (lr.id = ad.leave_request_id) DESC NULLS LAST
+        LIMIT 1
+      ) lv ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT s.name, s.start_time, s.end_time
+        FROM hr.shift_assignments sa
+        JOIN hr.shifts s ON s.id = sa.shift_id AND NOT s.is_deleted
+        WHERE sa.user_id = r.user_id AND sa.org_id = ${ctx.org_id} AND NOT sa.is_deleted
+          AND sa.effective_from <= d.d::date
+          AND (sa.effective_to IS NULL OR sa.effective_to >= d.d::date)
+        ORDER BY sa.effective_from DESC LIMIT 1
+      ) sh ON TRUE
+      -- Latest live correction request for the day (approved wins over a later
+      -- rejected/cancelled one only by recency — the report shows the newest).
+      LEFT JOIN LATERAL (
+        SELECT rr.status, rr.requested_status_id, rr.requested_in, rr.requested_out,
+               rr.reason, rr.approver_id, rr.approver_comment
+        FROM hr.attendance_regularizations rr
+        WHERE rr.user_id = r.user_id AND rr.org_id = ${ctx.org_id} AND rr.work_date = d.d::date
+          AND NOT rr.is_deleted
+        ORDER BY (rr.status = 'approved') DESC, rr.created_at DESC
+        LIMIT 1
+      ) rg ON TRUE
+      LEFT JOIN hr.attendance_statuses rgs ON rgs.id = rg.requested_status_id
+      LEFT JOIN iam.users apr ON apr.id = rg.approver_id
+      ORDER BY u.full_name, r.user_id, d.d
+    `)) as unknown as ReportDayRow[];
+
+    // Every punch that can belong to a report day, bucketed onto its work date:
+    // an early-morning punch belongs to the PREVIOUS date when that date's shift
+    // is a night shift that started before it (same rule as eventWorkDateSql).
+    // The window is widened by a day each side so a night shift straddling the
+    // month boundary is bucketed correctly, then trimmed to the report range.
+    const events = (await tx.execute(sql`
+      WITH ev AS (
+        SELECT e.user_id, e.event_type, e.occurred_at, e.is_wfh, e.geo_exception_type,
+               e.face_review_status, e.is_off_segment,
+               (e.occurred_at AT TIME ZONE ${tz}) AS local_ts
+        FROM hr.attendance_events e
+        WHERE e.org_id = ${ctx.org_id}
+          AND e.occurred_at >= ((${monthStart}::date - 1)::timestamp AT TIME ZONE ${tz})
+          AND e.occurred_at <  ((${lastDay} + 2)::timestamp AT TIME ZONE ${tz})
+      ), bucketed AS (
+        SELECT ev.*,
+               CASE WHEN prev.is_night_shift
+                         AND (EXTRACT(HOUR FROM ev.local_ts) * 60 + EXTRACT(MINUTE FROM ev.local_ts))
+                             < (EXTRACT(HOUR FROM prev.start_time) * 60 + EXTRACT(MINUTE FROM prev.start_time))
+                    THEN (ev.local_ts::date - 1)
+                    ELSE ev.local_ts::date END AS work_date
+        FROM ev
+        LEFT JOIN LATERAL (
+          SELECT s.is_night_shift, s.start_time
+          FROM hr.shift_assignments sa
+          JOIN hr.shifts s ON s.id = sa.shift_id AND NOT s.is_deleted AND s.is_active
+          WHERE sa.user_id = ev.user_id AND sa.org_id = ${ctx.org_id} AND NOT sa.is_deleted
+            AND sa.effective_from <= (ev.local_ts::date - 1)
+            AND (sa.effective_to IS NULL OR sa.effective_to >= (ev.local_ts::date - 1))
+          ORDER BY sa.effective_from DESC LIMIT 1
+        ) prev ON TRUE
+      )
+      SELECT user_id::text, work_date::text AS work_date, event_type,
+             occurred_at::text AS occurred_at, to_char(local_ts, 'HH24:MI') AS local_time,
+             is_wfh, geo_exception_type, face_review_status, is_off_segment
+      FROM bucketed
+      WHERE work_date BETWEEN ${monthStart}::date AND ${lastDay}
+      ORDER BY user_id, occurred_at
+    `)) as unknown as ReportEventRow[];
+
+    return { timezone: tz, today, days, events };
   });
 }
 
