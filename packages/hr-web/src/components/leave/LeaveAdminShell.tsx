@@ -8,21 +8,19 @@ import PoliciesManager from './admin/PoliciesManager';
 import LeaveCycleSetting from './admin/LeaveCycleSetting';
 import HolidaysManager from './admin/HolidaysManager';
 import AdjustmentForm from './admin/AdjustmentForm';
-import EmployeeProfilesManager from './admin/EmployeeProfilesManager';
 
 interface Props {
   actor: SessionUser;
   hrRank: HrRank;
 }
 
-type Section = 'policies' | 'cycle' | 'holidays' | 'adjustment' | 'employees';
+type Section = 'policies' | 'cycle' | 'holidays' | 'adjustment';
 
 const SECTIONS: { id: Section; label: string }[] = [
   { id: 'policies', label: 'Policies' },
   { id: 'cycle', label: 'Leave cycle' },
   { id: 'holidays', label: 'Holidays' },
   { id: 'adjustment', label: 'Adjustment' },
-  { id: 'employees', label: 'Employees' },
 ];
 
 export default function LeaveAdminShell({ actor, hrRank }: Props) {
@@ -35,7 +33,7 @@ export default function LeaveAdminShell({ actor, hrRank }: Props) {
     <div className="flex w-full flex-1 flex-col">
       <PageHeader
         title="Leave Administration"
-        subtitle="Policies, leave cycle, holidays, manual adjustments and employee profiles."
+        subtitle="Policies, leave cycle, holidays and manual adjustments. Employee profiles are under Employees in HR."
       />
 
       <PageBody>
@@ -62,7 +60,6 @@ export default function LeaveAdminShell({ actor, hrRank }: Props) {
         {section === 'cycle' && <LeaveCycleSetting actor={actor} onNotice={onNotice} />}
         {section === 'holidays' && <HolidaysManager onNotice={onNotice} />}
         {section === 'adjustment' && <AdjustmentForm onNotice={onNotice} />}
-        {section === 'employees' && <EmployeeProfilesManager onNotice={onNotice} />}
       </PageBody>
     </div>
   );

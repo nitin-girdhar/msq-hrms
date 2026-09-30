@@ -10,6 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { formatMinutes, type DetailReport } from './report-detail.js';
+import { MUSTER_CODES, type MusterCode, type MusterReport } from './report-muster.js';
 
 export interface ReportColumn {
   key: string;
@@ -160,6 +161,92 @@ export async function detailXlsx(
   report.sessions.forEach((s, i) => {
     if (!s.counted) sessions.getRow(i + 2).font = { color: { argb: 'FFB45309' } };
   });
+
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
+// ── Combined attendance (muster) sheet ──────────────────────────────────────
+// The layout HR teams already keep by hand, column for column:
+//   SL No | Name | Profile | Department | DOJ | Branch | 1 … 28-31 |
+//   Total Present Day | Weekoff Paid | Paid Leave | Holidays | Total Paid Days | Final Paid Days
+// Final Paid Days is deliberately empty: HR settles it by hand after review.
+
+const MUSTER_HEADER_FILL = 'FFFFFF00'; // the yellow header of the paper sheet
+// Same palette as STATUS_FILL above, keyed by cell code.
+const MUSTER_CELL_FILL: Partial<Record<MusterCode, string>> = {
+  A: 'FFFEE2E2',
+  HD: 'FFFEF9C3',
+  'HD/L': 'FFFEF9C3',
+  L: 'FFDBEAFE',
+  LOP: 'FFFECACA',
+  WO: 'FFF1F5F9',
+  H: 'FFE2E8F0',
+};
+
+/** "Sep 2026" for "2026-09". */
+function monthTitle(month: string): string {
+  const [y, m] = month.split('-').map(Number) as [number, number];
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+
+/** DD/MM/YYYY, as the paper sheet writes it. */
+function dmy(date: string | null): string {
+  return date ? `${date.slice(8, 10)}/${date.slice(5, 7)}/${date.slice(0, 4)}` : '';
+}
+
+export async function musterXlsx(report: MusterReport, scopeLabel: string): Promise<Buffer> {
+  const ExcelJS = (await import('exceljs')).default;
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(`Attendance ${report.month}`, {
+    views: [{ state: 'frozen', xSplit: 6, ySplit: 2 }],
+  });
+
+  const dayNumbers = Array.from({ length: report.days_in_month }, (_, i) => i + 1);
+  const headers = [
+    'SL No', 'Name', 'Profile', 'Department', 'DOJ', 'Branch',
+    ...dayNumbers.map(String),
+    'Total Present Day', 'Weekoff Paid', 'Paid Leave', 'Holidays', 'Total Paid Days', 'Final Paid Days',
+  ];
+  const widths = [6, 24, 22, 16, 11, 18, ...dayNumbers.map(() => 4.5), 11, 10, 10, 9, 11, 11];
+  ws.columns = widths.map((width) => ({ width }));
+
+  const title = ws.addRow([`Combined attendance — ${monthTitle(report.month)} — ${scopeLabel}`]);
+  title.font = { bold: true, size: 12 };
+  ws.mergeCells(1, 1, 1, headers.length);
+
+  const head = ws.addRow(headers);
+  head.font = { bold: true };
+  head.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+  head.height = 30;
+  head.eachCell((cell) => {
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: MUSTER_HEADER_FILL } };
+    cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+  });
+
+  const firstDayCol = 7;
+  for (const r of report.rows) {
+    const row = ws.addRow([
+      r.sl_no, r.name, r.designation ?? '', r.department ?? '', dmy(r.date_of_joining), r.branch,
+      ...r.days,
+      r.present, r.weekoff_paid, r.paid_leave, r.holidays, r.total_paid, null,
+    ]);
+    r.days.forEach((code, i) => {
+      const cell = row.getCell(firstDayCol + i);
+      cell.alignment = { horizontal: 'center' };
+      const argb = MUSTER_CELL_FILL[code];
+      if (argb) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } };
+    });
+  }
+  ws.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: headers.length } };
+
+  const legend = wb.addWorksheet('Legend');
+  legend.columns = [{ header: 'Code', key: 'code', width: 8 }, { header: 'Meaning', key: 'meaning', width: 40 }];
+  legend.getRow(1).font = { bold: true };
+  for (const [code, meaning] of Object.entries(MUSTER_CODES)) legend.addRow({ code, meaning });
+  legend.addRow({});
+  legend.addRow({ code: 'Totals', meaning: 'Total Present Day counts a half day as 0.5.' });
+  legend.addRow({ meaning: 'Total Paid Days = Present + Weekoff Paid + Paid Leave + Holidays.' });
+  legend.addRow({ meaning: 'Final Paid Days is left for HR to fill in.' });
 
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

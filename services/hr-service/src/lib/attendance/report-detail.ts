@@ -130,10 +130,18 @@ function countsTowardDay(e: ReportEventRow): boolean {
   return e.face_review_status !== 'pending' && e.face_review_status !== 'rejected';
 }
 
-interface DisplayStatus {
+export interface DisplayStatus {
   key: string;
   label: string;
 }
+
+/** The fields displayStatus reads — the muster report's rows carry exactly these. */
+export type StatusInputRow = Pick<
+  ReportDayRow,
+  | 'work_date' | 'status_name' | 'status_label' | 'has_open_session'
+  | 'date_of_joining' | 'date_of_exit' | 'holiday_name' | 'holiday_is_optional'
+  | 'weekly_off_pattern' | 'leave_type_label' | 'leave_half'
+>;
 
 /**
  * The status shown for a day. A resolved row speaks for itself, except today's
@@ -142,7 +150,7 @@ interface DisplayStatus {
  * has not reached it) is derived with the job's own precedence, so the report
  * does not show "not marked" for a known holiday, weekly off or leave.
  */
-function displayStatus(d: ReportDayRow, today: string, hasEvents: boolean): DisplayStatus {
+export function displayStatus(d: StatusInputRow, today: string, hasEvents: boolean): DisplayStatus {
   const isToday = d.work_date === today;
   if (d.status_name) {
     if (isToday && d.has_open_session && d.status_name === 'present') {

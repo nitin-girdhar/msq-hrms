@@ -11,7 +11,7 @@
 // The rank ladder still exists and still matters — it answers "who is senior to
 // whom" for manager-of resolution and approval chains. It just no longer answers
 // "may this person do this".
-import { can, CAPABILITY, ANCHOR_RANK, DEFAULT_ROLE_RANK, type CapabilityHolder } from '@platform/rbac';
+import { can, resolveScope, CAPABILITY, ANCHOR_RANK, DEFAULT_ROLE_RANK, type CapabilityHolder } from '@platform/rbac';
 
 /** Retained for the questions that are genuinely about SENIORITY, not access. */
 export const HR_RANKS = {
@@ -27,9 +27,39 @@ export function isHrAdmin(role: string): boolean {
   return role === 'hr_admin';
 }
 
+/** Read employee profiles — gates the HRMS Employees page. */
+export function canViewEmployees(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_EMPLOYEES_VIEW);
+}
+
 /** Create/update employee profiles, departments and designations. */
 export function canManageEmployees(actor: CapabilityHolder): boolean {
   return can(actor, CAPABILITY.HR_EMPLOYEES_MANAGE);
+}
+
+// ── Reports ─────────────────────────────────────────────────────────────────
+
+/** Read attendance reports at all — gates the HRMS Reports page and its routes. */
+export function canViewAttendanceReports(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_REPORTS_ATTENDANCE_VIEW);
+}
+
+export type ReportReach = 'org' | 'tenant';
+
+/**
+ * How far an attendance report may reach: 'tenant' may read every branch of the
+ * tenant in one sheet ("All branches"), 'org' only the branch the session is in.
+ * null means the operation is held with no scope, which reads nothing.
+ *
+ * Asked on both sides — the service decides which branches it reads from this,
+ * and the Reports page decides whether to offer the all-branches view — so the
+ * offer and the check behind it cannot disagree.
+ */
+export function attendanceReportReach(actor: CapabilityHolder): ReportReach | null {
+  const scope = resolveScope(actor, CAPABILITY.HR_REPORTS_ATTENDANCE_VIEW);
+  if (scope === 'tenant' || scope === 'all') return 'tenant';
+  if (scope === 'org') return 'org';
+  return null;
 }
 
 /** Leave configuration — policies, holidays, settings, manual ledger adjustments. */

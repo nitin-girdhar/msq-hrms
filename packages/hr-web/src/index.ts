@@ -9,6 +9,8 @@ export { default as LeaveApprovalsShell } from './components/leave/LeaveApproval
 export { default as AttendanceDashboardShell } from './components/attendance/AttendanceDashboardShell';
 export { default as AttendanceTeamShell } from './components/attendance/AttendanceTeamShell';
 export { default as AttendanceAdminShell } from './components/attendance/AttendanceAdminShell';
+export { default as EmployeesShell } from './components/employees/EmployeesShell';
+export { default as ReportsShell } from './components/reports/ReportsShell';
 
 export { canDecideLeave, canManageLeaveAdmin, canApplyLeave } from './lib/leave/format';
 export { canManageAttendanceAdmin } from './lib/attendance/format';

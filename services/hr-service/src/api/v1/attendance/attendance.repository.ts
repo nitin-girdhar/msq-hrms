@@ -16,7 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { sql } from 'drizzle-orm';
-import { withRoleTx, withServiceTx, type RoleTxContext, type DrizzleTx } from '@platform/db';
+import { withRoleTx, withServiceTx, sqlUuidArr, type RoleTxContext, type DrizzleTx } from '@platform/db';
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../../lib/errors.js';
 import { haversineMeters } from '../../../lib/geo/haversine.js';
 import {
@@ -43,6 +43,7 @@ import {
   type DayEventRow,
 } from '../../../lib/attendance/day-resolution.js';
 import type { ReportDayRow, ReportEventRow } from '../../../lib/attendance/report-detail.js';
+import type { MusterDayRow } from '../../../lib/attendance/report-muster.js';
 import { getPhotoStorage, detectImageExt } from '../../../lib/storage/photo-storage.js';
 import { getFaceDriver, FaceEnrollmentError } from '../../../lib/face/index.js';
 import { resolvePunchFace, FaceBlockedError, type FaceMatchAction, type FaceOutcome } from '../../../lib/face/punch-verification.js';
@@ -2070,6 +2071,107 @@ export async function reportDetail(ctx: AttendanceCtx, month: string): Promise<R
     `)) as unknown as ReportEventRow[];
 
     return { timezone: tz, today, days, events };
+  });
+}
+
+// ── Combined (muster) report ──────────────────────────────────────────────────
+// Can span every branch of the tenant, so both reads below are pinned to the
+// gateway-verified ctx.tenant_id, and the muster read to a branch list the
+// SERVICE derived from it (never a client-supplied list). Service tx for the same
+// reason as reportDetail: attendance_days RLS lets app_user read only its own
+// rows, and this is an org/tenant-wide read the service authorizes first.
+
+export interface ReportBranch {
+  id: string;
+  name: string;
+}
+
+/** The tenant's active branches — the universe a tenant-reach report may read. */
+export async function tenantBranches(ctx: AttendanceCtx): Promise<ReportBranch[]> {
+  return withServiceTx(async (tx) => {
+    return (await tx.execute(sql`
+      SELECT o.id::text AS id, o.name
+      FROM entity.organizations o
+      WHERE o.tenant_id = ${ctx.tenant_id} AND o.is_active AND NOT o.is_deleted
+      ORDER BY o.name
+    `)) as unknown as ReportBranch[];
+  });
+}
+
+export async function reportMuster(ctx: AttendanceCtx, month: string, orgIds: readonly string[]): Promise<MusterDayRow[]> {
+  if (orgIds.length === 0) return [];
+  return withServiceTx(async (tx) => {
+    const monthStart = `${month}-01`;
+    const monthEnd = sql`(${monthStart}::date + INTERVAL '1 month' - INTERVAL '1 day')::date`;
+    return (await tx.execute(sql`
+      WITH branches AS (
+        -- Re-checked against the tenant here too: the list is service-derived,
+        -- but a branch of another tenant must be unreadable even if it slipped in.
+        SELECT o.id, o.name,
+               (CLOCK_TIMESTAMP() AT TIME ZONE o.timezone)::date AS org_today
+        FROM entity.organizations o
+        WHERE o.id = ANY(${sqlUuidArr(orgIds)}) AND o.tenant_id = ${ctx.tenant_id}
+      ),
+      roster AS (
+        -- Every active employee filed under a branch in reach, plus anyone with a
+        -- resolved day there this month (left mid-month, since deactivated).
+        SELECT ep.user_id, ep.org_id FROM hr.employee_profiles ep
+        JOIN branches b ON b.id = ep.org_id
+        WHERE ep.is_active AND NOT ep.is_deleted AND ep.tenant_id = ${ctx.tenant_id}
+        UNION
+        SELECT ad.user_id, ad.org_id FROM hr.attendance_days ad
+        JOIN branches b ON b.id = ad.org_id
+        WHERE ad.work_date BETWEEN ${monthStart}::date AND ${monthEnd}
+      )
+      SELECT r.user_id::text, u.full_name AS user_full_name, u.email AS user_email,
+             r.org_id::text, b.name AS org_name, b.org_today::text AS org_today,
+             prof.employee_code, prof.designation, prof.department,
+             prof.weekly_off_pattern,
+             prof.date_of_joining::text AS date_of_joining, prof.date_of_exit::text AS date_of_exit,
+             d.d::date::text AS work_date,
+             st.name AS status_name, st.label AS status_label, ad.has_open_session,
+             hol.name AS holiday_name, hol.is_optional AS holiday_is_optional,
+             lv.label AS leave_type_label, lv.half AS leave_half, lv.is_paid AS leave_is_paid
+      FROM roster r
+      JOIN branches b ON b.id = r.org_id
+      JOIN iam.users u ON u.id = r.user_id
+      CROSS JOIN generate_series(${monthStart}::date::timestamp, ${monthEnd}::timestamp, INTERVAL '1 day') AS d(d)
+      LEFT JOIN LATERAL (
+        SELECT ep.employee_code, ep.weekly_off_pattern, ep.date_of_joining, ep.date_of_exit,
+               ds.name AS designation, dp.label AS department
+        FROM hr.employee_profiles ep
+        LEFT JOIN hr.designations ds ON ds.id = ep.designation_id
+        LEFT JOIN iam.departments dp ON dp.id = ep.department_id
+        WHERE ep.user_id = r.user_id AND ep.tenant_id = ${ctx.tenant_id} AND NOT ep.is_deleted
+        ORDER BY (ep.org_id = r.org_id) DESC, ep.is_active DESC LIMIT 1
+      ) prof ON TRUE
+      LEFT JOIN hr.attendance_days ad
+        ON ad.user_id = r.user_id AND ad.org_id = r.org_id AND ad.work_date = d.d::date
+      LEFT JOIN hr.attendance_statuses st ON st.id = ad.status_id
+      LEFT JOIN LATERAL (
+        SELECT h.name, h.is_optional FROM hr.holidays h
+        WHERE h.org_id = r.org_id AND h.holiday_date = d.d::date AND h.is_active AND NOT h.is_deleted
+        ORDER BY h.is_optional LIMIT 1
+      ) hol ON TRUE
+      -- Same leave pick as reportDetail, plus whether its type is paid.
+      LEFT JOIN LATERAL (
+        SELECT lt.label, lt.is_paid,
+               CASE WHEN lr.start_date = d.d::date AND lr.start_half <> 'full' THEN lr.start_half
+                    WHEN lr.end_date   = d.d::date AND lr.end_half   <> 'full' THEN lr.end_half
+                    ELSE 'full' END AS half
+        FROM hr.leave_requests lr
+        JOIN hr.leave_types lt ON lt.id = lr.leave_type_id
+        JOIN hr.leave_request_statuses ls ON ls.id = lr.status_id
+        WHERE lr.user_id = r.user_id AND lr.org_id = r.org_id AND NOT lr.is_deleted
+          AND (lr.id = ad.leave_request_id
+               OR (ls.name = 'approved' AND d.d::date BETWEEN lr.start_date AND lr.end_date))
+        ORDER BY (lr.id = ad.leave_request_id) DESC NULLS LAST
+        LIMIT 1
+      ) lv ON TRUE
+      -- Up to each branch's own today: a day that has not happened there is blank.
+      WHERE d.d::date <= b.org_today
+      ORDER BY b.name, u.full_name, r.user_id, d.d
+    `)) as unknown as MusterDayRow[];
   });
 }
 

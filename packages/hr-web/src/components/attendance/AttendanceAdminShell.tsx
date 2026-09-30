@@ -8,7 +8,6 @@ import RulesEditor from './admin/RulesEditor';
 import ShiftsManager from './admin/ShiftsManager';
 import ShiftAssignmentsManager from './admin/ShiftAssignmentsManager';
 import GeoExceptionsManager from './admin/GeoExceptionsManager';
-import MonthlySummaryReport from './admin/MonthlySummaryReport';
 import { canViewGeoExceptions } from '../../lib/attendance/format';
 
 interface Props {
@@ -16,7 +15,7 @@ interface Props {
   hrRank: HrRank;
 }
 
-type Section = 'rules' | 'shifts' | 'assignments' | 'exceptions' | 'reports';
+type Section = 'rules' | 'shifts' | 'assignments' | 'exceptions';
 
 export default function AttendanceAdminShell({ actor, hrRank }: Props) {
   const [section, setSection] = useState<Section>('rules');
@@ -27,7 +26,6 @@ export default function AttendanceAdminShell({ actor, hrRank }: Props) {
     { id: 'shifts', label: 'Shifts' },
     { id: 'assignments', label: 'Assignments' },
     ...(canViewGeoExceptions(actor) ? [{ id: 'exceptions' as const, label: 'Exceptions' }] : []),
-    { id: 'reports', label: 'Reports' },
   ];
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -37,7 +35,7 @@ export default function AttendanceAdminShell({ actor, hrRank }: Props) {
     <div className="flex w-full flex-1 flex-col">
       <PageHeader
         title="Attendance Administration"
-        subtitle="Capture rules, shifts, shift assignments and payroll reports."
+        subtitle="Capture rules, shifts and shift assignments. Payroll reports are under Reports in HR."
       />
 
       <PageBody>
@@ -64,7 +62,6 @@ export default function AttendanceAdminShell({ actor, hrRank }: Props) {
         {section === 'shifts' && <ShiftsManager onNotice={onNotice} />}
         {section === 'assignments' && <ShiftAssignmentsManager onNotice={onNotice} />}
         {section === 'exceptions' && canViewGeoExceptions(actor) && <GeoExceptionsManager onNotice={onNotice} />}
-        {section === 'reports' && <MonthlySummaryReport />}
       </PageBody>
     </div>
   );

@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, DownloadButton, PageSection, type ExportFormat } from '@platform/ui-kit';
-import { attendance as attendanceApi } from '../../../lib/api/client';
-import type { MonthlySummaryRow } from '../../../lib/attendance/types';
-import { formatWorkedMinutes } from '../../../lib/attendance/format';
-import { emptyBlockCls, fieldInputCls, fieldLabelCls, stateBlockCls } from '../../../lib/ui';
+import { attendance as attendanceApi } from '../../lib/api/client';
+import type { MonthlySummaryRow } from '../../lib/attendance/types';
+import { formatWorkedMinutes } from '../../lib/attendance/format';
+import { emptyBlockCls, fieldInputCls, fieldLabelCls, stateBlockCls } from '../../lib/ui';
 
 function currentMonth(): string {
   return new Date().toISOString().slice(0, 7);

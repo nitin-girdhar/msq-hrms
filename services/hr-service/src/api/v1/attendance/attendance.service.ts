@@ -12,13 +12,16 @@ import {
   canViewTeamAttendance,
   canOverrideAttendanceApproval,
   isTenantHrAdmin,
+  attendanceReportReach,
+  type ReportReach,
 } from '@hr/authz';
 import { ForbiddenError, ValidationError } from '../../../lib/errors.js';
 import { regularizationWindowError } from '../../../lib/attendance/regularization-window.js';
 import { buildDetailReport } from '../../../lib/attendance/report-detail.js';
+import { buildMusterReport } from '../../../lib/attendance/report-muster.js';
 import { publishAttendanceEvent } from '../../../lib/events.js';
 import * as repo from './attendance.repository.js';
-import type { AttendanceCtx } from './attendance.repository.js';
+import type { AttendanceCtx, ReportBranch } from './attendance.repository.js';
 import type {
   CheckInInput,
   CheckOutInput,
@@ -411,10 +414,17 @@ export async function rejectRegularization(ctx: AttendanceCtx, id: string, comme
 }
 
 // ── Reports ───────────────────────────────────────────────────────────────────
+// Gated on hr.reports.attendance.view at the route. Here: the scope ladder under
+// it decides branch reach. Holding the operation with no scope reads nothing, so
+// it is refused outright rather than answered with an empty sheet.
+function requireReportReach(ctx: AttendanceCtx): ReportReach {
+  const reach = attendanceReportReach(ctx);
+  if (!reach) throw new ForbiddenError('You do not have a branch scope for attendance reports');
+  return reach;
+}
+
 export async function monthlySummary(ctx: AttendanceCtx, month: string) {
-  if (!canManageAttendance(ctx)) {
-    throw new ForbiddenError('Only HR admins or org admins can access attendance reports');
-  }
+  requireReportReach(ctx);
   return repo.monthlySummary(ctx, month);
 }
 
@@ -423,11 +433,44 @@ export async function monthlySummary(ctx: AttendanceCtx, month: string) {
  * employee-day and every punch session. Same authority as the summary.
  */
 export async function detailReport(ctx: AttendanceCtx, month: string) {
-  if (!canManageAttendance(ctx)) {
-    throw new ForbiddenError('Only HR admins or org admins can access attendance reports');
-  }
+  requireReportReach(ctx);
   const [summary, data] = await Promise.all([repo.monthlySummary(ctx, month), repo.reportDetail(ctx, month)]);
   return { summary, report: buildDetailReport(data) };
+}
+
+export interface MusterScope {
+  /** 'all' = every branch of the tenant; 'current' = the session branch. */
+  branch: 'current' | 'all';
+  /** Narrows `all` to one branch of the tenant. */
+  org_id?: string;
+}
+
+/**
+ * The combined (muster) sheet. The branch list is ALWAYS derived here from the
+ * gateway-verified tenant — the query only picks among branches the caller may
+ * already read, and anything outside that set is a 403, not an empty sheet.
+ */
+export async function musterReport(ctx: AttendanceCtx, month: string, scope: MusterScope) {
+  const reach = requireReportReach(ctx);
+  let branches: ReportBranch[];
+  if (scope.branch === 'all') {
+    if (reach !== 'tenant') {
+      throw new ForbiddenError('You can only report on your own branch');
+    }
+    branches = await repo.tenantBranches(ctx);
+  } else {
+    branches = (await repo.tenantBranches(ctx)).filter((b) => b.id === ctx.org_id);
+  }
+  // `branches` (every branch in reach) goes back with the sheet so the page's
+  // branch picker can offer exactly what this check would allow.
+  let read = branches;
+  if (scope.org_id) {
+    read = branches.filter((b) => b.id === scope.org_id);
+    if (read.length === 0) throw new ForbiddenError('That branch is outside your report scope');
+  }
+  const rows = await repo.reportMuster(ctx, month, read.map((b) => b.id));
+  const scopeLabel = scope.branch === 'all' && !scope.org_id ? 'All branches' : (read[0]?.name ?? 'Branch');
+  return { report: buildMusterReport(month, rows), scope_label: scopeLabel, branches };
 }
 
 // ── Face enrollment / status / reviews ────────────────────────────────────────

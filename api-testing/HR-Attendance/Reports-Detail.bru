@@ -21,7 +21,7 @@ headers {
 
 docs {
   Detailed month attendance for the caller's current branch. Needs
-  hr.attendance.admin.reports.view (route) and hr.attendance.admin (service).
+  hr.reports.attendance.view (route) plus a .org/.tenant scope (service).
   xlsx = Summary / Daily Detail (one row per employee-day) / Punches (one row
   per check-in -> check-out session); csv = the Daily Detail sheet only.
   Expect 403 for a user without the capability.

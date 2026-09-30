@@ -26,6 +26,7 @@ import {
   attendanceTeamQuerySchema,
   reportsSummaryQuerySchema,
   reportsDetailQuerySchema,
+  reportsMusterQuerySchema,
   dayEventsQuerySchema,
   faceEnrollSchema,
   faceReviewsQuerySchema,
@@ -92,9 +93,12 @@ export async function attendanceRouter(app: FastifyInstance) {
   app.post('/attendance/face-reviews/:eventId/reject', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_REJECT)] }, ctrl.faceReviewReject);
 
   // ── Reports ───────────────────────────────────────────────────────────────────
-  app.get('/attendance/reports/summary', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_ADMIN_REPORTS_VIEW, 'You do not have permission to view attendance reports'), validate({ query: reportsSummaryQuerySchema })] }, ctrl.reportsSummary);
+  app.get('/attendance/reports/summary', { preHandler: [...gate, requireCapability(CAPABILITY.HR_REPORTS_ATTENDANCE_VIEW, 'You do not have permission to view attendance reports'), validate({ query: reportsSummaryQuerySchema })] }, ctrl.reportsSummary);
   // Detailed month download (xlsx: Summary / Daily Detail / Punches; csv: Daily Detail).
-  app.get('/attendance/reports/detail', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_ADMIN_REPORTS_VIEW, 'You do not have permission to view attendance reports'), validate({ query: reportsDetailQuerySchema })] }, ctrl.reportsDetail);
+  app.get('/attendance/reports/detail', { preHandler: [...gate, requireCapability(CAPABILITY.HR_REPORTS_ATTENDANCE_VIEW, 'You do not have permission to view attendance reports'), validate({ query: reportsDetailQuerySchema })] }, ctrl.reportsDetail);
+  // Combined (muster) sheet — one row per employee, one cell per day; branch=all
+  // reaches every branch of the tenant for holders of the .tenant scope.
+  app.get('/attendance/reports/muster', { preHandler: [...gate, requireCapability(CAPABILITY.HR_REPORTS_ATTENDANCE_VIEW, 'You do not have permission to view attendance reports'), validate({ query: reportsMusterQuerySchema })] }, ctrl.reportsMuster);
 
   // ── Shifts ──────────────────────────────────────────────────────────────────
   app.get('/shifts', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_ADMIN_SHIFTS_VIEW)] }, ctrl.listShifts);

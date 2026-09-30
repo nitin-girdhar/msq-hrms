@@ -4,7 +4,7 @@ import { createProductMiddleware, productOrigins } from '@platform/ui-kit/middle
 // session cookie and bounces unauthenticated users to the auth app, preserving
 // the target URL. `selfOrigin` — see the note in lms-web's middleware.
 export const middleware = createProductMiddleware({
-  protectedPrefixes: ['/leave', '/attendance', '/api/'],
+  protectedPrefixes: ['/leave', '/attendance', '/employees', '/reports', '/api/'],
   selfOrigin: productOrigins().hr,
 });
 
@@ -15,5 +15,5 @@ export const middleware = createProductMiddleware({
 // reaches middleware with the prefix already stripped. See the long note on
 // DEFAULT_PROTECTED in @platform/ui-kit/middleware for the empirical evidence.
 export const config = {
-  matcher: ['/leave/:path*', '/attendance/:path*', '/api/:path*'],
+  matcher: ['/leave/:path*', '/attendance/:path*', '/employees/:path*', '/reports/:path*', '/api/:path*'],
 };

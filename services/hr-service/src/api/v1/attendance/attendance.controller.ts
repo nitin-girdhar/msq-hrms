@@ -3,7 +3,7 @@ import { can, CAPABILITY } from '@platform/rbac';
 import * as service from './attendance.service.js';
 import type { AttendanceCtx } from './attendance.repository.js';
 import { getPhotoStorage, contentTypeForKey } from '../../../lib/storage/photo-storage.js';
-import { SUMMARY_COLUMNS, numericSummaryRows, toCsv, detailCsv, detailXlsx } from '../../../lib/attendance/report-export.js';
+import { SUMMARY_COLUMNS, numericSummaryRows, toCsv, detailCsv, detailXlsx, musterXlsx } from '../../../lib/attendance/report-export.js';
 import type {
   CheckInInput,
   CheckOutInput,
@@ -26,6 +26,7 @@ import type {
   DayEventsQueryInput,
   ReportsSummaryQueryInput,
   ReportsDetailQueryInput,
+  ReportsMusterQueryInput,
   FaceEnrollInput,
   FaceReviewsQueryInput,
 } from '@hr/validation';
@@ -316,6 +317,25 @@ export class AttendanceController {
     return reply
       .header('Content-Type', XLSX_TYPE)
       .header('Content-Disposition', `attachment; filename="attendance-detail-${m}.xlsx"`)
+      .send(buffer);
+  };
+
+  reportsMuster = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { month, branch, org_id, format } = request.query as ReportsMusterQueryInput;
+    const m = month ?? currentMonth();
+    const { report, scope_label, branches } = await service.musterReport(ctxOf(request), m, {
+      branch,
+      ...(org_id ? { org_id } : {}),
+    });
+
+    if (format === 'json') {
+      return reply.send({ success: true, data: { ...report, scope_label, branches } });
+    }
+    const buffer = await musterXlsx(report, scope_label);
+    const slug = scope_label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'branch';
+    return reply
+      .header('Content-Type', XLSX_TYPE)
+      .header('Content-Disposition', `attachment; filename="combined-attendance-${m}-${slug}.xlsx"`)
       .send(buffer);
   };
 }

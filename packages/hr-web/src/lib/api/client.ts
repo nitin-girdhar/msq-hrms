@@ -34,6 +34,8 @@ import type {
   RegularizationView,
   RegularizationDetail,
   MonthlySummaryRow,
+  MusterReport,
+  MusterParams,
   FaceSelfContext,
 } from '../attendance/types';
 
@@ -406,6 +408,14 @@ export const attendance = {
   // csv = Daily Detail (one row per employee-day, sessions flattened).
   reportDetailDownloadUrl: (params: { month?: string; format: 'csv' | 'xlsx' }) =>
     `/api/hr/attendance/reports/detail${qs(params)}`,
+
+  // Combined (muster) sheet: one row per employee, one P/A/HD/… cell per day.
+  // branch=all is honoured only for holders of hr.reports.attendance.view.tenant.
+  reportsMuster: (params: MusterParams) =>
+    request<Envelope<MusterReport>>(`/hr/attendance/reports/muster${qs({ ...params, format: 'json' })}`),
+
+  reportMusterDownloadUrl: (params: MusterParams) =>
+    `/api/hr/attendance/reports/muster${qs({ ...params, format: 'xlsx' })}`,
 };
 
 // ── Shifts ───────────────────────────────────────────────────────────────────

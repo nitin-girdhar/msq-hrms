@@ -332,3 +332,48 @@ export interface MonthlySummaryRow {
   missed_punch_count: number;
   avg_worked_minutes: number | null;
 }
+
+// ── Combined attendance (muster) report ──────────────────────────────────────
+// One row per employee, one code per day. Mirrors hr-service
+// lib/attendance/report-muster.ts — '' = not employed yet / day not reached.
+export type MusterCode = 'P' | 'HD' | 'HD/L' | 'A' | 'L' | 'LOP' | 'WO' | 'H' | '';
+
+export interface MusterRow {
+  sl_no: number;
+  user_id: string;
+  employee_code: string | null;
+  name: string;
+  email: string;
+  designation: string | null;
+  department: string | null;
+  date_of_joining: string | null;
+  org_id: string;
+  branch: string;
+  days: MusterCode[];
+  present: number;
+  weekoff_paid: number;
+  paid_leave: number;
+  holidays: number;
+  total_paid: number;
+}
+
+export interface ReportBranch {
+  id: string;
+  name: string;
+}
+
+export interface MusterReport {
+  month: string;
+  days_in_month: number;
+  rows: MusterRow[];
+  scope_label: string;
+  /** Every branch the caller may report on — the branch picker's options. */
+  branches: ReportBranch[];
+}
+
+/** `current` = the session branch; `all` = every branch in reach, narrowed by org_id. */
+export interface MusterParams {
+  month?: string;
+  branch: 'current' | 'all';
+  org_id?: string;
+}

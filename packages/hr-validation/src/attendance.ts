@@ -369,6 +369,18 @@ export const reportsDetailQuerySchema = z.object({
   format: z.enum(['csv', 'xlsx']).default('xlsx'),
 });
 
+// The combined (muster) sheet: one row per employee, one cell per day. `branch`
+// asks for the session branch (current) or every branch of the tenant (all);
+// org_id narrows `all` to one branch. Neither widens anything by itself — the
+// service decides reach from the caller's hr.reports.attendance.view scope and
+// derives the branch list from the verified tenant, never from this query.
+export const reportsMusterQuerySchema = z.object({
+  month: monthString.optional(),
+  branch: z.enum(['current', 'all']).default('current'),
+  org_id: z.string().uuid('Invalid branch id').optional(),
+  format: z.enum(['json', 'xlsx']).default('json'),
+});
+
 // Every punch of one employee's work date. A split shift has 4+ punches, but the
 // team view only ever exposes the first check-in and last check-out, so without
 // this the middle punches' selfies are stored yet unreachable.
@@ -403,4 +415,5 @@ export type AttendanceMeQueryInput = z.infer<typeof attendanceMeQuerySchema>;
 export type AttendanceTeamQueryInput = z.infer<typeof attendanceTeamQuerySchema>;
 export type ReportsSummaryQueryInput = z.infer<typeof reportsSummaryQuerySchema>;
 export type ReportsDetailQueryInput = z.infer<typeof reportsDetailQuerySchema>;
+export type ReportsMusterQueryInput = z.infer<typeof reportsMusterQuerySchema>;
 export type DayEventsQueryInput = z.infer<typeof dayEventsQuerySchema>;

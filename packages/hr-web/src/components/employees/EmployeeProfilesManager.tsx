@@ -2,16 +2,18 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Modal } from '@platform/ui-kit';
-import { hrEmployees } from '../../../lib/api/client';
-import type { EmployeeProfileView, HrLookupOption } from '../../../lib/leave/types';
+import { hrEmployees } from '../../lib/api/client';
+import type { EmployeeProfileView, HrLookupOption } from '../../lib/leave/types';
 
 interface Props {
   onNotice: (msg: string) => void;
+  /** hr.employees.manage — without it the list is read-only (no Edit column). */
+  canManage: boolean;
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export default function EmployeeProfilesManager({ onNotice }: Props) {
+export default function EmployeeProfilesManager({ onNotice, canManage }: Props) {
   const [profiles, setProfiles] = useState<EmployeeProfileView[]>([]);
   const [departments, setDepartments] = useState<HrLookupOption[]>([]);
   const [designations, setDesignations] = useState<HrLookupOption[]>([]);
@@ -38,7 +40,6 @@ export default function EmployeeProfilesManager({ onNotice }: Props) {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-[#64748B]">Employment facts used by leave &amp; attendance — joining date, department, designation and weekly-off pattern.</p>
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">{error}</div>}
 
       {loading ? (
@@ -56,13 +57,15 @@ export default function EmployeeProfilesManager({ onNotice }: Props) {
                 <th className="px-4 py-3">Department</th>
                 <th className="px-4 py-3">Designation</th>
                 <th className="px-4 py-3">Weekly off</th>
-                <th className="px-4 py-3 text-right">Action</th>
+                {canManage && <th className="px-4 py-3 text-right">Action</th>}
               </tr>
             </thead>
             <tbody>
               {profiles.map((p) => (
                 <tr key={p.user_id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                   <td className="px-4 py-3">
+                    {/* Becomes a link to /employees/[userId] once the employee
+                        profile page exists (backed by GET /hr/employees/:userId). */}
                     <p className="font-medium text-[#0F172A]">{p.full_name}</p>
                     <p className="text-[11px] text-[#94A3B8]">{p.email}</p>
                   </td>
@@ -73,11 +76,13 @@ export default function EmployeeProfilesManager({ onNotice }: Props) {
                   <td className="px-4 py-3 text-[11px] text-[#475569]">
                     {(p.weekly_off_pattern ?? []).map((d) => WEEKDAYS[d]).join(', ') || '—'}
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <button type="button" onClick={() => setEditing(p)} className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-semibold text-[#475569] hover:border-[#0b6cbf] hover:text-[#0b6cbf]">
-                      Edit
-                    </button>
-                  </td>
+                  {canManage && (
+                    <td className="px-4 py-3 text-right">
+                      <button type="button" onClick={() => setEditing(p)} className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-semibold text-[#475569] hover:border-[#0b6cbf] hover:text-[#0b6cbf]">
+                        Edit
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -85,7 +90,7 @@ export default function EmployeeProfilesManager({ onNotice }: Props) {
         </div>
       )}
 
-      {editing && (
+      {canManage && editing && (
         <EmployeeEditModal
           profile={editing}
           departments={departments}

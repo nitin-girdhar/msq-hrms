@@ -1,0 +1,35 @@
+meta {
+  name: Reports Muster (combined attendance)
+  type: http
+  seq: 41
+}
+
+get {
+  url: {{baseUrl}}/hr/attendance/reports/muster?month=2026-09&branch=all&format=json
+  body: none
+  auth: none
+}
+
+params:query {
+  month: 2026-09
+  branch: all
+  format: json
+  ~org_id: 00000000-0000-0000-0000-000000000000
+}
+
+headers {
+  Cookie: auth_token={{authToken}}
+}
+
+docs {
+  Combined attendance (muster) sheet: one row per employee (profile, department,
+  DOJ, branch), one P / HD / HD/L / A / L / LOP / WO / H cell per day, and
+  Total Present Day / Weekoff Paid / Paid Leave / Holidays / Total Paid Days.
+  format=xlsx adds a blank Final Paid Days column for HR.
+
+  Needs hr.reports.attendance.view. branch=current = the session branch
+  (.org scope). branch=all = every branch of the tenant and needs
+  hr.reports.attendance.view.tenant; enable org_id to narrow it to one branch.
+  Expect 403 for branch=all without the tenant scope, and for an org_id
+  outside the tenant.
+}
