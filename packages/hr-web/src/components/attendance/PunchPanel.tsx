@@ -100,7 +100,7 @@ export default function PunchPanel({ mode, rules, geoException, onClose, onSucce
         </label>
       )}
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid items-start gap-3 lg:grid-cols-2">
         {/* Selfie */}
         <div className={card}>
           <div className="mb-2 flex items-start justify-between gap-2">
