@@ -950,19 +950,29 @@ export async function getTeam(ctx: AttendanceCtx, date: string, seeAllOrg: boole
              e_in.face_review_status       AS face_review_status,
              e_in.geo_lat::float8 AS checkin_lat, e_in.geo_lng::float8 AS checkin_lng,
              e_out.id::text AS checkout_event_id,
-             e_out.geo_lat::float8 AS checkout_lat, e_out.geo_lng::float8 AS checkout_lng
+             e_out.geo_lat::float8 AS checkout_lat, e_out.geo_lng::float8 AS checkout_lng,
+             e_in.source AS in_source, e_out.source AS out_source,
+             sh.shift_name, sh.shift_start, sh.shift_end, COALESCE(sh.is_night, FALSE) AS shift_is_night
       FROM hr.employee_profiles ep
       JOIN iam.users u ON u.id = ep.user_id
       LEFT JOIN hr.attendance_days ad ON ad.user_id = ep.user_id AND ad.work_date = ${date}::date
       LEFT JOIN hr.attendance_statuses st ON st.id = ad.status_id
+      -- The shift this person is rostered on for the day being viewed.
       LEFT JOIN LATERAL (
-        SELECT id, face_match_score, face_review_status, geo_lat, geo_lng
+        SELECT s.name AS shift_name, to_char(s.start_time, 'HH24:MI') AS shift_start, to_char(s.end_time, 'HH24:MI') AS shift_end, s.is_night_shift AS is_night
+        FROM hr.shift_assignments a JOIN hr.shifts s ON s.id = a.shift_id
+        WHERE a.user_id = ep.user_id AND a.org_id = ep.org_id AND NOT a.is_deleted AND a.is_active
+          AND a.effective_from <= ${date}::date AND (a.effective_to IS NULL OR a.effective_to >= ${date}::date)
+        LIMIT 1
+      ) sh ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT id, face_match_score, face_review_status, geo_lat, geo_lng, source
         FROM hr.attendance_events
         WHERE user_id = ep.user_id AND event_type = 'check_in' AND occurred_at = ad.first_in
         LIMIT 1
       ) e_in ON TRUE
       LEFT JOIN LATERAL (
-        SELECT id, geo_lat, geo_lng
+        SELECT id, geo_lat, geo_lng, source
         FROM hr.attendance_events
         WHERE user_id = ep.user_id AND event_type = 'check_out' AND occurred_at = ad.last_out
         LIMIT 1

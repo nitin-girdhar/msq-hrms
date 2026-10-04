@@ -186,6 +186,13 @@ export interface TeamDayRow {
   checkout_event_id: string | null;
   checkout_lat: number | null;
   checkout_lng: number | null;
+  /** The shift rostered for the viewed day, and where the first/last punch came from (device, manual ...). */
+  shift_name?: string | null;
+  shift_start?: string | null;
+  shift_end?: string | null;
+  shift_is_night?: boolean;
+  in_source?: string | null;
+  out_source?: string | null;
 }
 
 // One slot of a split shift, e.g. 09:00-13:00. seq orders them within the day.

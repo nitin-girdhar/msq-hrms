@@ -17,6 +17,9 @@ import CompOffQueue from './CompOffQueue';
 import RequestInfoModal from './RequestInfoModal';
 import { EncashmentQueue } from './EncashmentPanel';
 import { slaState } from '../../lib/h7/types';
+import StatCard from '../common/StatCard';
+import StatusPill from '../common/StatusPill';
+import PersonAvatar from '../common/PersonAvatar';
 
 interface Props {
   actor: SessionUser;
@@ -35,6 +38,10 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
   // Selected request ids for the bulk bar, and the decision awaiting confirmation.
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDecision, setBulkDecision] = useState<'approve' | 'reject' | null>(null);
+  // Queue filter: everything, only requests near/over their approval window, or one leave type.
+  const [filter, setFilter] = useState<'all' | 'urgent' | string>('all');
+  const [ledger, setLedger] = useState<LeaveRequestView[]>([]);
+  const [awayToday, setAwayToday] = useState<number | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -51,6 +58,21 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
+  // The header numbers and the ledger: the team's latest decisions, and who is on approved leave today.
+  const loadContext = useCallback(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    Promise.all([
+      leaveApi.teamRequests({ status: 'approved', limit: 100 }),
+      leaveApi.teamRequests({ status: 'rejected', limit: 20 }),
+    ])
+      .then(([ok, no]) => {
+        setAwayToday(new Set(ok.data.filter((r) => r.start_date <= today && r.end_date >= today).map((r) => r.user_id)).size);
+        setLedger([...ok.data, ...no.data].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 5));
+      })
+      .catch(() => { setAwayToday(null); setLedger([]); });
+  }, []);
+  useEffect(() => { loadContext(); }, [loadContext]);
+
   const toggle = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -58,7 +80,11 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
       else next.add(id);
       return next;
     });
-  const allSelected = pending.length > 0 && selected.size === pending.length;
+  const isUrgent = (r: LeaveRequestView) => { const sla = slaState(r.created_at, r.sla_hours); return sla?.tone === 'due' || sla?.tone === 'overdue'; };
+  const urgentCount = pending.filter(isUrgent).length;
+  const typeChips = Array.from(new Set(pending.map((r) => r.leave_type_label))).sort();
+  const shown = filter === 'all' ? pending : filter === 'urgent' ? pending.filter(isUrgent) : pending.filter((r) => r.leave_type_label === filter);
+  const allSelected = shown.length > 0 && shown.every((r) => selected.has(r.id));
   const selectedRequests = pending.filter((r) => selected.has(r.id));
 
   // Skipped requests are named with their reason: a bare "3 of 5" would leave the
@@ -76,11 +102,13 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
     }
     setSelected(new Set());
     load();
+    loadContext();
   };
 
   const handleDecided = (message: string) => {
     setNotice(message);
     load();
+    loadContext();
   };
 
   return (
@@ -94,6 +122,13 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
       <PageBody>
         {notice && <Alert tone="success">{notice}</Alert>}
         {error && <Alert tone="error">{error}</Alert>}
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <StatCard label="Pending approvals" value={pending.length} tone={urgentCount > 0 ? 'overdue' : 'primary'}
+            hint={urgentCount > 0 ? `${urgentCount} near or past the approval window` : 'none near the approval window'} />
+          <StatCard label="Team away today" value={awayToday ?? '—'} tone="info" hint="people on approved leave" />
+          <StatCard label="Recently decided" value={ledger.length} tone="success" hint="latest team decisions, below" />
+        </div>
 
         <div className="flex gap-1 border-b border-outline-variant" role="tablist">
           {([['queue', `Approvals (${pending.length})`], ...(showClaims ? [['claims', 'Comp-off & encashment']] : []), ['calendar', 'Team availability']] as Array<['queue' | 'claims' | 'calendar', string]>).map(([key, label]) => (
@@ -114,15 +149,21 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
           // Card per request (Stitch approvals queue): everything the approver needs
           // to decide — who, what, how long, why — without opening the modal first.
           <>
+          <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Filter the queue">
+            {([['all', `All (${pending.length})`], ['urgent', `Urgent SLA (${urgentCount})`], ...typeChips.map((t) => [t, `${t} (${pending.filter((r) => r.leave_type_label === t).length})`])] as Array<[string, string]>).map(([key, label]) => (
+              <button key={key} type="button" aria-pressed={filter === key} onClick={() => setFilter(key)}
+                className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${filter === key ? 'border-primary bg-primary text-on-primary' : 'border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low'}`}>{label}</button>
+            ))}
+          </div>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <label className="flex items-center gap-2 text-xs font-semibold text-on-surface-variant">
               <input
                 type="checkbox"
                 checked={allSelected}
-                onChange={() => setSelected(allSelected ? new Set() : new Set(pending.map((r) => r.id)))}
+                onChange={() => setSelected(allSelected ? new Set() : new Set(shown.map((r) => r.id)))}
                 className="h-4 w-4 rounded border-outline-variant accent-primary"
               />
-              Select all ({pending.length})
+              Select all ({shown.length})
             </label>
             {selected.size > 0 && (
               <div className="flex items-center gap-2">
@@ -133,7 +174,7 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
             )}
           </div>
           <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {pending.map((r) => (
+            {shown.map((r) => (
               <li key={r.id} className={`flex flex-col gap-2 rounded-xl border bg-surface-container-lowest p-4 shadow-sm ${selected.has(r.id) ? 'border-primary ring-1 ring-primary/30' : 'border-outline-variant'}`}>
                 <div className="flex items-start gap-2.5">
                   <input
@@ -143,6 +184,7 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
                     aria-label={`Select ${r.user_full_name}'s request`}
                     className="mt-0.5 h-4 w-4 shrink-0 rounded border-outline-variant accent-primary"
                   />
+                  <PersonAvatar name={r.user_full_name} userId={r.user_id} size="sm" />
                   <div className="flex min-w-0 flex-1 items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-on-surface">{r.user_full_name}</p>
@@ -181,6 +223,31 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
           </>
         )}
         </PageSection>
+        )}
+
+        {tab === 'queue' && ledger.length > 0 && (
+          <PageSection title="Recent decision ledger">
+            <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
+              <table className="w-full min-w-[640px] text-sm">
+                <thead>
+                  <tr className="border-b border-outline-variant bg-surface-container-low text-left text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+                    <th className="px-4 py-2.5">Employee</th><th className="px-4 py-2.5">Type &amp; duration</th><th className="px-4 py-2.5">Dates</th><th className="px-4 py-2.5">Status</th><th className="px-4 py-2.5">Decided</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ledger.map((r) => (
+                    <tr key={r.id} className="border-b border-outline-variant/50 last:border-0">
+                      <td className="px-4 py-2.5 font-medium text-on-surface">{r.user_full_name}</td>
+                      <td className="px-4 py-2.5 text-on-surface-variant">{r.leave_type_label} · {formatDays(r.days_count)}</td>
+                      <td className="px-4 py-2.5 text-on-surface-variant">{formatDateRange(r.start_date, r.end_date, r.start_half, r.end_half)}</td>
+                      <td className="px-4 py-2.5"><StatusPill tone={r.status_name === 'approved' ? 'success' : 'overdue'}>{r.status_label}</StatusPill></td>
+                      <td className="px-4 py-2.5 text-xs text-on-surface-variant">{formatDateTime(r.latest_approval_acted_at ?? r.updated_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </PageSection>
         )}
 
         {tab === 'claims' && showClaims && (
