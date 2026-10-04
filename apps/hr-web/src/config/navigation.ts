@@ -13,6 +13,8 @@ export const HR_NAV: readonly NavItem[] = [
   // via the brand link and the landing redirect (the page itself serves both).
   { id: 'dashboard',  label: 'Home',       href: '/dashboard',  icon: 'layout-dashboard', capability: CAPABILITY.HR_ATTENDANCE },
   { id: 'attendance', label: 'Attendance', href: '/attendance', icon: 'clock', capability: CAPABILITY.HR_ATTENDANCE },
+  // An OPERATION (exact), like My profile below.
+  { id: 'team',       label: 'My team',    href: '/team',       icon: 'users-round', capability: CAPABILITY.HR_ATTENDANCE_ROSTER_VIEW, exact: true },
   { id: 'leave',      label: 'Leave',      href: '/leave',      icon: 'plane', capability: CAPABILITY.HR_LEAVE },
   { id: 'employees',  label: 'Employees',  href: '/employees',  icon: 'id-card', capability: CAPABILITY.HR_EMPLOYEES },
   { id: 'reports',    label: 'Reports',    href: '/reports',    icon: 'chart-column', capability: CAPABILITY.HR_REPORTS },
@@ -31,6 +33,7 @@ export const HR_MOBILE_TABS: readonly (readonly string[])[] = [
   ['dashboard'],
   ['attendance'],
   ['leave'],
+  ['team'],
   ['employees'],
   ['reports'],
 ];

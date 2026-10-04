@@ -20,6 +20,7 @@ import type {
   BulkLeaveOutcome,
   CompOffClaim,
 } from '../leave/types';
+import type { Roster, ShiftSwap } from '../team/types';
 import type {
   Employee360,
   MyProfile,
@@ -213,6 +214,23 @@ export const leave = {
 };
 
 // ── Holidays & calendars ────────────────────────────────────────────────────
+
+// ── Team roster + shift swaps (schema 1.61.0) ─────────────────────────────────
+export const swaps = {
+  /** The week's roster for the caller's team (whole branch for an attendance admin). */
+  roster: (from?: string) => request<Envelope<Roster>>(`/hr/attendance/roster${qs(from ? { from } : {})}`),
+  mine: () => request<Envelope<ShiftSwap[]>>('/hr/attendance/swaps'),
+  queue: () => request<Envelope<ShiftSwap[]>>('/hr/attendance/swaps/queue'),
+  create: (body: { peer_id: string; swap_date: string; reason: string }) =>
+    request<Envelope<{ id: string }>>('/hr/attendance/swaps', { method: 'POST', body: JSON.stringify(body) }),
+  respond: (id: string, accept: boolean) =>
+    request<Envelope<unknown>>(`/hr/attendance/swaps/${id}/respond`, { method: 'POST', body: JSON.stringify({ accept }) }),
+  cancel: (id: string) => request<Envelope<unknown>>(`/hr/attendance/swaps/${id}/cancel`, { method: 'POST' }),
+  approve: (id: string, comment?: string) =>
+    request<Envelope<unknown>>(`/hr/attendance/swaps/${id}/approve`, { method: 'POST', body: JSON.stringify({ comment }) }),
+  reject: (id: string, comment: string) =>
+    request<Envelope<unknown>>(`/hr/attendance/swaps/${id}/reject`, { method: 'POST', body: JSON.stringify({ comment }) }),
+};
 
 // ── My profile + Employee 360 (schema 1.60.0) ────────────────────────────────
 export const profile = {
