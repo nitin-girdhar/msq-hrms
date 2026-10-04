@@ -12,6 +12,7 @@ export { default as AttendanceAdminShell } from './components/attendance/Attenda
 export { default as EmployeesShell } from './components/employees/EmployeesShell';
 export { default as ReportsShell } from './components/reports/ReportsShell';
 export { default as EmployeeDashboardShell } from './components/dashboard/EmployeeDashboardShell';
+export { default as PayrollShell } from './components/payroll/PayrollShell';
 export { default as TeamRosterShell } from './components/team/TeamRosterShell';
 export { default as MyProfileShell } from './components/profile/MyProfileShell';
 export { default as Employee360Shell } from './components/profile/Employee360Shell';

@@ -16,6 +16,8 @@ export const HR_NAV: readonly NavItem[] = [
   // An OPERATION (exact), like My profile below.
   { id: 'team',       label: 'My team',    href: '/team',       icon: 'users-round', capability: CAPABILITY.HR_ATTENDANCE_ROSTER_VIEW, exact: true },
   { id: 'leave',      label: 'Leave',      href: '/leave',      icon: 'plane', capability: CAPABILITY.HR_LEAVE },
+  // Payslips: own-view OR payroll management opens it; `exact` because both are operations.
+  { id: 'payroll',    label: 'Payroll',    href: '/payroll',    icon: 'file-text', capability: CAPABILITY.HR_EMPLOYEES_PAYSLIP_VIEW, exact: true },
   { id: 'employees',  label: 'Employees',  href: '/employees',  icon: 'id-card', capability: CAPABILITY.HR_EMPLOYEES },
   { id: 'reports',    label: 'Reports',    href: '/reports',    icon: 'chart-column', capability: CAPABILITY.HR_REPORTS },
   // An OPERATION, not a tool/page node, hence `exact`: holdsUsableNode() wants a granted descendant.
@@ -33,6 +35,7 @@ export const HR_MOBILE_TABS: readonly (readonly string[])[] = [
   ['dashboard'],
   ['attendance'],
   ['leave'],
+  ['payroll'],
   ['team'],
   ['employees'],
   ['reports'],

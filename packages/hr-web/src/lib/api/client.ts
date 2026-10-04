@@ -21,6 +21,7 @@ import type {
   CompOffClaim,
 } from '../leave/types';
 import type { Roster, ShiftSwap } from '../team/types';
+import type { PayrollOverview, PayslipDetail, PayslipSummary } from '../payroll/types';
 import type {
   Employee360,
   MyProfile,
@@ -214,6 +215,19 @@ export const leave = {
 };
 
 // ── Holidays & calendars ────────────────────────────────────────────────────
+
+// ── Payroll viewer + month lock (schema 1.62.0) ───────────────────────────────
+export const payroll = {
+  /** The caller's own PUBLISHED payslips, newest first. */
+  mine: () => request<Envelope<PayslipSummary[]>>('/hr/payroll/payslips'),
+  getMine: (id: string) => request<Envelope<PayslipDetail>>(`/hr/payroll/payslips/${id}`),
+  overview: (month: string) => request<Envelope<PayrollOverview>>(`/hr/payroll/admin/overview${qs({ month })}`),
+  saveDraft: (body: { user_id: string; month: string; working_days?: number; lop_days?: number; lines: Array<{ kind: 'earning' | 'deduction'; label: string; amount: number }> }) =>
+    request<Envelope<{ id: string }>>('/hr/payroll/admin/payslips', { method: 'PUT', body: JSON.stringify(body) }),
+  publish: (month: string) => request<Envelope<{ published: number }>>(`/hr/payroll/admin/${month}/publish`, { method: 'POST' }),
+  lock: (month: string) => request<Envelope<{ status: string }>>(`/hr/payroll/admin/${month}/lock`, { method: 'POST' }),
+  unlock: (month: string) => request<Envelope<{ status: string }>>(`/hr/payroll/admin/${month}/unlock`, { method: 'POST' }),
+};
 
 // ── Team roster + shift swaps (schema 1.61.0) ─────────────────────────────────
 export const swaps = {

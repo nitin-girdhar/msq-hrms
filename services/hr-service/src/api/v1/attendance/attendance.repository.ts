@@ -15,6 +15,7 @@
 // Geofence + photo enforcement is IDENTICAL for check-in and check-out (punch()).
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { assertPeriodOpen } from '../../../lib/payroll/payroll.js';
 import { sql } from 'drizzle-orm';
 import { withRoleTx, withServiceTx, sqlUuidArr, type RoleTxContext, type DrizzleTx } from '@platform/db';
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../../lib/errors.js';
@@ -779,6 +780,9 @@ export async function recomputeAttendance(
   args: { user_id?: string | undefined; from: string; to: string },
 ) {
   return withServiceTx(async (tx) => {
+    // A recompute can rewrite any day in the range, so neither end may sit in a locked month.
+    await assertPeriodOpen(tx, ctx.org_id, args.from);
+    await assertPeriodOpen(tx, ctx.org_id, args.to);
     const userClause = args.user_id ? sql`AND ep.user_id = ${args.user_id}` : sql``;
     const employees = (await tx.execute(sql`
       SELECT ep.user_id::text, ep.org_id::text, ep.tenant_id::text, o.timezone,
@@ -1451,6 +1455,7 @@ async function regularizationApprovalLevels(orgId: string): Promise<number> {
 
 export async function createRegularization(ctx: AttendanceCtx, data: CreateRegularizationInput): Promise<{ id: string }> {
   return withRoleTx(ctx, async (tx) => {
+    await assertPeriodOpen(tx, ctx.org_id, data.work_date);
     const statusSub = data.requested_status_name
       ? sql`(SELECT id FROM hr.attendance_statuses WHERE name = ${data.requested_status_name})`
       : sql`NULL`;
@@ -1757,6 +1762,8 @@ export async function approveRegularization(
     if (reg.org_id !== ctx.org_id) throw new NotFoundError('Regularization not found');
     if (reg.status !== 'pending') throw new ConflictError(`Regularization is already ${reg.status}`);
     assertNotSelfApproval(ctx.user_id, reg.user_id);
+    // Approving rewrites the day, so a locked pay month refuses it.
+    await assertPeriodOpen(tx, ctx.org_id, reg.work_date);
 
     // Multi-level sign-off, same shape as leave: act on the lowest pending
     // level, and only finalize once no level is left.
