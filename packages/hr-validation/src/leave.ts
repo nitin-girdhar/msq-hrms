@@ -58,6 +58,20 @@ export const rejectLeaveRequestSchema = z.object({
   comment: z.string().min(1, 'A comment is required when rejecting').max(1000),
 });
 
+// One decision applied to many pending requests (approvals queue "select all").
+// Capped well under a page of the queue so a single call stays bounded; each
+// request still runs through the single-request path, so this adds no authority.
+export const bulkLeaveDecisionSchema = z
+  .object({
+    request_ids: z.array(z.string().uuid()).min(1).max(100),
+    decision: z.enum(['approve', 'reject']),
+    comment: z.string().max(1000).optional(),
+  })
+  .refine((v) => v.decision !== 'reject' || (v.comment ?? '').trim().length > 0, {
+    message: 'A comment is required when rejecting',
+    path: ['comment'],
+  });
+
 export const cancelLeaveRequestSchema = z.object({
   comment: z.string().max(1000).optional(),
 });
@@ -168,6 +182,7 @@ export type PreviewLeaveRequestInput = z.infer<typeof previewLeaveRequestSchema>
 export type ListLeaveRequestsInput = z.infer<typeof listLeaveRequestsSchema>;
 export type ApproveLeaveRequestInput = z.infer<typeof approveLeaveRequestSchema>;
 export type RejectLeaveRequestInput = z.infer<typeof rejectLeaveRequestSchema>;
+export type BulkLeaveDecisionInput = z.infer<typeof bulkLeaveDecisionSchema>;
 export type CancelLeaveRequestInput = z.infer<typeof cancelLeaveRequestSchema>;
 export type ListBalancesInput = z.infer<typeof listBalancesSchema>;
 export type ListLedgerInput = z.infer<typeof listLedgerSchema>;

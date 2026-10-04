@@ -11,7 +11,9 @@ import {
   canOverrideLeaveApproval,
   isTenantLeaveAdmin,
 } from '@hr/authz';
-import { ForbiddenError } from '../../../lib/errors.js';
+import { createLogger } from '@platform/logger';
+import { config } from '../../../config/index.js';
+import { AppError, ForbiddenError } from '../../../lib/errors.js';
 import { publishLeaveEvent } from '../../../lib/events.js';
 import * as repo from './leave.repository.js';
 import type { LeaveCtx } from './leave.repository.js';
@@ -30,7 +32,11 @@ import type {
   UpdateHolidayInput,
   CreateHolidayCalendarInput,
   UpdateHolidayCalendarInput,
+  BulkLeaveDecisionInput,
 } from '@hr/validation';
+
+// Fired from the service layer, which has no request-scoped logger.
+const log = createLogger({ service: 'hr-service', nodeEnv: config.nodeEnv });
 
 // ── Requests ──────────────────────────────────────────────────────────────────
 export async function applyLeave(ctx: LeaveCtx, data: ApplyLeaveRequestInput) {
@@ -133,6 +139,46 @@ export async function rejectLeave(ctx: LeaveCtx, id: string, comment: string) {
     new_value: { request_id: id },
   });
   return result;
+}
+
+export interface BulkLeaveResult {
+  request_id: string;
+  ok: boolean;
+  /** Why this request was skipped. Only ever an AppError message — never internals. */
+  error?: string;
+}
+
+/**
+ * Approve or reject many pending requests — skipping the ones that fail.
+ *
+ * Each request goes through the SAME function as its single route
+ * (approveLeave / rejectLeave), each in its own transaction, so scope, the
+ * approval chain, balance checks, audit and notifications behave exactly as a
+ * single decision; bulk can do nothing a single click could not. Not atomic by
+ * design (same product rule as LMS bulk actions): a failing request is reported
+ * and the rest still apply. A request the actor may not decide resolves to an
+ * error inside the single path, so a foreign id leaks nothing but its absence.
+ * Sequential, so audit rows and events keep a deterministic order.
+ */
+export async function bulkDecideLeave(ctx: LeaveCtx, input: BulkLeaveDecisionInput) {
+  const ids = [...new Set(input.request_ids)];
+  const results: BulkLeaveResult[] = [];
+  for (const id of ids) {
+    try {
+      if (input.decision === 'approve') await approveLeave(ctx, id, input.comment?.trim() || null);
+      else await rejectLeave(ctx, id, input.comment!.trim());
+      results.push({ request_id: id, ok: true });
+    } catch (err) {
+      if (err instanceof AppError) {
+        results.push({ request_id: id, ok: false, error: err.message });
+      } else {
+        log.error({ err, request_id: id, decision: input.decision }, 'bulk leave decision failed unexpectedly');
+        results.push({ request_id: id, ok: false, error: 'This request could not be decided' });
+      }
+    }
+  }
+  const succeeded = results.filter((r) => r.ok).length;
+  return { decision: input.decision, requested: ids.length, succeeded, failed: ids.length - succeeded, results };
 }
 
 export async function updateLeaveRequest(ctx: LeaveCtx, id: string, data: UpdateLeaveRequestInput) {

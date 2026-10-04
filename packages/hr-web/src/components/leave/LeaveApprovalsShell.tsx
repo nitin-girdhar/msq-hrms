@@ -4,13 +4,14 @@ import { useCallback, useEffect, useState } from 'react';
 import type { SessionUser } from '@platform/types';
 import { Alert, Button, PageBody, PageHeader, PageSection } from '@platform/ui-kit';
 import { leave as leaveApi } from '../../lib/api/client';
-import type { LeaveRequestView } from '../../lib/leave/types';
+import type { BulkLeaveOutcome, LeaveRequestView } from '../../lib/leave/types';
 import { formatDateRange, formatDays, formatDateTime } from '../../lib/leave/format';
 import { emptyBlockCls, stateBlockCls } from '../../lib/ui';
 import type { HrRank } from '../../lib/hr-rank';
 import LeaveTabs from './LeaveTabs';
 import TeamLeaveCalendar from './TeamLeaveCalendar';
 import ApprovalDecisionModal from './ApprovalDecisionModal';
+import BulkLeaveDecisionModal from './BulkLeaveDecisionModal';
 
 interface Props {
   actor: SessionUser;
@@ -23,17 +24,51 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState<LeaveRequestView | null>(null);
+  // Selected request ids for the bulk bar, and the decision awaiting confirmation.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDecision, setBulkDecision] = useState<'approve' | 'reject' | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
     leaveApi
       .teamRequests({ status: 'pending', limit: 100 })
-      .then((res) => setPending(res.data))
+      .then((res) => {
+        setPending(res.data);
+        // Drop selections that are no longer pending (decided by this or another approver).
+        setSelected((prev) => new Set([...prev].filter((id) => res.data.some((r) => r.id === id))));
+      })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load the approval queue.'))
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const allSelected = pending.length > 0 && selected.size === pending.length;
+  const selectedRequests = pending.filter((r) => selected.has(r.id));
+
+  // Skipped requests are named with their reason: a bare "3 of 5" would leave the
+  // approver guessing which two still need attention.
+  const handleBulkDone = (outcome: BulkLeaveOutcome) => {
+    const verb = outcome.decision === 'approve' ? 'approved' : 'rejected';
+    const skipped = outcome.results.filter((r) => !r.ok);
+    if (skipped.length === 0) {
+      setNotice(`${outcome.succeeded} request${outcome.succeeded === 1 ? '' : 's'} ${verb}.`);
+      setError(null);
+    } else {
+      setNotice(outcome.succeeded > 0 ? `${outcome.succeeded} ${verb}.` : null);
+      const names = new Map(pending.map((r) => [r.id, r.user_full_name]));
+      setError(`${skipped.length} skipped: ` + skipped.map((s) => `${names.get(s.request_id) ?? 'request'} (${s.error ?? 'failed'})`).join('; '));
+    }
+    setSelected(new Set());
+    load();
+  };
 
   const handleDecided = (message: string) => {
     setNotice(message);
@@ -60,10 +95,37 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
         ) : (
           // Card per request (Stitch approvals queue): everything the approver needs
           // to decide — who, what, how long, why — without opening the modal first.
+          <>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <label className="flex items-center gap-2 text-xs font-semibold text-on-surface-variant">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={() => setSelected(allSelected ? new Set() : new Set(pending.map((r) => r.id)))}
+                className="h-4 w-4 rounded border-outline-variant accent-primary"
+              />
+              Select all ({pending.length})
+            </label>
+            {selected.size > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-on-surface-variant">{selected.size} selected</span>
+                <Button variant="danger" onClick={() => setBulkDecision('reject')}>Reject</Button>
+                <Button variant="primary" onClick={() => setBulkDecision('approve')}>Approve</Button>
+              </div>
+            )}
+          </div>
           <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {pending.map((r) => (
-              <li key={r.id} className="flex flex-col gap-2 rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-2">
+              <li key={r.id} className={`flex flex-col gap-2 rounded-xl border bg-surface-container-lowest p-4 shadow-sm ${selected.has(r.id) ? 'border-primary ring-1 ring-primary/30' : 'border-outline-variant'}`}>
+                <div className="flex items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(r.id)}
+                    onChange={() => toggle(r.id)}
+                    aria-label={`Select ${r.user_full_name}'s request`}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-outline-variant accent-primary"
+                  />
+                  <div className="flex min-w-0 flex-1 items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-on-surface">{r.user_full_name}</p>
                     <p className="truncate text-label-sm text-outline">{r.user_email}</p>
@@ -71,6 +133,7 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
                   <span className="shrink-0 rounded-full bg-status-due-container px-2 py-0.5 text-label-sm font-semibold text-on-status-due-container">
                     {r.leave_type_label}
                   </span>
+                  </div>
                 </div>
                 <p className="text-sm text-on-surface">
                   {formatDateRange(r.start_date, r.end_date, r.start_half, r.end_half)}
@@ -86,6 +149,7 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
               </li>
             ))}
           </ul>
+          </>
         )}
         </PageSection>
 
@@ -94,6 +158,12 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
         </PageSection>
       </PageBody>
 
+      <BulkLeaveDecisionModal
+        requests={bulkDecision ? selectedRequests : null}
+        decision={bulkDecision ?? 'approve'}
+        onClose={() => setBulkDecision(null)}
+        onDone={handleBulkDone}
+      />
       <ApprovalDecisionModal request={reviewing} onClose={() => setReviewing(null)} onDecided={handleDecided} />
     </div>
   );

@@ -1,5 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { can, CAPABILITY } from '@platform/rbac';
+import { ForbiddenError } from '../../../lib/errors.js';
 import * as service from './leave.service.js';
 import type { LeaveCtx } from './leave.repository.js';
 import type {
@@ -11,6 +12,7 @@ import type {
   ApproveLeaveRequestInput,
   RejectLeaveRequestInput,
   CancelLeaveRequestInput,
+  BulkLeaveDecisionInput,
   ListLedgerInput,
   CreateAdjustmentInput,
   ListPoliciesInput,
@@ -72,6 +74,19 @@ export class LeaveController {
     const { id } = request.params as { id: string };
     const { comment } = request.body as RejectLeaveRequestInput;
     const result = await service.rejectLeave(ctxOf(request), id, comment);
+    return reply.send({ success: true, data: result });
+  };
+
+  // The route only proves the caller can see leave; the capability that matters
+  // depends on WHICH decision is being applied, so it is checked here, before any
+  // request is touched. Per-request authority is then re-checked by the single path.
+  bulkDecide = async (request: FastifyRequest, reply: FastifyReply) => {
+    const input = request.body as BulkLeaveDecisionInput;
+    const needed = input.decision === 'approve' ? CAPABILITY.HR_LEAVE_APPROVE : CAPABILITY.HR_LEAVE_REJECT;
+    if (!can(request.auth, needed)) {
+      throw new ForbiddenError(`You do not have permission to ${input.decision} leave`);
+    }
+    const result = await service.bulkDecideLeave(ctxOf(request), input);
     return reply.send({ success: true, data: result });
   };
 

@@ -48,7 +48,7 @@ export default async function HrModuleShell({ module, children }: Props) {
         licensedProducts={licensedProducts}
         productOrigins={origins}
         activeProduct="hr"
-        homeHref="/attendance"
+        homeHref="/dashboard"
         title="Fitclass - People & Attendance"
         adminWebUrl={adminWebOrigin()}
         lookupAdminUrl={adminOrigin()}

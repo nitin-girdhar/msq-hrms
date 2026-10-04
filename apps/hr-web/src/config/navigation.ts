@@ -9,6 +9,9 @@ import type { NavItem } from '@platform/ui-kit/shell';
 //
 // Tier C3: previously `roles: ROLES`, i.e. visible to everyone with the module.
 export const HR_NAV: readonly NavItem[] = [
+  // Home opens for anyone holding attendance; a leave-only user still reaches it
+  // via the brand link and the landing redirect (the page itself serves both).
+  { id: 'dashboard',  label: 'Home',       href: '/dashboard',  icon: 'layout-dashboard', capability: CAPABILITY.HR_ATTENDANCE },
   { id: 'attendance', label: 'Attendance', href: '/attendance', icon: 'clock', capability: CAPABILITY.HR_ATTENDANCE },
   { id: 'leave',      label: 'Leave',      href: '/leave',      icon: 'plane', capability: CAPABILITY.HR_LEAVE },
   { id: 'employees',  label: 'Employees',  href: '/employees',  icon: 'id-card', capability: CAPABILITY.HR_EMPLOYEES },
@@ -19,10 +22,11 @@ export const HR_NAV: readonly NavItem[] = [
 // nav item ids in preference order — the first one the actor may open wins, none
 // drops the tab, and a trailing "More" opens the drawer. Ids only, so a tenant
 // rename or an unlicensed tool needs no change here. Stitch's dock is
-// Home / Attendance / Leaves / Payroll / Team; Home, Payroll and Team join this
-// list in the phases that build those pages (H2, H5, H4) — a tab must never lead
+// Home / Attendance / Leaves / Payroll / Team; Payroll and Team join this
+// list in the phases that build those pages (H5, H4) — a tab must never lead
 // to a route that does not exist.
 export const HR_MOBILE_TABS: readonly (readonly string[])[] = [
+  ['dashboard'],
   ['attendance'],
   ['leave'],
   ['employees'],

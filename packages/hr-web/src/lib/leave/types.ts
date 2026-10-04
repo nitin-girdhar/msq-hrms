@@ -154,3 +154,18 @@ export interface HrLookupOption {
   id: string;
   name: string;
 }
+
+export interface BulkLeaveResult {
+  request_id: string;
+  ok: boolean;
+  /** Why the request was skipped (only on ok: false). */
+  error?: string;
+}
+
+export interface BulkLeaveOutcome {
+  decision: 'approve' | 'reject';
+  requested: number;
+  succeeded: number;
+  failed: number;
+  results: BulkLeaveResult[];
+}

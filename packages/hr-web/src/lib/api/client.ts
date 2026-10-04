@@ -17,6 +17,7 @@ import type {
   HalfDay,
   EmployeeProfileView,
   HrLookupOption,
+  BulkLeaveOutcome,
 } from '../leave/types';
 import type {
   AttendanceRules,
@@ -157,6 +158,14 @@ export const leave = {
     request<Envelope<unknown>>(`/hr/leave/requests/${id}/reject`, {
       method: 'POST',
       body: JSON.stringify({ comment }),
+    }),
+
+  // One decision across many pending requests. Not atomic: a request that cannot
+  // be decided is reported in `results` and the rest still apply.
+  bulkDecide: (body: { request_ids: string[]; decision: 'approve' | 'reject'; comment?: string }) =>
+    request<Envelope<BulkLeaveOutcome>>('/hr/leave/requests/bulk-decision', {
+      method: 'POST',
+      body: JSON.stringify(body),
     }),
 
   cancel: (id: string, comment?: string) =>
