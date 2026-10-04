@@ -4,7 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SessionUser } from '@platform/types';
 import { can, CAPABILITY } from '@platform/rbac';
 import { Alert, Button, Modal, PageBody, PageHeader, PageSection } from '@platform/ui-kit';
-import { hrEmployees, payroll } from '../../lib/api/client';
+import { hrEmployees, payroll, statutory } from '../../lib/api/client';
+import type { StatutoryValues } from '../../lib/h7/types';
+import { groupByFinancialYear } from '../../lib/payroll/fy';
+import { printPayslip } from '../../lib/payroll/printPayslip';
+import StatCard from '../common/StatCard';
+import StatusPill from '../common/StatusPill';
 import type { PayrollOverview, PayslipDetail, PayslipLine, PayslipSummary } from '../../lib/payroll/types';
 import { formatMonth, formatMoney } from '../../lib/payroll/types';
 import type { EmployeeProfileView } from '../../lib/leave/types';
@@ -32,6 +37,23 @@ export default function PayrollShell({ actor }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [fy, setFy] = useState<string | null>(null);
+  const [bank, setBank] = useState<StatutoryValues | null>(null);
+  const [downloading, setDownloading] = useState<string | null>(null);
+
+  // The bank card is a nicety on top of the payslips: if it cannot be read it is simply not shown.
+  useEffect(() => {
+    if (!canView) return;
+    statutory.mine().then((r) => setBank(r.data)).catch(() => setBank(null));
+  }, [canView]);
+
+  const download = async (id: string) => {
+    setDownloading(id);
+    try {
+      const r = await payroll.getMine(id);
+      if (!printPayslip(r.data)) setError('Your browser blocked the pop-up. Allow pop-ups for this site and try again.');
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not open the payslip.'); } finally { setDownloading(null); }
+  };
 
   useEffect(() => {
     if (!canView) return;
@@ -39,6 +61,10 @@ export default function PayrollShell({ actor }: Props) {
   }, [canView]);
 
   const latest = mine[0];
+  const previous = mine[1];
+  const years = groupByFinancialYear(mine);
+  const activeFy = years.find((y) => y.fy === fy) ?? years[0];
+  const delta = latest && previous ? latest.net - previous.net : null;
 
   return (
     <div className="flex w-full flex-1 flex-col">
@@ -50,42 +76,76 @@ export default function PayrollShell({ actor }: Props) {
         {canView && (
           <>
             {latest && (
-              <section className="rounded-xl bg-primary-container p-4 text-on-primary-container shadow-lg sm:p-5">
-                <p className="text-label-sm font-semibold uppercase tracking-widest opacity-80">Latest payslip · {formatMonth(latest.period)}</p>
-                <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
-                  <div>
-                    <p className="text-label-sm opacity-80">Net pay</p>
-                    <p className="font-mono text-headline-xl font-bold tabular-nums text-on-primary">{formatMoney(latest.net)}</p>
-                  </div>
-                  <dl className="flex gap-6 text-sm">
-                    <div><dt className="text-label-sm opacity-80">Gross</dt><dd className="font-semibold text-on-primary">{formatMoney(latest.gross)}</dd></div>
-                    <div><dt className="text-label-sm opacity-80">Deductions</dt><dd className="font-semibold text-on-primary">{formatMoney(latest.deductions)}</dd></div>
-                  </dl>
-                  <button type="button" onClick={() => setOpenId(latest.id)} className="h-10 rounded-lg bg-surface-container-lowest px-4 text-sm font-bold text-primary hover:bg-surface-container-low">View breakdown</button>
+              <>
+                <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                  <StatCard label={`Net take-home · ${formatMonth(latest.period)}`} value={formatMoney(latest.net)} tone="primary"
+                    hint={delta === null ? 'first published payslip' : `${delta >= 0 ? '+' : '-'}${formatMoney(Math.abs(delta))} vs ${formatMonth(previous!.period)}`}
+                    action={<button type="button" onClick={() => setOpenId(latest.id)} className="text-xs font-semibold text-primary hover:underline">View breakdown →</button>} />
+                  <StatCard label="Gross earnings" value={formatMoney(latest.gross)} tone="success" hint={`${latest.working_days ?? '-'} working days${latest.lop_days ? ` · ${latest.lop_days} LOP` : ''}`} />
+                  <StatCard label="Deductions" value={formatMoney(latest.deductions)} tone="due"
+                    hint={latest.gross > 0 ? `${Math.round((latest.deductions / latest.gross) * 1000) / 10}% of gross` : undefined} />
+                  <StatCard label="Payslips published" value={mine.length} tone="info" hint={`${years.length} financial year${years.length === 1 ? '' : 's'}`} />
                 </div>
-              </section>
+                {bank && (bank.bank_name || bank.account_number) && (
+                  <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm">
+                    <div>
+                      <h3 className="text-sm font-semibold text-on-surface">Bank &amp; compliance details</h3>
+                      <p className="text-xs text-on-surface-variant">
+                        {[bank.bank_name, bank.bank_branch].filter(Boolean).join(', ') || 'Bank'}
+                        {bank.account_number ? ` · account ending ${bank.account_number.slice(-4)}` : ''}
+                        {bank.ifsc ? ` · IFSC ${bank.ifsc}` : ''}
+                      </p>
+                    </div>
+                    <a href="/profile" className="text-xs font-semibold text-primary hover:underline">Request a change →</a>
+                  </section>
+                )}
+              </>
             )}
 
-            <PageSection title="Payslip history">
+            <PageSection title="Payslip archive">
               {loading ? (
                 <div className={stateBlockCls}>Loading…</div>
               ) : mine.length === 0 ? (
                 <p className={emptyBlockCls}>No payslips have been published for you yet.</p>
               ) : (
-                <ul className="divide-y divide-outline-variant/50 rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
-                  {mine.map((p) => (
-                    <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                      <div>
-                        <p className="text-sm font-semibold text-on-surface">{formatMonth(p.period)}</p>
-                        <p className="text-xs text-on-surface-variant">Gross {formatMoney(p.gross)} · Deductions {formatMoney(p.deductions)}</p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="font-mono text-sm font-bold tabular-nums text-on-surface">{formatMoney(p.net)}</span>
-                        <Button variant="secondary" onClick={() => setOpenId(p.id)}>View</Button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-2" role="tablist" aria-label="Financial year">
+                    {years.map((y) => (
+                      <button key={y.fy} type="button" role="tab" aria-selected={activeFy?.fy === y.fy} onClick={() => setFy(y.fy)}
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold ${activeFy?.fy === y.fy ? 'border-primary bg-primary text-on-primary' : 'border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low'}`}>
+                        {y.fy} ({y.items.length})
+                      </button>
+                    ))}
+                  </div>
+                  <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
+                    <table className="w-full min-w-[640px] text-sm">
+                      <thead>
+                        <tr className="border-b border-outline-variant bg-surface-container-low text-left text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+                          <th className="px-4 py-2.5">Pay period</th><th className="px-4 py-2.5">Days</th><th className="px-4 py-2.5 text-right">Gross</th>
+                          <th className="px-4 py-2.5 text-right">Deductions</th><th className="px-4 py-2.5 text-right">Net pay</th><th className="px-4 py-2.5">Status</th><th className="px-4 py-2.5 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(activeFy?.items ?? []).map((p) => (
+                          <tr key={p.id} className="border-b border-outline-variant/50 last:border-0">
+                            <td className="px-4 py-2.5 font-semibold text-on-surface">{formatMonth(p.period)}</td>
+                            <td className="px-4 py-2.5 text-on-surface-variant">{p.working_days ?? '-'}{p.lop_days ? ` (${p.lop_days} LOP)` : ''}</td>
+                            <td className="px-4 py-2.5 text-right font-mono tabular-nums text-on-surface">{formatMoney(p.gross)}</td>
+                            <td className="px-4 py-2.5 text-right font-mono tabular-nums text-status-overdue">{formatMoney(p.deductions)}</td>
+                            <td className="px-4 py-2.5 text-right font-mono font-bold tabular-nums text-on-surface">{formatMoney(p.net)}</td>
+                            <td className="px-4 py-2.5"><StatusPill tone="success">Published</StatusPill></td>
+                            <td className="px-4 py-2.5 text-right">
+                              <div className="flex justify-end gap-2">
+                                <Button variant="secondary" onClick={() => setOpenId(p.id)}>View</Button>
+                                <Button variant="secondary" disabled={downloading === p.id} onClick={() => void download(p.id)}>{downloading === p.id ? '…' : 'PDF'}</Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               )}
             </PageSection>
           </>
@@ -120,13 +180,22 @@ function PayslipModal({ id, onClose }: { id: string; onClose: () => void }) {
 
   return (
     <Modal open onClose={onClose} title={slip ? `Payslip · ${formatMonth(slip.period)}` : 'Payslip'} maxWidth="max-w-lg" closeOnBackdropClick
-      footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => window.print()}>Print / save as PDF</Button><Button variant="primary" onClick={onClose}>Close</Button></div>}>
+      footer={<div className="flex justify-end gap-2"><Button variant="secondary" disabled={!slip} onClick={() => { if (slip && !printPayslip(slip)) setError('Your browser blocked the pop-up. Allow pop-ups for this site and try again.'); }}>Download PDF</Button><Button variant="primary" onClick={onClose}>Close</Button></div>}>
       {error && <Alert tone="error">{error}</Alert>}
       {!slip && !error && <div className={stateBlockCls}>Loading…</div>}
       {slip && (
         <div className="flex flex-col gap-4">
           <p className="text-sm text-on-surface-variant">{slip.user_full_name}{slip.employee_code ? ` · ${slip.employee_code}` : ''}
             {slip.working_days != null ? ` · ${slip.working_days} working days` : ''}{slip.lop_days ? ` · ${slip.lop_days} LOP` : ''}</p>
+          {slip.gross > 0 && (
+            <div>
+              <div className="flex h-2 overflow-hidden rounded-full bg-surface-container" role="img" aria-label="Share of gross that is take-home">
+                <span className="bg-status-success" style={{ width: `${Math.max(0, Math.min(100, (slip.net / slip.gross) * 100))}%` }} />
+                <span className="bg-status-overdue" style={{ width: `${Math.max(0, Math.min(100, (slip.deductions / slip.gross) * 100))}%` }} />
+              </div>
+              <p className="mt-1 flex justify-between text-label-sm text-on-surface-variant"><span>Take-home {Math.round((slip.net / slip.gross) * 1000) / 10}%</span><span>Deductions {Math.round((slip.deductions / slip.gross) * 1000) / 10}%</span></p>
+            </div>
+          )}
           {part('earning', 'Earnings')}
           {part('deduction', 'Deductions')}
           <div className="flex items-center justify-between rounded-lg bg-primary-fixed px-4 py-3">

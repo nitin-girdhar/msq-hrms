@@ -7,6 +7,8 @@ import { attendanceReportReach } from '@hr/authz';
 import { attendance as attendanceApi } from '../../lib/api/client';
 import type { MusterCode, MusterParams, MusterReport as MusterReportData } from '../../lib/attendance/types';
 import { emptyBlockCls, fieldInputCls, fieldLabelCls, stateBlockCls } from '../../lib/ui';
+import StatCard from '../common/StatCard';
+import Pagination from '../common/Pagination';
 
 interface Props {
   actor: SessionUser;
@@ -64,6 +66,11 @@ export default function MusterReport({ actor }: Props) {
   const [data, setData] = useState<MusterReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Legend filter: show only people who have this code in the month, and highlight just that code.
+  const [code, setCode] = useState<Exclude<MusterCode, ''> | null>(null);
+  const [q, setQ] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   const params: MusterParams = useMemo(() => {
     if (!tenantReach) return { month, branch: 'current' };
@@ -91,7 +98,21 @@ export default function MusterReport({ actor }: Props) {
     a.remove();
   };
 
-  const rows = data?.rows ?? [];
+  const allRows = data?.rows ?? [];
+  const needle = q.trim().toLowerCase();
+  const rows = allRows.filter((r) =>
+    (!code || r.days.includes(code)) &&
+    (!needle || [r.name, r.employee_code, r.email, r.department, r.designation].some((v) => v?.toLowerCase().includes(needle))));
+  const lastPage = Math.max(1, Math.ceil(rows.length / pageSize));
+  const safePage = Math.min(page, lastPage);
+  const pageRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  // Header numbers, counted from the sheet itself (the same rows the totals come from).
+  const dim = data?.days_in_month ?? 0;
+  const totalPaid = allRows.reduce((n, r) => n + r.total_paid, 0);
+  const attention = allRows.filter((r) => r.days.some((c) => c === 'A' || c === 'LOP')).length;
+  const holidayDays = allRows[0]?.holidays ?? 0;
+  const workingPlanned = allRows[0] ? dim - allRows[0].weekoff_paid - holidayDays : 0;
   const dayNumbers = Array.from({ length: data?.days_in_month ?? 0 }, (_, i) => i + 1);
   const showBranch = tenantReach && selection === ALL;
 
@@ -142,13 +163,27 @@ export default function MusterReport({ actor }: Props) {
         )}
       </div>
 
-      <div className="mb-3 flex flex-wrap gap-1.5 text-[11px]">
-        {LEGEND.map(([code, label]) => (
-          <span key={code} className="inline-flex items-center gap-1 rounded-md border border-outline-variant bg-surface-container-lowest px-1.5 py-0.5 text-on-surface-variant">
-            <span className={`rounded px-1 font-semibold ${CODE_CLS[code]}`}>{code}</span>
+      {!loading && allRows.length > 0 && (
+        <div className="mb-3 grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <StatCard label="Headcount" value={allRows.length} tone="primary" hint="on this sheet" />
+          <StatCard label="Planned working days" value={workingPlanned} tone="info" hint={`of ${dim} days, less weekly offs and holidays`} />
+          <StatCard label="Paid days" value={num(Math.round(totalPaid * 10) / 10)} tone="success" hint={`avg ${num(Math.round((totalPaid / allRows.length) * 10) / 10)} per person`} />
+          <StatCard label="Needs attention" value={attention} tone={attention > 0 ? 'overdue' : 'neutral'} hint="people with absent or loss-of-pay days" />
+        </div>
+      )}
+
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
+        <span className="font-semibold text-on-surface-variant">Legend filter</span>
+        <button type="button" onClick={() => { setCode(null); setPage(1); }} aria-pressed={code === null}
+          className={`rounded-md border px-2 py-0.5 font-semibold ${code === null ? 'border-primary bg-primary text-on-primary' : 'border-outline-variant bg-surface-container-lowest text-on-surface-variant'}`}>All codes</button>
+        {LEGEND.map(([c, label]) => (
+          <button key={c} type="button" onClick={() => { setCode(code === c ? null : c); setPage(1); }} aria-pressed={code === c}
+            className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-on-surface-variant ${code === c ? 'border-primary ring-1 ring-primary' : 'border-outline-variant bg-surface-container-lowest'}`}>
+            <span className={`rounded px-1 font-semibold ${CODE_CLS[c]}`}>{c}</span>
             {label}
-          </span>
+          </button>
         ))}
+        <input type="search" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} placeholder="Search employee" aria-label="Search employee" className={`${fieldInputCls} ml-auto h-8 w-56 text-xs`} />
       </div>
 
       {error && <div className="mb-3"><Alert tone="error">{error}</Alert></div>}
@@ -156,7 +191,7 @@ export default function MusterReport({ actor }: Props) {
       {loading ? (
         <div className={stateBlockCls}>Loading…</div>
       ) : rows.length === 0 ? (
-        <p className={emptyBlockCls}>No attendance data for {month}.</p>
+        <p className={emptyBlockCls}>{allRows.length === 0 ? `No attendance data for ${month}.` : 'No one matches this filter.'}</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
           <table className="w-max border-collapse text-xs">
@@ -179,7 +214,7 @@ export default function MusterReport({ actor }: Props) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {pageRows.map((r) => (
                 <tr key={`${r.org_id}|${r.user_id}`} className="border-b border-outline-variant/50 last:border-0 hover:bg-surface-container-low">
                   <td className="sticky left-0 bg-surface-container-lowest px-2 py-1.5 text-outline">{r.sl_no}</td>
                   <td className="sticky left-8 min-w-[160px] bg-surface-container-lowest px-2 py-1.5">
@@ -190,20 +225,21 @@ export default function MusterReport({ actor }: Props) {
                   <td className="px-2 py-1.5 text-on-surface-variant">{r.department ?? '—'}</td>
                   <td className="whitespace-nowrap px-2 py-1.5 text-on-surface-variant">{dmy(r.date_of_joining)}</td>
                   {showBranch && <td className="whitespace-nowrap px-2 py-1.5 text-on-surface-variant">{r.branch}</td>}
-                  {r.days.map((code, i) => (
-                    <td key={i} className={`border-l border-outline-variant/50 px-0 py-1.5 text-center font-semibold ${code ? CODE_CLS[code] : ''}`}>
-                      {code}
+                  {r.days.map((c, i) => (
+                    <td key={i} className={`border-l border-outline-variant/50 px-0 py-1.5 text-center font-semibold ${c ? CODE_CLS[c] : ''} ${code && c !== code ? 'opacity-25' : ''}`}>
+                      {c}
                     </td>
                   ))}
                   <td className="px-2 py-1.5 text-right font-medium text-on-surface">{num(r.present)}</td>
                   <td className="px-2 py-1.5 text-right text-on-surface-variant">{num(r.weekoff_paid)}</td>
                   <td className="px-2 py-1.5 text-right text-on-surface-variant">{num(r.paid_leave)}</td>
                   <td className="px-2 py-1.5 text-right text-on-surface-variant">{num(r.holidays)}</td>
-                  <td className="px-2 py-1.5 text-right font-semibold text-on-surface">{num(r.total_paid)}</td>
+                  <td className="px-2 py-1.5 text-right font-semibold text-on-surface">{num(r.total_paid)}<span className="font-normal text-outline"> / {dim}</span></td>
                 </tr>
               ))}
             </tbody>
           </table>
+          <Pagination page={safePage} pageSize={pageSize} total={rows.length} onPage={setPage} onPageSize={(n) => { setPageSize(n); setPage(1); }} noun="employees" />
         </div>
       )}
       <p className="mt-2 text-[11px] text-outline">
