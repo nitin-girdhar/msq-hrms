@@ -133,7 +133,7 @@ export default function PlannerShell({ actor }: { actor: SessionUser }) {
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-outline-variant bg-surface-container-lowest p-3 shadow-sm">
           <div className="flex gap-1 rounded-lg border border-outline-variant bg-surface-container-low p-1" role="tablist" aria-label="Roster view">
             {(['day', 'week', 'month'] as const).map((v) => (
-              <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => { setView(v); setFrom(week?.week_start); }}
+              <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => { setView(v); setFrom(week && today >= week.week_start && today <= week.week_end ? today : week?.week_start); }}
                 className={`rounded-md px-3 py-1 text-xs font-semibold capitalize ${view === v ? 'bg-surface-container-lowest text-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}>{v}</button>
             ))}
           </div>

@@ -59,6 +59,9 @@ export default function EmployeeDashboardShell({ actor }: Props) {
   const [pendingApprovals, setPendingApprovals] = useState<number | null>(null);
   const [header, setHeader] = useState<EmployeeHeader | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The greeting and date depend on the viewer's clock and time zone, which the server cannot know: render them after mount, not during SSR (a mismatch is a hydration error).
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => { setNow(new Date()); }, []);
 
   // The profile card is a nicety: people without a profile (or without the capability) simply do not get it.
   useEffect(() => {
@@ -114,8 +117,8 @@ export default function EmployeeDashboardShell({ actor }: Props) {
   return (
     <div className="flex w-full flex-1 flex-col">
       <PageHeader
-        title={`${greeting(new Date().getHours())}${first ? `, ${first}` : ''}`}
-        subtitle={new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+        title={now ? `${greeting(now.getHours())}${first ? `, ${first}` : ''}` : `Welcome${first ? `, ${first}` : ''}`}
+        subtitle={now ? now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : ' '}
       />
 
       <PageBody>
