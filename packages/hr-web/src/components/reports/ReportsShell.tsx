@@ -2,7 +2,9 @@
 
 import { useState } from 'react';
 import type { SessionUser } from '@platform/types';
+import { can, CAPABILITY } from '@platform/rbac';
 import { PageBody, PageHeader } from '@platform/ui-kit';
+import MonthEndReport from './MonthEndReport';
 import MonthlySummaryReport from './MonthlySummaryReport';
 import MusterReport from './MusterReport';
 
@@ -10,7 +12,7 @@ interface Props {
   actor: SessionUser;
 }
 
-type Section = 'combined' | 'summary';
+type Section = 'combined' | 'summary' | 'monthend';
 
 const SECTIONS: { id: Section; label: string }[] = [
   { id: 'combined', label: 'Combined attendance' },
@@ -21,6 +23,7 @@ const SECTIONS: { id: Section; label: string }[] = [
 // was the Reports tab of Attendance administration.
 export default function ReportsShell({ actor }: Props) {
   const [section, setSection] = useState<Section>('combined');
+  const sections = can(actor, CAPABILITY.HR_REPORTS_PAYROLL_MANAGE) ? [...SECTIONS, { id: 'monthend' as const, label: 'Month-end sign-off' }] : SECTIONS;
 
   return (
     <div className="flex w-full flex-1 flex-col">
@@ -28,7 +31,7 @@ export default function ReportsShell({ actor }: Props) {
 
       <PageBody>
         <div className="flex flex-wrap gap-1 rounded-xl border border-outline-variant bg-surface-container-lowest p-1 shadow-sm">
-          {SECTIONS.map((s) => (
+          {sections.map((s) => (
             <button
               key={s.id}
               type="button"
@@ -46,6 +49,7 @@ export default function ReportsShell({ actor }: Props) {
 
         {section === 'combined' && <MusterReport actor={actor} />}
         {section === 'summary' && <MonthlySummaryReport />}
+        {section === 'monthend' && <MonthEndReport />}
       </PageBody>
     </div>
   );

@@ -26,7 +26,7 @@ import type {
   AuditEntry, BulkRegularizeOutcome, ChangeRequest, Employee360AttendanceRow, Encashment, Nudge,
   OrgChartPerson, PolicySummaryRow, PunchLogRow, StatutoryForm, StatutoryView, StatutoryValues,
 } from '../h7/types';
-import type { PayrollOverview, PayslipDetail, PayslipSummary } from '../payroll/types';
+import type { PayrollOverview, PayrollReadiness, PayslipDetail, PayslipSummary } from '../payroll/types';
 import type {
   Employee360,
   MyProfile,
@@ -305,6 +305,7 @@ export const payroll = {
   /** The caller's own PUBLISHED payslips, newest first. */
   mine: () => request<Envelope<PayslipSummary[]>>('/hr/payroll/payslips'),
   getMine: (id: string) => request<Envelope<PayslipDetail>>(`/hr/payroll/payslips/${id}`),
+  readiness: (month: string) => request<Envelope<PayrollReadiness>>(`/hr/payroll/admin/readiness${qs({ month })}`),
   overview: (month: string) => request<Envelope<PayrollOverview>>(`/hr/payroll/admin/overview${qs({ month })}`),
   saveDraft: (body: { user_id: string; month: string; working_days?: number; lop_days?: number; lines: Array<{ kind: 'earning' | 'deduction'; label: string; amount: number }> }) =>
     request<Envelope<{ id: string }>>('/hr/payroll/admin/payslips', { method: 'PUT', body: JSON.stringify(body) }),

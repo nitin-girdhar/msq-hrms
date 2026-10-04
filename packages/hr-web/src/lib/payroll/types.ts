@@ -31,6 +31,18 @@ export interface PayrollOverview {
   payslips: Array<PayslipSummary & { user_id: string; user_full_name: string }>;
 }
 
+export interface PayrollReadiness {
+  month: string;
+  status: 'open' | 'locked';
+  locked_at: string | null;
+  headcount: number;
+  pending_regularizations: number;
+  pending_leave: number;
+  missed_punch_days: number;
+  draft_payslips: number;
+  published_payslips: number;
+}
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** '2026-04-01' → 'Apr 2026'. */
