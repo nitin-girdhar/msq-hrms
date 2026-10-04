@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import PersonAvatar from '../common/PersonAvatar';
 import type { Completeness } from '../../lib/profile/completeness';
 import type { ChainLink } from '../../lib/profile/types';
 
@@ -31,13 +32,8 @@ export function Tile({ label, value, hint }: { label: string; value: ReactNode; 
   );
 }
 
-export function Avatar({ name, size = 'lg' }: { name: string; size?: 'sm' | 'lg' }) {
-  const initials = name.split(' ').filter(Boolean).map((w) => w[0]).slice(0, 2).join('').toUpperCase() || '?';
-  return (
-    <span aria-hidden="true" className={`flex shrink-0 items-center justify-center rounded-full bg-primary-fixed font-bold text-on-primary-fixed ${size === 'lg' ? 'h-16 w-16 text-xl' : 'h-9 w-9 text-xs'}`}>
-      {initials}
-    </span>
-  );
+export function Avatar({ name, userId, size = 'lg' }: { name: string; userId?: string | null | undefined; size?: 'sm' | 'lg' }) {
+  return <PersonAvatar name={name} userId={userId} size={size === 'lg' ? 'lg' : 'sm'} />;
 }
 
 /** Completeness as a ring plus what is missing. */
@@ -72,7 +68,7 @@ export function ReportingChain({ self, chain }: { self: string; chain: ChainLink
       {links.map((l) => (
         <li key={l.user_id} className="flex items-center gap-2">
           <span className="flex items-center gap-2 rounded-lg border border-outline-variant bg-surface-container-low px-2.5 py-1.5">
-            <Avatar name={l.full_name} size="sm" />
+            <Avatar name={l.full_name} userId={l.user_id} size="sm" />
             <span className="min-w-0">
               <span className="block truncate text-sm font-semibold text-on-surface">{l.full_name}</span>
               {l.designation_name && <span className="block truncate text-label-sm text-on-surface-variant">{l.designation_name}</span>}

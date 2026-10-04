@@ -101,7 +101,7 @@ export default function Employee360Shell({ actor, userId }: Props) {
 
         <section className="grid gap-4 rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm sm:p-5 lg:grid-cols-[1fr_auto]">
           <div className="flex min-w-0 flex-col gap-4 sm:flex-row">
-            <Avatar name={h.full_name} />
+            <Avatar name={h.full_name} userId={h.user_id} />
             <div className="min-w-0 space-y-2">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="truncate text-headline-md font-bold text-on-surface">{h.full_name}</h2>

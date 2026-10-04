@@ -1,12 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Button, Modal, exportRows } from '@platform/ui-kit';
-import { hrEmployees } from '../../lib/api/client';
+import { hrEmployees, type DirectoryEnvelope } from '../../lib/api/client';
 import type { EmployeeProfileView, HrLookupOption } from '../../lib/leave/types';
-import { WORK_MODE_OPTIONS } from '../../lib/profile/types';
+import { WORK_MODE_OPTIONS, optionLabel } from '../../lib/profile/types';
 import { emptyBlockCls, fieldInputCls, stateBlockCls } from '../../lib/ui';
+import PersonAvatar from '../common/PersonAvatar';
+import StatCard from '../common/StatCard';
+import StatusPill from '../common/StatusPill';
+import Pagination from '../common/Pagination';
 
 interface Props {
   onNotice: (msg: string) => void;
@@ -17,18 +21,27 @@ interface Props {
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+type Status = 'active' | 'exited' | 'all';
 
+/**
+ * Workforce directory (Stitch "Employee Directory & Workforce Roster"). Search, department and status
+ * are applied by the server before paging, so the totals and tab counts are the real ones for the whole
+ * branch, not for the page on screen.
+ */
 export default function EmployeeProfilesManager({ onNotice, canManage, canOpenProfile }: Props) {
-  const [profiles, setProfiles] = useState<EmployeeProfileView[]>([]);
+  const [data, setData] = useState<DirectoryEnvelope | null>(null);
   const [departments, setDepartments] = useState<HrLookupOption[]>([]);
   const [designations, setDesignations] = useState<HrLookupOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<EmployeeProfileView | null>(null);
   const [query, setQuery] = useState('');
+  const [search, setSearch] = useState('');
   const [dept, setDept] = useState('');
-  const [status, setStatus] = useState<'active' | 'exited' | 'all'>('active');
+  const [status, setStatus] = useState<Status>('active');
   const [view, setView] = useState<'table' | 'grid'>('table');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const loadLookups = useCallback(() => {
     Promise.all([hrEmployees.departments.list(), hrEmployees.designations.list()])
@@ -36,53 +49,48 @@ export default function EmployeeProfilesManager({ onNotice, canManage, canOpenPr
       .catch(() => { /* lookups optional */ });
   }, []);
 
+  // Typing waits a beat so every keystroke is not a request.
+  useEffect(() => {
+    const t = setTimeout(() => { setSearch(query.trim()); setPage(1); }, 250);
+    return () => clearTimeout(t);
+  }, [query]);
+
   const load = useCallback(() => {
     setLoading(true);
     hrEmployees
-      .list()
-      .then((res) => setProfiles(res.data))
+      .list({ page, limit: pageSize, status, ...(search ? { search } : {}), ...(dept ? { department: dept } : {}) })
+      .then((res) => { setData(res); setError(null); })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load employee profiles.'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [page, pageSize, status, search, dept]);
 
-  useEffect(() => { load(); loadLookups(); }, [load, loadLookups]);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadLookups(); }, [loadLookups]);
 
-  // Department options come from the people actually listed, not the lookup, so
-  // the filter never offers a department with nobody in it.
-  const deptOptions = useMemo(
-    () => Array.from(new Set(profiles.map((p) => p.department_name).filter((d): d is string => !!d))).sort(),
-    [profiles],
-  );
-
-  // Exited = a last working day on or before today. Someone with a FUTURE exit date is still active.
+  const profiles = data?.data ?? [];
+  const meta = data?.meta;
+  const total = data?.total ?? 0;
   const today = new Date().toISOString().slice(0, 10);
-  const isExited = (p: EmployeeProfileView) => !!p.date_of_exit && p.date_of_exit <= today;
-  const counts = useMemo(
-    () => ({ active: profiles.filter((p) => !isExited(p)).length, exited: profiles.filter(isExited).length, all: profiles.length }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [profiles, today],
-  );
 
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return profiles.filter(
-      (p) =>
-        (status === 'all' || (status === 'exited') === isExited(p)) &&
-        (!dept || p.department_name === dept) &&
-        (!q || [p.full_name, p.email, p.employee_code].some((v) => v?.toLowerCase().includes(q))),
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profiles, query, dept, status, today]);
-
-  const exportCsv = () =>
+  // Export what the filters describe, not just the page on screen: walk every page.
+  const exportCsv = async () => {
+    const all: EmployeeProfileView[] = [];
+    for (let p = 1; p <= 40; p += 1) {
+      const res = await hrEmployees.list({ page: p, limit: 100, status, ...(search ? { search } : {}), ...(dept ? { department: dept } : {}) });
+      all.push(...res.data);
+      if (all.length >= res.total) break;
+    }
     exportRows(
-      visible,
+      all,
       [
         { header: 'Name', value: (p) => p.full_name },
         { header: 'Email', value: (p) => p.email },
         { header: 'Employee code', value: (p) => p.employee_code },
         { header: 'Department', value: (p) => p.department_name },
+        { header: 'Squad', value: (p) => p.squad },
         { header: 'Designation', value: (p) => p.designation_name },
+        { header: 'Grade', value: (p) => p.grade },
+        { header: 'Work mode', value: (p) => p.work_mode },
         { header: 'Joined', value: (p) => p.date_of_joining },
         { header: 'Last working day', value: (p) => p.date_of_exit },
         { header: 'Weekly off', value: (p) => (p.weekly_off_pattern ?? []).map((d) => WEEKDAYS[d]).join(' ') },
@@ -90,9 +98,7 @@ export default function EmployeeProfilesManager({ onNotice, canManage, canOpenPr
       `employees-${today}`,
       'csv',
     );
-
-  const thisMonth = new Date().toISOString().slice(0, 7);
-  const joinedThisMonth = profiles.filter((p) => p.date_of_joining?.startsWith(thisMonth)).length;
+  };
 
   const nameOf = (p: EmployeeProfileView, cls: string) =>
     canOpenProfile ? (
@@ -108,116 +114,136 @@ export default function EmployeeProfilesManager({ onNotice, canManage, canOpenPr
       </button>
     ) : null;
 
+  const shiftCell = (p: EmployeeProfileView) =>
+    p.on_leave_today ? <StatusPill tone="info">On leave</StatusPill>
+    : p.shift_name ? <span><span className="font-medium text-on-surface">{p.shift_name}</span> <span className="text-label-sm tabular-nums text-on-surface-variant">{p.shift_start}–{p.shift_end}</span></span>
+    : <span className="text-on-surface-variant">No shift</span>;
+
+  const top = (meta?.departments ?? []).slice(0, 4);
+  const topTotal = (meta?.departments ?? []).reduce((n, d) => n + d.count, 0);
+
   return (
     <div className="space-y-3">
-      {error && <div className="rounded-lg border border-status-overdue/30 bg-status-overdue-container px-4 py-2 text-xs text-on-status-overdue-container">{error}</div>}
+      {error && <div role="alert" className="rounded-lg border border-status-overdue/30 bg-status-overdue-container px-4 py-2 text-xs text-on-status-overdue-container">{error}</div>}
 
-      {loading ? (
+      {meta && (
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <StatCard label="Total workforce" value={meta.all} tone="primary"
+            hint={`${meta.active} active · ${meta.on_leave} on leave · ${meta.exited} exited`} />
+          <StatCard label="Shift allocation" value={`${meta.with_shift}`} tone="success"
+            hint={`of ${meta.active} active have a shift today${meta.active > 0 ? ` (${Math.round((meta.with_shift / meta.active) * 100)}%)` : ''}`} />
+          <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm">
+            <p className="text-label-sm font-semibold uppercase tracking-wide text-on-surface-variant">Top functions</p>
+            {top.length === 0 ? <p className="mt-1 text-label-sm text-on-surface-variant">No departments set yet.</p> : (
+              <>
+                <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-surface-container" role="img" aria-label="Headcount by department">
+                  {top.map((d, i) => <span key={d.name} style={{ width: `${(d.count / topTotal) * 100}%` }} className={['bg-primary', 'bg-status-success', 'bg-status-due', 'bg-status-info'][i]} />)}
+                </div>
+                <ul className="mt-2 space-y-0.5 text-label-sm text-on-surface-variant">
+                  {top.map((d) => <li key={d.name} className="flex justify-between gap-2"><span className="truncate">{d.name}</span><span className="font-mono font-semibold text-on-surface">{d.count}</span></li>)}
+                </ul>
+              </>
+            )}
+          </div>
+          <StatCard label="New cohort" value={meta.joined_this_month} tone="info" hint="joined this month" />
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2 rounded-xl border border-outline-variant bg-surface-container-lowest p-3 shadow-sm">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by name, email or employee code" aria-label="Search employees" className={`${fieldInputCls} w-full sm:max-w-sm`} />
+          <select value={dept} onChange={(e) => { setDept(e.target.value); setPage(1); }} aria-label="Filter by department" className={`${fieldInputCls} sm:w-56`}>
+            <option value="">All departments</option>
+            {(meta?.departments ?? []).map((d) => <option key={d.name} value={d.name}>{d.name} ({d.count})</option>)}
+          </select>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap gap-2" role="tablist" aria-label="Employment status">
+            {([['active', 'Active', meta?.active], ['exited', 'Exited', meta?.exited], ['all', 'All workforce', meta?.all]] as const).map(([key, label, n]) => (
+              <button key={key} type="button" role="tab" aria-selected={status === key} onClick={() => { setStatus(key); setPage(1); }}
+                className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${status === key ? 'border-primary bg-primary text-on-primary' : 'border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low'}`}>
+                {label} {n !== undefined && <span className="tabular-nums opacity-80">({n})</span>}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="hidden gap-1 md:flex" role="group" aria-label="Layout">
+              <Button variant={view === 'table' ? 'primary' : 'secondary'} onClick={() => setView('table')} aria-pressed={view === 'table'}>Table</Button>
+              <Button variant={view === 'grid' ? 'primary' : 'secondary'} onClick={() => setView('grid')} aria-pressed={view === 'grid'}>Cards</Button>
+            </div>
+            <Button variant="secondary" onClick={() => void exportCsv()} disabled={total === 0}>Export CSV</Button>
+          </div>
+        </div>
+      </div>
+
+      {loading && !data ? (
         <div className={stateBlockCls}>Loading…</div>
-      ) : profiles.length === 0 ? (
-        <p className={emptyBlockCls}>No employee profiles yet.</p>
+      ) : total === 0 ? (
+        <p className={emptyBlockCls}>{meta && meta.all === 0 ? 'No employee profiles yet.' : 'No one matches these filters.'}</p>
       ) : (
-        <>
-          <div className="grid grid-cols-3 gap-3">
-            <Tile label="Employees" value={profiles.length} />
-            <Tile label="Departments" value={deptOptions.length} />
-            <Tile label="Joined this month" value={joinedThisMonth} />
-          </div>
+        <div className={`rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm ${loading ? 'opacity-70' : ''}`}>
+          {/* Cards: the phone layout, and the desktop one when "Cards" is chosen. */}
+          <ul className={`${view === 'grid' ? 'grid gap-3 p-3 md:grid-cols-2 xl:grid-cols-3' : 'flex flex-col gap-2 p-3 md:hidden'}`}>
+            {profiles.map((p) => (
+              <li key={p.user_id} className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
+                <div className="flex items-start gap-3">
+                  <PersonAvatar name={p.full_name} userId={p.user_id} size="md" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate">{nameOf(p, 'text-sm font-semibold text-on-surface')}</p>
+                    <p className="truncate text-label-sm text-outline">{p.employee_code ?? 'No code'} · {p.email}</p>
+                  </div>
+                  {editButton(p)}
+                </div>
+                <p className="mt-2 text-xs text-on-surface-variant">{[p.designation_name, p.grade].filter(Boolean).join(' · ') || '—'}</p>
+                <p className="text-xs text-on-surface-variant">{[p.department_name, p.squad].filter(Boolean).join(' · ') || '—'}</p>
+                <p className="mt-1 text-xs">{shiftCell(p)}</p>
+              </li>
+            ))}
+          </ul>
 
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search name, email or employee code"
-              aria-label="Search employees"
-              className={`${fieldInputCls} w-full sm:max-w-sm`}
-            />
-            <select value={dept} onChange={(e) => setDept(e.target.value)} aria-label="Filter by department" className={`${fieldInputCls} sm:w-56`}>
-              <option value="">All departments</option>
-              {deptOptions.map((d) => <option key={d} value={d}>{d}</option>)}
-            </select>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap gap-2" role="tablist" aria-label="Employment status">
-              {([['active', 'Active'], ['exited', 'Exited'], ['all', 'All']] as const).map(([key, label]) => (
-                <button key={key} type="button" role="tab" aria-selected={status === key} onClick={() => setStatus(key)}
-                  className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${status === key ? 'border-primary bg-primary-fixed text-on-primary-fixed' : 'border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low'}`}>
-                  {label} <span className="tabular-nums opacity-70">{counts[key]}</span>
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="hidden gap-1 md:flex" role="group" aria-label="Layout">
-                <Button variant={view === 'table' ? 'primary' : 'secondary'} onClick={() => setView('table')} aria-pressed={view === 'table'}>Table</Button>
-                <Button variant={view === 'grid' ? 'primary' : 'secondary'} onClick={() => setView('grid')} aria-pressed={view === 'grid'}>Cards</Button>
-              </div>
-              <Button variant="secondary" onClick={exportCsv} disabled={visible.length === 0}>Export CSV</Button>
-            </div>
-          </div>
-
-          {visible.length === 0 ? (
-            <p className={emptyBlockCls}>No one matches these filters.</p>
-          ) : (
-            <>
-              {/* Cards: the phone layout, and the desktop one when "Cards" is chosen. */}
-              <ul className={`${view === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3' : 'flex flex-col gap-2 md:hidden'}`}>
-                {visible.map((p) => (
-                  <li key={p.user_id} className="rounded-xl border border-outline-variant bg-surface-container-lowest p-3 shadow-sm">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate">{nameOf(p, 'text-sm font-semibold text-on-surface')}</p>
-                        <p className="truncate text-label-sm text-outline">{p.email}</p>
+          <div className={`${view === 'grid' ? 'hidden' : 'hidden md:block'} overflow-x-auto`}>
+            <table className="w-full min-w-[900px] text-sm">
+              <thead>
+                <tr className="border-b border-outline-variant bg-surface-container-low text-left text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+                  <th className="px-4 py-3">Employee &amp; ID</th>
+                  <th className="px-4 py-3">Designation &amp; level</th>
+                  <th className="px-4 py-3">Department &amp; squad</th>
+                  <th className="px-4 py-3">Today&apos;s shift</th>
+                  <th className="px-4 py-3">Work mode</th>
+                  {canManage && <th className="px-4 py-3 text-right">Action</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {profiles.map((p) => (
+                  <tr key={p.user_id} className="border-b border-outline-variant/50 last:border-0 hover:bg-surface-container-low">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <PersonAvatar name={p.full_name} userId={p.user_id} size="md" />
+                        <div className="min-w-0">
+                          <p className="truncate">{nameOf(p, 'font-semibold text-on-surface')}</p>
+                          <p className="truncate font-mono text-label-sm text-outline">{p.employee_code ?? 'No code'} · {p.email}</p>
+                        </div>
                       </div>
-                      {editButton(p)}
-                    </div>
-                    <p className="mt-2 text-xs text-on-surface-variant">
-                      {[p.designation_name, p.department_name].filter(Boolean).join(' · ') || '—'}
-                    </p>
-                    <p className="text-label-sm text-outline">
-                      {p.employee_code ?? 'No code'} · Joined {p.date_of_joining ?? '—'}
-                    </p>
-                  </li>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="text-on-surface">{p.designation_name ?? '—'}</p>
+                      {p.grade && <span className="mt-0.5 inline-block rounded bg-primary-fixed px-1.5 py-0.5 text-label-sm font-semibold text-on-primary-fixed">{p.grade}</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="text-on-surface">{p.department_name ?? '—'}</p>
+                      {p.squad && <p className="text-label-sm text-on-surface-variant">{p.squad}</p>}
+                    </td>
+                    <td className="px-4 py-3 text-xs">{shiftCell(p)}</td>
+                    <td className="px-4 py-3 text-xs text-on-surface-variant">{p.work_mode ? optionLabel(WORK_MODE_OPTIONS, p.work_mode) : '—'}</td>
+                    {canManage && <td className="px-4 py-3 text-right">{editButton(p)}</td>}
+                  </tr>
                 ))}
-              </ul>
+              </tbody>
+            </table>
+          </div>
 
-              <div className={`${view === 'grid' ? 'hidden' : 'hidden md:block'} overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm`}>
-                <table className="w-full min-w-[820px] text-sm">
-                  <thead>
-                    <tr className="border-b border-outline-variant text-left text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
-                      <th className="px-4 py-3">Employee</th>
-                      <th className="px-4 py-3">Code</th>
-                      <th className="px-4 py-3">Joined</th>
-                      <th className="px-4 py-3">Department</th>
-                      <th className="px-4 py-3">Designation</th>
-                      <th className="px-4 py-3">Weekly off</th>
-                      {canManage && <th className="px-4 py-3 text-right">Action</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visible.map((p) => (
-                      <tr key={p.user_id} className="border-b border-outline-variant/50 last:border-0 hover:bg-surface-container-low">
-                        <td className="px-4 py-3">
-                          <p>{nameOf(p, 'font-medium text-on-surface')}</p>
-                          <p className="text-label-sm text-outline">{p.email}</p>
-                        </td>
-                        <td className="px-4 py-3 text-on-surface-variant">{p.employee_code ?? '—'}</td>
-                        <td className="px-4 py-3 text-on-surface-variant">{p.date_of_joining ?? '—'}</td>
-                        <td className="px-4 py-3 text-on-surface-variant">{p.department_name ?? '—'}</td>
-                        <td className="px-4 py-3 text-on-surface-variant">{p.designation_name ?? '—'}</td>
-                        <td className="px-4 py-3 text-label-sm text-on-surface-variant">
-                          {(p.weekly_off_pattern ?? []).map((d) => WEEKDAYS[d]).join(', ') || '—'}
-                        </td>
-                        {canManage && <td className="px-4 py-3 text-right">{editButton(p)}</td>}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </>
+          <Pagination page={page} pageSize={pageSize} total={total} onPage={setPage} onPageSize={(n) => { setPageSize(n); setPage(1); }} noun="employees" />
+        </div>
       )}
 
       {canManage && editing && (
@@ -229,15 +255,6 @@ export default function EmployeeProfilesManager({ onNotice, canManage, canOpenPr
           onSaved={(msg) => { onNotice(msg); load(); loadLookups(); }}
         />
       )}
-    </div>
-  );
-}
-
-function Tile({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-3 shadow-sm sm:p-4">
-      <p className="text-label-sm font-semibold uppercase tracking-wide text-on-surface-variant">{label}</p>
-      <p className="mt-1 font-mono text-headline-md font-bold tabular-nums text-on-surface">{value}</p>
     </div>
   );
 }

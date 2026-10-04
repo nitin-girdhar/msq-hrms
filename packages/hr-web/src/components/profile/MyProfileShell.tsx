@@ -114,7 +114,7 @@ export default function MyProfileShell({ actor }: Props) {
           <>
             <section className="grid gap-4 rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm sm:p-5 lg:grid-cols-[1fr_auto]">
               <div className="flex min-w-0 flex-col gap-4 sm:flex-row">
-                <Avatar name={name} />
+                <Avatar name={name} userId={actor.id} />
                 <div className="min-w-0 space-y-1.5">
                   <h2 className="truncate text-headline-md font-bold text-on-surface">{name}</h2>
                   {workLine && <p className="text-sm font-medium text-primary">{workLine}</p>}

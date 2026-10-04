@@ -16,7 +16,13 @@ const SELECT_FIELDS = sql`
   u.full_name, u.email, u.mobile, ur.name AS role_name,
   et.name AS employment_type_name,
   d.id AS department_id, d.name AS department_name,
-  ds.id AS designation_id, ds.name AS designation_name
+  ds.id AS designation_id, ds.name AS designation_name,
+  sh.shift_name, sh.shift_start, sh.shift_end,
+  EXISTS (
+    SELECT 1 FROM hr.leave_requests lr JOIN hr.leave_request_statuses ls ON ls.id = lr.status_id
+    WHERE lr.user_id = ep.user_id AND lr.org_id = ep.org_id AND NOT lr.is_deleted AND ls.name = 'approved'
+      AND lr.start_date <= CURRENT_DATE AND lr.end_date >= CURRENT_DATE
+  ) AS on_leave_today
 `;
 
 const JOINS = sql`
@@ -26,33 +32,65 @@ const JOINS = sql`
   LEFT JOIN hr.employment_types et ON et.id = ep.employment_type_id
   LEFT JOIN iam.departments d ON d.id = ep.department_id
   LEFT JOIN hr.designations ds ON ds.id = ep.designation_id
+  LEFT JOIN LATERAL (
+    SELECT s.name AS shift_name, to_char(s.start_time, 'HH24:MI') AS shift_start, to_char(s.end_time, 'HH24:MI') AS shift_end
+    FROM hr.shift_assignments a JOIN hr.shifts s ON s.id = a.shift_id
+    WHERE a.user_id = ep.user_id AND a.org_id = ep.org_id AND NOT a.is_deleted AND a.is_active
+      AND a.effective_from <= CURRENT_DATE AND (a.effective_to IS NULL OR a.effective_to >= CURRENT_DATE)
+    LIMIT 1
+  ) sh ON TRUE
 `;
 
 export async function listEmployees(ctx: RoleTxContext, filters: ListEmployeeProfilesInput) {
   return withRoleTx(ctx, async (tx) => {
-    const { page, limit, search } = filters;
+    const { page, limit, search, department, status } = filters;
     const offset = (page - 1) * limit;
     const searchClause = search
-      ? sql`AND (u.full_name ILIKE ${'%' + search + '%'} OR ep.employee_code ILIKE ${'%' + search + '%'})`
+      ? sql`AND (u.full_name ILIKE ${'%' + search + '%'} OR u.email ILIKE ${'%' + search + '%'} OR ep.employee_code ILIKE ${'%' + search + '%'})`
       : sql``;
+    const deptClause = department ? sql`AND d.name = ${department}` : sql``;
+    // Exited = a last working day on or before today; a FUTURE exit date is still active.
+    const statusClause =
+      status === 'exited' ? sql`AND ep.date_of_exit IS NOT NULL AND ep.date_of_exit <= CURRENT_DATE`
+      : status === 'active' ? sql`AND (ep.date_of_exit IS NULL OR ep.date_of_exit > CURRENT_DATE)`
+      : sql``;
+    const base = sql`WHERE ep.org_id = ${ctx.org_id} AND NOT ep.is_deleted`;
 
     const rows = (await tx.execute(sql`
       SELECT ${SELECT_FIELDS}
       ${JOINS}
-      WHERE ep.org_id = ${ctx.org_id} AND NOT ep.is_deleted
-      ${searchClause}
+      ${base} ${searchClause} ${deptClause} ${statusClause}
       ORDER BY u.full_name ASC
       LIMIT ${limit} OFFSET ${offset}
     `)) as Array<Record<string, unknown>>;
 
     const countRows = (await tx.execute(sql`
-      SELECT COUNT(*)::int AS count
-      ${JOINS}
-      WHERE ep.org_id = ${ctx.org_id} AND NOT ep.is_deleted
-      ${searchClause}
+      SELECT COUNT(*)::int AS count ${JOINS} ${base} ${searchClause} ${deptClause} ${statusClause}
     `)) as Array<{ count: number }>;
 
-    return { data: rows, total: countRows[0]?.count ?? 0, page, limit };
+    // Directory header numbers. Counted for the search + department the person is looking at, but NOT
+    // for the status tab, so the tabs can show Active / Exited / All side by side.
+    const meta = (await tx.execute(sql`
+      SELECT
+        COUNT(*) FILTER (WHERE ep.date_of_exit IS NULL OR ep.date_of_exit > CURRENT_DATE)::int AS active,
+        COUNT(*) FILTER (WHERE ep.date_of_exit IS NOT NULL AND ep.date_of_exit <= CURRENT_DATE)::int AS exited,
+        COUNT(*)::int AS "all",
+        COUNT(*) FILTER (WHERE (ep.date_of_exit IS NULL OR ep.date_of_exit > CURRENT_DATE) AND sh.shift_name IS NOT NULL)::int AS with_shift,
+        COUNT(*) FILTER (WHERE (ep.date_of_exit IS NULL OR ep.date_of_exit > CURRENT_DATE) AND EXISTS (
+          SELECT 1 FROM hr.leave_requests lr JOIN hr.leave_request_statuses ls ON ls.id = lr.status_id
+          WHERE lr.user_id = ep.user_id AND lr.org_id = ep.org_id AND NOT lr.is_deleted AND ls.name = 'approved'
+            AND lr.start_date <= CURRENT_DATE AND lr.end_date >= CURRENT_DATE))::int AS on_leave,
+        COUNT(*) FILTER (WHERE ep.date_of_joining >= date_trunc('month', CURRENT_DATE)::date AND (ep.date_of_exit IS NULL OR ep.date_of_exit > CURRENT_DATE))::int AS joined_this_month
+      ${JOINS} ${base} ${searchClause} ${deptClause}
+    `)) as Array<Record<string, number>>;
+
+    const departments = (await tx.execute(sql`
+      SELECT d.name, COUNT(*)::int AS count ${JOINS}
+      ${base} AND d.name IS NOT NULL AND (ep.date_of_exit IS NULL OR ep.date_of_exit > CURRENT_DATE)
+      GROUP BY d.name ORDER BY COUNT(*) DESC, d.name
+    `)) as Array<{ name: string; count: number }>;
+
+    return { data: rows, total: countRows[0]?.count ?? 0, page, limit, meta: { ...(meta[0] ?? {}), departments } };
   });
 }
 

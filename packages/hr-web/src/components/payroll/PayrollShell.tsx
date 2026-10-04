@@ -152,7 +152,7 @@ function AdminSection({ onNotice, onError }: { onNotice: (m: string) => void; on
     payroll.overview(month).then((r) => setData(r.data)).catch((e) => onError(e instanceof Error ? e.message : 'Failed to load payroll.'));
   }, [month, onError]);
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { hrEmployees.list().then((r) => setPeople(r.data)).catch(() => setPeople([])); }, []);
+  useEffect(() => { hrEmployees.list({ limit: 100, status: 'active' }).then((r) => setPeople(r.data)).catch(() => setPeople([])); }, []);
 
   const run = async (fn: () => Promise<unknown>, done: string) => {
     setBusy(true);

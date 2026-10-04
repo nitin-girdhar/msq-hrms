@@ -162,6 +162,10 @@ export interface EmployeeProfileView {
   notice_period_days?: number | null;
   work_mode?: 'office' | 'hybrid' | 'remote' | null;
   seat_label?: string | null;
+  shift_name?: string | null;
+  shift_start?: string | null;
+  shift_end?: string | null;
+  on_leave_today?: boolean;
 }
 
 export interface HrLookupOption {

@@ -446,11 +446,16 @@ export const holidayCalendars = {
 
 // ── Employee profiles & lookups ─────────────────────────────────────────────
 
+/** The directory list: one page of people plus the header numbers for the filters in force. */
+export interface DirectoryEnvelope extends ListEnvelope<EmployeeProfileView> {
+  meta?: { active: number; exited: number; all: number; with_shift: number; on_leave: number; joined_this_month: number; departments: Array<{ name: string; count: number }> };
+}
+
 export const hrEmployees = {
   // The endpoint paginates (default limit 20), so callers that need the full
   // roster — e.g. the shift-assignment picker — must pass an explicit limit.
-  list: (params: { page?: number; limit?: number; search?: string } = {}) =>
-    request<ListEnvelope<EmployeeProfileView>>(`/hr/employees${qs(params)}`),
+  list: (params: { page?: number; limit?: number; search?: string; department?: string; status?: 'active' | 'exited' | 'all' } = {}) =>
+    request<DirectoryEnvelope>(`/hr/employees${qs(params)}`),
 
   get: (userId: string) => request<Envelope<EmployeeProfileView>>(`/hr/employees/${userId}`),
 
