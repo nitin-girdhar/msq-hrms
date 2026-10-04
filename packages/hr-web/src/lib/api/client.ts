@@ -21,6 +21,7 @@ import type {
   CompOffClaim,
 } from '../leave/types';
 import type { Roster, ShiftSwap } from '../team/types';
+import type { Announcement, Asset, MyAsset } from '../extras/types';
 import type { PayrollOverview, PayslipDetail, PayslipSummary } from '../payroll/types';
 import type {
   Employee360,
@@ -215,6 +216,26 @@ export const leave = {
 };
 
 // ── Holidays & calendars ────────────────────────────────────────────────────
+
+// ── Announcements + assets (schema 1.63.0) ────────────────────────────────────
+export const announcements = {
+  list: () => request<Envelope<Announcement[]>>('/hr/announcements'),
+  markRead: (id: string) => request<void>(`/hr/announcements/${id}/read`, { method: 'POST' }),
+  create: (body: { title: string; body: string; category: string; is_pinned: boolean; publish: boolean }) =>
+    request<Envelope<{ id: string }>>('/hr/announcements', { method: 'POST', body: JSON.stringify(body) }),
+  retire: (id: string) => request<void>(`/hr/announcements/${id}/retire`, { method: 'POST' }),
+};
+
+export const assets = {
+  /** What the caller currently holds. */
+  mine: () => request<Envelope<MyAsset[]>>('/hr/assets/mine'),
+  list: () => request<Envelope<Asset[]>>('/hr/assets'),
+  create: (body: { asset_tag: string; name: string; category: string; serial_no?: string }) =>
+    request<Envelope<{ id: string }>>('/hr/assets', { method: 'POST', body: JSON.stringify(body) }),
+  assign: (id: string, userId: string) =>
+    request<void>(`/hr/assets/${id}/assign`, { method: 'POST', body: JSON.stringify({ user_id: userId }) }),
+  returnAsset: (id: string) => request<void>(`/hr/assets/${id}/return`, { method: 'POST' }),
+};
 
 // ── Payroll viewer + month lock (schema 1.62.0) ───────────────────────────────
 export const payroll = {

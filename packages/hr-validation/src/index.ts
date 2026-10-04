@@ -4,3 +4,4 @@ export * from './attendance.js';
 export * from './profile.js';
 export * from './swap.js';
 export * from './payroll.js';
+export * from './extras.js';

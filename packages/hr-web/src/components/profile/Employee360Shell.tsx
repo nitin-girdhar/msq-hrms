@@ -15,13 +15,14 @@ import {
 } from '../../lib/profile/types';
 import { formatDay, formatDateTime } from '../../lib/attendance/format';
 import { emptyBlockCls, fieldInputCls, stateBlockCls } from '../../lib/ui';
+import AssetsPanel from './AssetsPanel';
 
 interface Props {
   actor: SessionUser;
   userId: string;
 }
 
-type Tab = 'overview' | 'leave' | 'notes';
+type Tab = 'overview' | 'leave' | 'assets' | 'notes';
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function tenure(joined: string | null): string {
@@ -49,6 +50,7 @@ export default function Employee360Shell({ actor, userId }: Props) {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('overview');
   const canNotes = can(actor, CAPABILITY.HR_EMPLOYEES_NOTES_MANAGE);
+  const canAssets = can(actor, CAPABILITY.HR_EMPLOYEES_ASSETS_MANAGE);
 
   const load = useCallback(() => {
     employee360
@@ -61,6 +63,7 @@ export default function Employee360Shell({ actor, userId }: Props) {
   useEffect(() => { load(); }, [load]);
 
   const tabs: Array<[Tab, string]> = [['overview', 'Overview'], ['leave', 'Leave']];
+  if (canAssets) tabs.push(['assets', 'Assets']);
   if (canNotes) tabs.push(['notes', 'HR notes']);
 
   if (loading) return <div className="flex w-full flex-1 flex-col"><PageHeader title="Employee" /><PageBody><div className={stateBlockCls}>Loading…</div></PageBody></div>;
@@ -191,6 +194,12 @@ export default function Employee360Shell({ actor, userId }: Props) {
                 ))}
               </ul>
             )}
+          </PageSection>
+        )}
+
+        {tab === 'assets' && canAssets && (
+          <PageSection title="Equipment">
+            <AssetsPanel userId={userId} onError={setError} />
           </PageSection>
         )}
 

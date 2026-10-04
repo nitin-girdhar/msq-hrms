@@ -13,7 +13,9 @@ import {
   type PersonalForm,
 } from '../../lib/profile/types';
 import { fieldInputCls, fieldLabelCls, stateBlockCls } from '../../lib/ui';
+import { can, CAPABILITY } from '@platform/rbac';
 import ContactsEditor from './ContactsEditor';
+import { MyAssetsList } from './AssetsPanel';
 
 interface Props {
   actor: SessionUser;
@@ -133,6 +135,11 @@ export default function MyProfileShell({ actor }: Props) {
                 onError={setError}
               />
             </PageSection>
+            {can(actor, CAPABILITY.HR_EMPLOYEES_ASSETS_VIEW) && (
+              <PageSection title="My equipment">
+                <MyAssetsList />
+              </PageSection>
+            )}
           </>
         )}
       </PageBody>

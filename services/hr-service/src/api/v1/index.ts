@@ -4,6 +4,8 @@ import { profileRouter } from './profile/profile.router.js';
 import { leaveRouter } from './leave/leave.router.js';
 import { swapsRouter } from './swaps/swaps.router.js';
 import { payrollRouter } from './payroll/payroll.router.js';
+import { announcementsRouter } from './announcements/announcements.router.js';
+import { assetsRouter } from './assets/assets.router.js';
 import { attendanceRouter } from './attendance/attendance.router.js';
 import { modulesRouter } from './modules/modules.router.js';
 import { meRouter } from './me/me.router.js';
@@ -30,6 +32,8 @@ export async function v1Router(app: FastifyInstance) {
   await app.register(attendanceRouter);
   await app.register(swapsRouter);
   await app.register(payrollRouter);
+  await app.register(announcementsRouter);
+  await app.register(assetsRouter);
   await app.register(modulesRouter);
   await app.register(meRouter);
   await app.register(internalRouter);

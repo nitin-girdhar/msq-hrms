@@ -13,6 +13,7 @@ import { useTodayAttendance } from '../../hooks/useTodayAttendance';
 import TodayCard from '../attendance/TodayCard';
 import MonthSummaryStrip from '../attendance/MonthSummaryStrip';
 import BalanceCards from '../leave/BalanceCards';
+import AnnouncementsPanel from './AnnouncementsPanel';
 import { emptyBlockCls } from '../../lib/ui';
 
 interface Props {
@@ -148,6 +149,8 @@ export default function EmployeeDashboardShell({ actor }: Props) {
             </PageSection>
           </div>
         )}
+
+        {can(actor, CAPABILITY.HR_EMPLOYEES_ANNOUNCEMENTS_VIEW) && <AnnouncementsPanel actor={actor} onError={setError} />}
       </PageBody>
     </div>
   );
