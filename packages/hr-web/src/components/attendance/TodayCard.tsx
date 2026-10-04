@@ -75,8 +75,10 @@ function liveWorkedMinutes(events: DayEventView[], now: number): number | null {
 
 /** Ticking workplace clock (Stitch punch screen). Re-renders once a second, so it lives in its own component. */
 function LiveClock({ timezone }: { timezone?: string | undefined }) {
-  const [now, setNow] = useState(() => new Date());
+  // Null until mounted: the server cannot know the viewer's clock, so rendering a time during SSR is a guaranteed hydration mismatch.
+  const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
+    setNow(new Date());
     const id = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(id);
   }, []);
@@ -84,9 +86,9 @@ function LiveClock({ timezone }: { timezone?: string | undefined }) {
   return (
     <div className="text-right" aria-live="off">
       <p className="font-mono text-headline-lg font-bold tabular-nums text-on-primary">
-        {now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true, ...opts })}
+        {now ? now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true, ...opts }) : '--:--:--'}
       </p>
-      <p className="text-label-sm opacity-80">{now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', ...opts })}</p>
+      <p className="text-label-sm opacity-80">{now ? now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', ...opts }) : ' '}</p>
     </div>
   );
 }
