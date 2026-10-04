@@ -22,6 +22,10 @@ import type {
 } from '../leave/types';
 import type { Roster, ShiftSwap } from '../team/types';
 import type { Announcement, Asset, MyAsset } from '../extras/types';
+import type {
+  AuditEntry, BulkRegularizeOutcome, ChangeRequest, Employee360AttendanceRow, Encashment, Nudge,
+  OrgChartPerson, PolicySummaryRow, PunchLogRow, StatutoryForm, StatutoryView, StatutoryValues,
+} from '../h7/types';
 import type { PayrollOverview, PayslipDetail, PayslipSummary } from '../payroll/types';
 import type {
   Employee360,
@@ -115,6 +119,9 @@ export interface CreatePolicyBody {
   allow_half_day: boolean;
   requires_document_after_days?: number | null;
   approval_levels: number;
+  sla_hours?: number;
+  encashable?: boolean;
+  max_encash_days?: number | null;
   applicable_from: string;
 }
 
@@ -216,6 +223,62 @@ export const leave = {
 };
 
 // ── Holidays & calendars ────────────────────────────────────────────────────
+
+// ── Leave info/encashment/policy summary, statutory, tools (schema 1.64.0) ────
+export const leaveExtras = {
+  /** The approver asks the requester a question; the request stays pending. */
+  requestInfo: (id: string, comment: string) =>
+    request<void>(`/hr/leave/requests/${id}/request-info`, { method: 'POST', body: JSON.stringify({ comment }) }),
+  /** What an employee needs to know to apply well (no accrual figures). */
+  policySummary: () => request<Envelope<PolicySummaryRow[]>>('/hr/leave/policy-summary'),
+};
+
+export const encashments = {
+  create: (body: { leave_type_name: string; days: number; reason?: string }) =>
+    request<Envelope<{ id: string }>>('/hr/leave/encashments', { method: 'POST', body: JSON.stringify(body) }),
+  mine: () => request<Envelope<Encashment[]>>('/hr/leave/encashments'),
+  queue: (status: Encashment['status'] = 'pending') => request<Envelope<Encashment[]>>(`/hr/leave/encashments/queue${qs({ status })}`),
+  approve: (id: string, comment?: string) =>
+    request<Envelope<unknown>>(`/hr/leave/encashments/${id}/approve`, { method: 'POST', body: JSON.stringify({ comment }) }),
+  reject: (id: string, comment: string) =>
+    request<Envelope<unknown>>(`/hr/leave/encashments/${id}/reject`, { method: 'POST', body: JSON.stringify({ comment }) }),
+  cancel: (id: string) => request<Envelope<unknown>>(`/hr/leave/encashments/${id}/cancel`, { method: 'POST' }),
+};
+
+export const statutory = {
+  /** The caller's own details (they own them). */
+  mine: () => request<Envelope<StatutoryValues | null>>('/hr/profile/me/statutory'),
+  /** Masked for anyone who can open the profile; full values only with the manage capability. */
+  forEmployee: (userId: string) => request<Envelope<StatutoryView>>(`/hr/employees/${userId}/statutory`),
+  save: (userId: string, body: Partial<StatutoryForm>) =>
+    request<void>(`/hr/employees/${userId}/statutory`, { method: 'PUT', body: JSON.stringify(body) }),
+  myRequests: () => request<Envelope<ChangeRequest[]>>('/hr/profile/me/change-requests'),
+  requestChange: (payload: Partial<StatutoryForm>, reason?: string) =>
+    request<Envelope<{ id: string }>>('/hr/profile/me/change-requests', { method: 'POST', body: JSON.stringify({ payload, reason }) }),
+  cancelRequest: (id: string) => request<void>(`/hr/profile/me/change-requests/${id}/cancel`, { method: 'POST' }),
+  queue: (status: ChangeRequest['status'] = 'pending') => request<Envelope<ChangeRequest[]>>(`/hr/profile/change-requests${qs({ status })}`),
+  approve: (id: string, comment?: string) =>
+    request<void>(`/hr/profile/change-requests/${id}/approve`, { method: 'POST', body: JSON.stringify({ comment }) }),
+  reject: (id: string, comment: string) =>
+    request<void>(`/hr/profile/change-requests/${id}/reject`, { method: 'POST', body: JSON.stringify({ comment }) }),
+};
+
+export const employeeViews = {
+  attendance: (userId: string, month: string) => request<Envelope<Employee360AttendanceRow[]>>(`/hr/employees/${userId}/attendance${qs({ month })}`),
+  audit: (userId: string) => request<Envelope<AuditEntry[]>>(`/hr/employees/${userId}/audit`),
+  orgChart: () => request<Envelope<OrgChartPerson[]>>('/hr/employees/org-chart'),
+};
+
+export const attendanceTools = {
+  punches: (month: string) => request<Envelope<PunchLogRow[]>>(`/hr/attendance/me/punches${qs({ month })}`),
+  nudges: () => request<Envelope<Nudge[]>>('/hr/attendance/me/nudges'),
+  manualPunch: (body: { user_id: string; event_type: 'check_in' | 'check_out'; occurred_at: string; reason: string }) =>
+    request<Envelope<{ work_date: string }>>('/hr/attendance/admin/manual-punch', { method: 'POST', body: JSON.stringify(body) }),
+  bulkRegularize: (body: { user_ids: string[]; work_date: string; status_name: string; reason: string }) =>
+    request<Envelope<BulkRegularizeOutcome>>('/hr/attendance/admin/bulk-regularize', { method: 'POST', body: JSON.stringify(body) }),
+  nudge: (body: { user_ids: string[]; work_date: string }) =>
+    request<Envelope<{ requested: number; nudged: number }>>('/hr/attendance/admin/nudge', { method: 'POST', body: JSON.stringify(body) }),
+};
 
 // ── Announcements + assets (schema 1.63.0) ────────────────────────────────────
 export const announcements = {

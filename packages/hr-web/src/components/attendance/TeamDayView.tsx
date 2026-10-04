@@ -17,6 +17,13 @@ interface Props {
   canManage: boolean;
   /** Re-fetch after an admin changes a photo. */
   onChanged: () => void;
+  /** Roster tools (hr.attendance.admin.override): row selection and "add a punch". Omit for read-only. */
+  tools?: {
+    selected: Set<string>;
+    onToggle: (userId: string) => void;
+    onToggleAll: (userIds: string[]) => void;
+    onManualPunch: (row: TeamDayRow) => void;
+  };
 }
 
 type Filter = 'all' | 'late' | 'not_marked' | 'flagged';
@@ -34,7 +41,7 @@ const isFlagged = (r: TeamDayRow) =>
   r.is_early_exit || r.has_off_window_punch || r.has_open_session || r.has_pending_face_review;
 const isOnDuty = (r: TeamDayRow) => r.status_name === 'present' || r.status_name === 'wfh' || r.status_name === 'half_day';
 
-export default function TeamDayView({ rows, loading, faceEnabled, canManage, onChanged }: Props) {
+export default function TeamDayView({ rows, loading, faceEnabled, canManage, onChanged, tools }: Props) {
   const [viewing, setViewing] = useState<TeamDayRow | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
 
@@ -137,6 +144,9 @@ export default function TeamDayView({ rows, loading, faceEnabled, canManage, onC
               return (
                 <li key={r.user_id} className="rounded-xl border border-outline-variant bg-surface-container-lowest p-3 shadow-sm">
                   <div className="flex items-start justify-between gap-2">
+                    {tools && (
+                      <input type="checkbox" checked={tools.selected.has(r.user_id)} onChange={() => tools.onToggle(r.user_id)} aria-label={`Select ${r.user_full_name}`} className="mt-2 h-4 w-4 shrink-0 accent-primary" />
+                    )}
                     {person(r)}
                     <span className={`shrink-0 rounded-full px-2 py-0.5 text-label-sm font-medium ${style.bg} ${style.fg}`}>{r.status_label}</span>
                   </div>
@@ -146,15 +156,21 @@ export default function TeamDayView({ rows, loading, faceEnabled, canManage, onC
                     <div><dt className="text-label-sm text-outline">Worked</dt><dd className="tabular-nums text-on-surface">{formatWorkedMinutes(r.worked_minutes)}</dd></div>
                   </dl>
                   {isFlagged(r) || r.is_late ? <div className="mt-2 text-label-sm text-on-status-due-container">{flags(r)}</div> : null}
+                  {tools && <button type="button" onClick={() => tools.onManualPunch(r)} className="mt-2 rounded-lg px-2 py-1 text-xs font-semibold text-primary hover:bg-primary-fixed">Add a punch</button>}
                 </li>
               );
             })}
           </ul>
 
           <div className="hidden overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm md:block">
-            <table className="w-full min-w-[760px] text-sm">
+            <table className="w-full min-w-[820px] text-sm">
               <thead>
                 <tr className="border-b border-outline-variant text-left text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+                  {tools && (
+                    <th className="w-10 px-4 py-3">
+                      <input type="checkbox" aria-label="Select everyone shown" checked={visible.length > 0 && visible.every((r) => tools.selected.has(r.user_id))} onChange={() => tools.onToggleAll(visible.map((r) => r.user_id))} className="h-4 w-4 accent-primary" />
+                    </th>
+                  )}
                   <th className="px-4 py-3">Employee</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">In</th>
@@ -173,7 +189,15 @@ export default function TeamDayView({ rows, loading, faceEnabled, canManage, onC
                   const pending = r.has_pending_face_review;
                   return (
                     <tr key={r.user_id} className="border-b border-outline-variant/50 last:border-0 hover:bg-surface-container-low">
-                      <td className="px-4 py-3">{person(r)}</td>
+                      {tools && (
+                        <td className="px-4 py-3">
+                          <input type="checkbox" checked={tools.selected.has(r.user_id)} onChange={() => tools.onToggle(r.user_id)} aria-label={`Select ${r.user_full_name}`} className="h-4 w-4 accent-primary" />
+                        </td>
+                      )}
+                      <td className="px-4 py-3">
+                        {person(r)}
+                        {tools && <button type="button" onClick={() => tools.onManualPunch(r)} className="mt-1 text-label-sm font-semibold text-primary hover:underline">Add a punch</button>}
+                      </td>
                       <td className="px-4 py-3">
                         <span className={`rounded-full px-2 py-0.5 text-label-sm font-medium ${style.bg} ${style.fg}`}>{r.status_label}</span>
                       </td>

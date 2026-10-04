@@ -14,6 +14,9 @@ import TeamLeaveCalendar from './TeamLeaveCalendar';
 import ApprovalDecisionModal from './ApprovalDecisionModal';
 import BulkLeaveDecisionModal from './BulkLeaveDecisionModal';
 import CompOffQueue from './CompOffQueue';
+import RequestInfoModal from './RequestInfoModal';
+import { EncashmentQueue } from './EncashmentPanel';
+import { slaState } from '../../lib/h7/types';
 
 interface Props {
   actor: SessionUser;
@@ -26,6 +29,9 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState<LeaveRequestView | null>(null);
+  const [asking, setAsking] = useState<LeaveRequestView | null>(null);
+  const [tab, setTab] = useState<'queue' | 'claims' | 'calendar'>('queue');
+  const showClaims = can(actor, CAPABILITY.HR_LEAVE_COMP_OFF_APPROVE) || can(actor, CAPABILITY.HR_LEAVE_ENCASHMENT_APPROVE);
   // Selected request ids for the bulk bar, and the decision awaiting confirmation.
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDecision, setBulkDecision] = useState<'approve' | 'reject' | null>(null);
@@ -89,6 +95,16 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
         {notice && <Alert tone="success">{notice}</Alert>}
         {error && <Alert tone="error">{error}</Alert>}
 
+        <div className="flex gap-1 border-b border-outline-variant" role="tablist">
+          {([['queue', `Approvals (${pending.length})`], ...(showClaims ? [['claims', 'Comp-off & encashment']] : []), ['calendar', 'Team availability']] as Array<['queue' | 'claims' | 'calendar', string]>).map(([key, label]) => (
+            <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
+              className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${tab === key ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'queue' && (
         <PageSection title={`Pending approvals (${pending.length})`}>
         {loading ? (
           <div className={stateBlockCls}>Loading…</div>
@@ -142,11 +158,22 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
                   <span className="text-on-surface-variant"> · {formatDays(r.days_count)}</span>
                 </p>
                 {r.reason && <p className="line-clamp-2 text-xs text-on-surface-variant">{r.reason}</p>}
+                {(() => {
+                  const sla = slaState(r.created_at, r.sla_hours);
+                  const cls = sla?.tone === 'overdue' ? 'bg-status-overdue-container text-on-status-overdue-container' : sla?.tone === 'due' ? 'bg-status-due-container text-on-status-due-container' : 'bg-surface-container text-on-surface-variant';
+                  return (
+                    <div className="flex flex-wrap gap-1.5">
+                      {sla && <span className={`rounded-full px-2 py-0.5 text-label-sm font-semibold ${cls}`}>{sla.label}</span>}
+                      {r.info_requested_at && <span className="rounded-full bg-status-info-container px-2 py-0.5 text-label-sm font-semibold text-on-status-info-container">Waiting for their answer</span>}
+                    </div>
+                  );
+                })()}
                 <div className="mt-auto flex items-center justify-between gap-2 pt-1">
                   <span className="text-label-sm text-outline">Applied {formatDateTime(r.created_at)}</span>
-                  <Button variant="primary" onClick={() => { setReviewing(r); setNotice(null); }}>
-                    Review
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="secondary" onClick={() => { setAsking(r); setNotice(null); }}>Ask</Button>
+                    <Button variant="primary" onClick={() => { setReviewing(r); setNotice(null); }}>Review</Button>
+                  </div>
                 </div>
               </li>
             ))}
@@ -154,16 +181,28 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
           </>
         )}
         </PageSection>
-
-        {can(actor, CAPABILITY.HR_LEAVE_COMP_OFF_APPROVE) && (
-          <PageSection title="Comp-off claims">
-            <CompOffQueue onNotice={setNotice} onError={setError} />
-          </PageSection>
         )}
 
-        <PageSection title="Team calendar">
-          <TeamLeaveCalendar />
-        </PageSection>
+        {tab === 'claims' && showClaims && (
+          <>
+            {can(actor, CAPABILITY.HR_LEAVE_COMP_OFF_APPROVE) && (
+              <PageSection title="Comp-off claims">
+                <CompOffQueue onNotice={setNotice} onError={setError} />
+              </PageSection>
+            )}
+            {can(actor, CAPABILITY.HR_LEAVE_ENCASHMENT_APPROVE) && (
+              <PageSection title="Encashment requests">
+                <EncashmentQueue onNotice={setNotice} onError={setError} />
+              </PageSection>
+            )}
+          </>
+        )}
+
+        {tab === 'calendar' && (
+          <PageSection title="Team availability">
+            <TeamLeaveCalendar />
+          </PageSection>
+        )}
       </PageBody>
 
       <BulkLeaveDecisionModal
@@ -172,6 +211,7 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
         onClose={() => setBulkDecision(null)}
         onDone={handleBulkDone}
       />
+      {asking && <RequestInfoModal request={asking} onClose={() => setAsking(null)} onSent={() => { setAsking(null); setNotice('Question sent. The request stays pending until they answer.'); load(); }} />}
       <ApprovalDecisionModal request={reviewing} onClose={() => setReviewing(null)} onDecided={handleDecided} />
     </div>
   );

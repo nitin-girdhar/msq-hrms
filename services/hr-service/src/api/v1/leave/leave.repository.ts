@@ -26,6 +26,7 @@ import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '.
 import { computeLeaveDays, type HalfDay } from '../../../lib/leave/compute-leave-days.js';
 import { resolveApprovers } from '../../../lib/leave/resolve-approvers.js';
 import { resolveEffectivePolicy, resolveCycleStartMonth } from '../../../lib/leave/policy.js';
+import { checkEncashment, type EncashmentPolicy } from '../../../lib/leave/encashment.js';
 import { COMP_OFF_EXPIRY_DAYS, COMP_OFF_LEAVE_TYPE, addDaysIso, checkClaimDate } from '../../../lib/leave/comp-off.js';
 import type {
   ApplyLeaveRequestInput,
@@ -43,6 +44,7 @@ import type {
   CreateHolidayCalendarInput,
   UpdateHolidayCalendarInput,
   CreateCompOffClaimInput,
+  CreateEncashmentInput,
 } from '@hr/validation';
 
 // `capabilities` (Tier C3) rides along so the service-layer gates can ask the
@@ -610,7 +612,8 @@ export async function updateLeaveRequest(
       UPDATE hr.leave_requests
       SET leave_type_id = ${leaveTypeId}, start_date = ${data.start_date}, end_date = ${data.end_date},
           start_half = ${data.start_half}, end_half = ${data.end_half}, days_count = ${daysCount},
-          reason = ${data.reason ?? null}, document_url = ${data.document_url ?? null}
+          reason = ${data.reason ?? null}, document_url = ${data.document_url ?? null},
+          info_requested_at = NULL, info_request_note = NULL
       WHERE id = ${id}
     `);
 
@@ -911,7 +914,8 @@ export async function listPolicies(ctx: LeaveCtx, filters: ListPoliciesInput) {
              p.max_balance::float8 AS max_balance, p.carry_forward,
              p.max_carry_forward::float8 AS max_carry_forward, p.max_consecutive_days,
              p.min_notice_days, p.allow_half_day, p.requires_document_after_days,
-             p.approval_levels, p.applicable_from::text, p.is_active
+             p.approval_levels, p.sla_hours, p.encashable, p.max_encash_days::float8 AS max_encash_days,
+             p.applicable_from::text, p.is_active
       FROM hr.leave_policies p
       JOIN hr.leave_types lt ON lt.id = p.leave_type_id
       WHERE p.tenant_id = ${ctx.tenant_id} AND NOT p.is_deleted
@@ -937,12 +941,13 @@ export async function createPolicy(ctx: LeaveCtx, data: CreatePolicyInput): Prom
         INSERT INTO hr.leave_policies
           (tenant_id, org_id, leave_type_id, accrual_frequency, accrual_amount, max_balance,
            carry_forward, max_carry_forward, max_consecutive_days, min_notice_days, allow_half_day,
-           requires_document_after_days, approval_levels, applicable_from, created_by)
+           requires_document_after_days, approval_levels, sla_hours, encashable, max_encash_days, applicable_from, created_by)
         VALUES
           (${ctx.tenant_id}, ${orgId}, ${leaveType.id}, ${data.accrual_frequency}, ${data.accrual_amount},
            ${data.max_balance ?? null}, ${data.carry_forward}, ${data.max_carry_forward ?? null},
            ${data.max_consecutive_days ?? null}, ${data.min_notice_days}, ${data.allow_half_day},
-           ${data.requires_document_after_days ?? null}, ${data.approval_levels}, ${data.applicable_from}, ${ctx.user_id})
+           ${data.requires_document_after_days ?? null}, ${data.approval_levels}, ${data.sla_hours}, ${data.encashable},
+           ${data.max_encash_days ?? null}, ${data.applicable_from}, ${ctx.user_id})
         RETURNING id::text
       `)) as unknown as Array<{ id: string }>;
       return { id: rows[0]!.id };
@@ -989,6 +994,9 @@ export async function updatePolicy(
     if (data.allow_half_day !== undefined) sets.push(sql`allow_half_day = ${data.allow_half_day}`);
     if (data.requires_document_after_days !== undefined) sets.push(sql`requires_document_after_days = ${data.requires_document_after_days}`);
     if (data.approval_levels !== undefined) sets.push(sql`approval_levels = ${data.approval_levels}`);
+    if (data.sla_hours !== undefined) sets.push(sql`sla_hours = ${data.sla_hours}`);
+    if (data.encashable !== undefined) sets.push(sql`encashable = ${data.encashable}`);
+    if (data.max_encash_days !== undefined) sets.push(sql`max_encash_days = ${data.max_encash_days}`);
     if (data.is_active !== undefined) sets.push(sql`is_active = ${data.is_active}`);
     if (sets.length === 0) return;
 
@@ -1330,5 +1338,216 @@ export async function cancelCompOffClaim(ctx: LeaveCtx, id: string): Promise<voi
       RETURNING id::text
     `)) as unknown as Row[];
     if (res.length === 0) throw new NotFoundError('No pending comp-off claim found');
+  });
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// REQUEST MORE INFO, POLICY SUMMARY, ENCASHMENT (schema 1.64.0)
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * The approver asks the requester a question. The request STAYS pending (no new
+ * status): the question is stored on it, shown to the requester, and cleared when the
+ * requester edits the request (updateLeaveRequest). Same authority as deciding it.
+ */
+export async function requestLeaveInfo(
+  ctx: LeaveCtx,
+  id: string,
+  comment: string,
+  isOverride: boolean,
+): Promise<{ request_id: string; requester_id: string; org_id: string }> {
+  return serviceTxWithContext(ctx, comment, async (tx) => {
+    const req = await loadRequestForAction(tx, id);
+    if (!req || req.org_id !== ctx.org_id) throw new NotFoundError('Leave request not found');
+    if (req.status_name !== 'pending') throw new ConflictError(`Request is already ${req.status_name}`);
+    const pending = await currentPendingLevel(tx, id);
+    if (!pending) throw new ConflictError('No pending approval level for this request');
+    const isAssigned = pending.approver_id === ctx.user_id;
+    if (!isAssigned && !isOverride) throw new ForbiddenError('You are not the approver for this level');
+    if (!(await canApproveLeave(tx, ctx.org_id, ctx.user_id, req.user_id))) {
+      throw new ForbiddenError('You are not authorized to act on this request');
+    }
+    await tx.execute(sql`
+      UPDATE hr.leave_requests SET info_requested_at = CLOCK_TIMESTAMP(), info_request_note = ${comment} WHERE id = ${id}
+    `);
+    return { request_id: id, requester_id: req.user_id, org_id: req.org_id };
+  });
+}
+
+export interface PolicySummaryRow {
+  leave_type_name: string;
+  leave_type_label: string;
+  is_paid: boolean;
+  max_consecutive_days: number | null;
+  min_notice_days: number;
+  allow_half_day: boolean;
+  requires_document_after_days: number | null;
+  carry_forward: boolean;
+  encashable: boolean;
+  max_encash_days: number | null;
+  sla_hours: number;
+}
+
+/**
+ * The rules an EMPLOYEE needs to apply well -- notice, caps, documents, encashment --
+ * as of today. Accrual amounts, balances caps and approval depth stay admin-only
+ * (GET /leave/policies); this is deliberately a narrower projection of the same rows.
+ */
+export async function getPolicySummary(ctx: LeaveCtx): Promise<PolicySummaryRow[]> {
+  return withRoleTx(ctx, async (tx) => {
+    const rows = (await tx.execute(sql`
+      SELECT DISTINCT ON (lt.id)
+             lt.name AS leave_type_name, lt.label AS leave_type_label, lt.is_paid,
+             p.max_consecutive_days, p.min_notice_days, p.allow_half_day, p.requires_document_after_days,
+             p.carry_forward, p.encashable, p.max_encash_days::float8 AS max_encash_days, p.sla_hours
+      FROM hr.leave_types lt
+      JOIN hr.leave_policies p ON p.leave_type_id = lt.id
+      WHERE lt.tenant_id = ${ctx.tenant_id} AND lt.is_active
+        AND p.tenant_id = ${ctx.tenant_id} AND NOT p.is_deleted AND p.is_active
+        AND (p.org_id = ${ctx.org_id} OR p.org_id IS NULL) AND p.applicable_from <= CURRENT_DATE
+      ORDER BY lt.id, (p.org_id IS NOT NULL) DESC, p.applicable_from DESC
+    `)) as unknown as PolicySummaryRow[];
+    return rows.sort((a, b) => a.leave_type_label.localeCompare(b.leave_type_label));
+  });
+}
+
+export interface EncashmentView {
+  id: string;
+  user_id: string;
+  user_full_name: string;
+  user_email: string;
+  leave_type_label: string;
+  days: number;
+  reason: string | null;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  approver_name: string | null;
+  acted_at: string | null;
+  approver_comment: string | null;
+  created_at: string;
+}
+
+const ENCASH_SELECT = sql`
+  e.id::text, e.user_id::text, u.full_name AS user_full_name, u.email AS user_email, lt.label AS leave_type_label,
+  e.days::float8 AS days, e.reason, e.status, a.full_name AS approver_name, e.acted_at::text, e.approver_comment,
+  e.created_at::text
+  FROM hr.leave_encashment_requests e
+  JOIN iam.users u ON u.id = e.user_id
+  JOIN hr.leave_types lt ON lt.id = e.leave_type_id
+  LEFT JOIN iam.users a ON a.id = e.approver_id
+`;
+
+async function encashPolicy(tx: DrizzleTx, ctx: LeaveCtx, leaveTypeId: string): Promise<EncashmentPolicy | null> {
+  const rows = (await tx.execute(sql`
+    SELECT p.encashable, p.max_encash_days::float8 AS "maxEncashDays" FROM hr.leave_policies p
+    WHERE p.leave_type_id = ${leaveTypeId} AND p.tenant_id = ${ctx.tenant_id} AND NOT p.is_deleted AND p.is_active
+      AND (p.org_id = ${ctx.org_id} OR p.org_id IS NULL) AND p.applicable_from <= CURRENT_DATE
+    ORDER BY (p.org_id IS NOT NULL) DESC, p.applicable_from DESC LIMIT 1
+  `)) as unknown as EncashmentPolicy[];
+  return rows[0] ?? null;
+}
+
+export async function createEncashment(ctx: LeaveCtx, data: CreateEncashmentInput): Promise<{ id: string; approver_id: string | null }> {
+  return serviceTxWithContext(ctx, data.reason ?? null, async (tx) => {
+    await assertHomeBranch(tx, ctx.user_id, ctx.org_id);
+    const type = await resolveLeaveType(tx, ctx.tenant_id, data.leave_type_name);
+    const policy = await encashPolicy(tx, ctx, type.id);
+    const balance = await currentBalance(tx, ctx.org_id, ctx.user_id, type.id);
+    const pend = (await tx.execute(sql`
+      SELECT COALESCE(SUM(days), 0)::float8 AS n FROM hr.leave_encashment_requests
+      WHERE user_id = ${ctx.user_id} AND leave_type_id = ${type.id} AND status = 'pending' AND NOT is_deleted
+    `)) as unknown as Array<{ n: number }>;
+    const verdict = checkEncashment({ policy, days: data.days, balance, alreadyPending: pend[0]?.n ?? 0 });
+    if (!verdict.ok) throw new BadRequestError(verdict.reason);
+
+    const approvers = await resolveApprovers(tx, ctx.org_id, ctx.tenant_id, ctx.user_id, 1);
+    const approverId = approvers[0]?.approverId ?? null;
+    try {
+      const rows = (await tx.execute(sql`
+        INSERT INTO hr.leave_encashment_requests (user_id, org_id, leave_type_id, days, reason, approver_id, created_by)
+        VALUES (${ctx.user_id}, ${ctx.org_id}, ${type.id}, ${data.days}, ${data.reason ?? null}, ${approverId}, ${ctx.user_id})
+        RETURNING id::text`)) as unknown as Array<{ id: string }>;
+      return { id: rows[0]!.id, approver_id: approverId };
+    } catch (err) {
+      if (pgErrorCode(err) === '23505') throw new ConflictError('You already have an open encashment request for that leave type');
+      throw err;
+    }
+  });
+}
+
+export async function listOwnEncashments(ctx: LeaveCtx): Promise<EncashmentView[]> {
+  return withRoleTx(ctx, async (tx) =>
+    (await tx.execute(sql`
+      SELECT ${ENCASH_SELECT} WHERE e.user_id = ${ctx.user_id} AND NOT e.is_deleted ORDER BY e.created_at DESC LIMIT 100
+    `)) as unknown as EncashmentView[],
+  );
+}
+
+export async function listEncashmentQueue(ctx: LeaveCtx, status: EncashmentView['status'], seeAllOrg: boolean): Promise<EncashmentView[]> {
+  return withServiceTx(async (tx) => {
+    const scope = seeAllOrg
+      ? sql``
+      : sql`AND (e.approver_id = ${ctx.user_id}
+                 OR EXISTS (SELECT 1 FROM iam.vw_user_team_members m
+                            WHERE m.manager_id = ${ctx.user_id} AND m.member_id = e.user_id AND m.org_id = ${ctx.org_id}))`;
+    return (await tx.execute(sql`
+      SELECT ${ENCASH_SELECT}
+      WHERE e.org_id = ${ctx.org_id} AND NOT e.is_deleted AND e.status = ${status} ${scope}
+      ORDER BY e.created_at DESC LIMIT 200
+    `)) as unknown as EncashmentView[];
+  });
+}
+
+export async function decideEncashment(
+  ctx: LeaveCtx,
+  id: string,
+  decision: 'approve' | 'reject',
+  comment: string | null,
+  isOverride: boolean,
+): Promise<{ claim_id: string; requester_id: string; days: number; decision: 'approved' | 'rejected' }> {
+  return serviceTxWithContext(ctx, comment, async (tx) => {
+    const rows = (await tx.execute(sql`
+      SELECT id::text, user_id::text, org_id::text, leave_type_id::text, days::float8 AS days, status, approver_id::text
+      FROM hr.leave_encashment_requests WHERE id = ${id} AND NOT is_deleted FOR UPDATE
+    `)) as unknown as Array<{ id: string; user_id: string; org_id: string; leave_type_id: string; days: number; status: string; approver_id: string | null }>;
+    const r = rows[0];
+    if (!r || r.org_id !== ctx.org_id) throw new NotFoundError('Encashment request not found');
+    if (r.status !== 'pending') throw new ConflictError(`Request is already ${r.status}`);
+    const isAssigned = r.approver_id === ctx.user_id;
+    if (!isAssigned && !isOverride) throw new ForbiddenError('You are not the approver for this request');
+    if (!(await canApproveLeave(tx, ctx.org_id, ctx.user_id, r.user_id))) throw new ForbiddenError('You are not authorized to act on this request');
+    const note = isAssigned ? comment : `[override by ${ctx.user_id}] ${comment ?? ''}`.trim();
+
+    if (decision === 'reject') {
+      await tx.execute(sql`
+        UPDATE hr.leave_encashment_requests SET status = 'rejected', acted_by = ${ctx.user_id}, acted_at = CLOCK_TIMESTAMP(), approver_comment = ${note}
+        WHERE id = ${id}`);
+      return { claim_id: id, requester_id: r.user_id, days: r.days, decision: 'rejected' as const };
+    }
+
+    // Re-check against today's policy and balance: either may have moved since the request.
+    const policy = await encashPolicy(tx, ctx, r.leave_type_id);
+    const balance = await currentBalance(tx, ctx.org_id, r.user_id, r.leave_type_id);
+    const verdict = checkEncashment({ policy, days: r.days, balance });
+    if (!verdict.ok) throw new ConflictError(`This request can no longer be approved: ${verdict.reason}`);
+
+    const ledger = (await tx.execute(sql`
+      INSERT INTO hr.leave_ledger (user_id, org_id, leave_type_id, entry_type, amount, effective_date, note, created_by)
+      VALUES (${r.user_id}, ${r.org_id}, ${r.leave_type_id}, 'encashment', ${-r.days}, CURRENT_DATE, 'Leave encashment', ${ctx.user_id})
+      RETURNING id::text`)) as unknown as Array<{ id: string }>;
+    await tx.execute(sql`
+      UPDATE hr.leave_encashment_requests
+      SET status = 'approved', acted_by = ${ctx.user_id}, acted_at = CLOCK_TIMESTAMP(), approver_comment = ${note}, ledger_entry_id = ${ledger[0]!.id}
+      WHERE id = ${id}`);
+    return { claim_id: id, requester_id: r.user_id, days: r.days, decision: 'approved' as const };
+  });
+}
+
+export async function cancelEncashment(ctx: LeaveCtx, id: string): Promise<void> {
+  await serviceTxWithContext(ctx, null, async (tx) => {
+    const res = (await tx.execute(sql`
+      UPDATE hr.leave_encashment_requests SET status = 'cancelled'
+      WHERE id = ${id} AND user_id = ${ctx.user_id} AND org_id = ${ctx.org_id} AND status = 'pending' AND NOT is_deleted
+      RETURNING id::text`)) as unknown as Row[];
+    if (res.length === 0) throw new NotFoundError('No pending encashment request found');
   });
 }

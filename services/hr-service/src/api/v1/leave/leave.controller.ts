@@ -13,6 +13,8 @@ import type {
   RejectLeaveRequestInput,
   CancelLeaveRequestInput,
   BulkLeaveDecisionInput,
+  RequestLeaveInfoInput,
+  CreateEncashmentInput,
   CreateCompOffClaimInput,
   ListCompOffQueueInput,
   DecideCompOffInput,
@@ -92,6 +94,46 @@ export class LeaveController {
     }
     const result = await service.bulkDecideLeave(ctxOf(request), input);
     return reply.send({ success: true, data: result });
+  };
+
+  // ── Request more info, policy summary, encashment ────────────────────────
+  requestInfo = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = request.params as { id: string };
+    const { comment } = request.body as RequestLeaveInfoInput;
+    const data = await service.requestLeaveInfo(ctxOf(request), id, comment);
+    return reply.send({ success: true, data });
+  };
+
+  policySummary = async (request: FastifyRequest, reply: FastifyReply) =>
+    reply.send({ success: true, data: await service.getPolicySummary(ctxOf(request)) });
+
+  createEncashment = async (request: FastifyRequest, reply: FastifyReply) =>
+    reply.status(201).send({ success: true, data: await service.createEncashment(ctxOf(request), request.body as CreateEncashmentInput) });
+
+  listOwnEncashments = async (request: FastifyRequest, reply: FastifyReply) =>
+    reply.send({ success: true, data: await service.listOwnEncashments(ctxOf(request)) });
+
+  encashmentQueue = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { status } = request.query as ListCompOffQueueInput;
+    return reply.send({ success: true, data: await service.listEncashmentQueue(ctxOf(request), status) });
+  };
+
+  approveEncashment = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = request.params as { id: string };
+    const { comment } = request.body as DecideCompOffInput;
+    return reply.send({ success: true, data: await service.decideEncashment(ctxOf(request), id, 'approve', comment ?? null) });
+  };
+
+  rejectEncashment = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = request.params as { id: string };
+    const { comment } = request.body as RejectCompOffInput;
+    return reply.send({ success: true, data: await service.decideEncashment(ctxOf(request), id, 'reject', comment) });
+  };
+
+  cancelEncashment = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = request.params as { id: string };
+    await service.cancelEncashment(ctxOf(request), id);
+    return reply.send({ success: true, data: { id } });
   };
 
   // ── Comp-off ──────────────────────────────────────────────────────────────

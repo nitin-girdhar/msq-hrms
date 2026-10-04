@@ -34,6 +34,7 @@ import type {
   UpdateHolidayCalendarInput,
   BulkLeaveDecisionInput,
   CreateCompOffClaimInput,
+  CreateEncashmentInput,
 } from '@hr/validation';
 
 // Fired from the service layer, which has no request-scoped logger.
@@ -180,6 +181,46 @@ export async function bulkDecideLeave(ctx: LeaveCtx, input: BulkLeaveDecisionInp
   }
   const succeeded = results.filter((r) => r.ok).length;
   return { decision: input.decision, requested: ids.length, succeeded, failed: ids.length - succeeded, results };
+}
+
+// ── Request more info, policy summary, encashment (1.64.0) ──────────────────
+export async function requestLeaveInfo(ctx: LeaveCtx, id: string, comment: string) {
+  const r = await repo.requestLeaveInfo(ctx, id, comment, canOverrideLeaveApproval(ctx));
+  void publishLeaveEvent({
+    type: 'leave:info_requested',
+    request_id: r.request_id,
+    recipient_id: r.requester_id,
+    org_id: r.org_id,
+    tenant_id: ctx.tenant_id,
+    actor_id: ctx.user_id,
+  });
+  void logActivity({ action_type: 'leave_info_requested', performed_by: ctx.user_id, subject_user_id: r.requester_id, org_id: ctx.org_id, new_value: { request_id: id } });
+  return r;
+}
+
+export const getPolicySummary = (ctx: LeaveCtx) => repo.getPolicySummary(ctx);
+
+export async function createEncashment(ctx: LeaveCtx, data: CreateEncashmentInput) {
+  const r = await repo.createEncashment(ctx, data);
+  void logActivity({ action_type: 'leave_encashment_requested', performed_by: ctx.user_id, subject_user_id: ctx.user_id, org_id: ctx.org_id, new_value: { request_id: r.id, days: data.days } });
+  return r;
+}
+export const listOwnEncashments = (ctx: LeaveCtx) => repo.listOwnEncashments(ctx);
+export const listEncashmentQueue = (ctx: LeaveCtx, status: repo.EncashmentView['status']) =>
+  repo.listEncashmentQueue(ctx, status, canManageLeave(ctx));
+
+export async function decideEncashment(ctx: LeaveCtx, id: string, decision: 'approve' | 'reject', comment: string | null) {
+  const r = await repo.decideEncashment(ctx, id, decision, comment, canOverrideLeaveApproval(ctx));
+  void logActivity({
+    action_type: decision === 'approve' ? 'leave_encashment_approved' : 'leave_encashment_rejected',
+    performed_by: ctx.user_id, subject_user_id: r.requester_id, org_id: ctx.org_id, new_value: { request_id: id, days: r.days },
+  });
+  return r;
+}
+
+export async function cancelEncashment(ctx: LeaveCtx, id: string) {
+  await repo.cancelEncashment(ctx, id);
+  void logActivity({ action_type: 'leave_encashment_cancelled', performed_by: ctx.user_id, subject_user_id: ctx.user_id, org_id: ctx.org_id, new_value: { request_id: id } });
 }
 
 // ── Comp-off ────────────────────────────────────────────────────────────────

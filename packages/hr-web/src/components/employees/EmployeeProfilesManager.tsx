@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Modal } from '@platform/ui-kit';
+import { Button, Modal, exportRows } from '@platform/ui-kit';
 import { hrEmployees } from '../../lib/api/client';
 import type { EmployeeProfileView, HrLookupOption } from '../../lib/leave/types';
 import { emptyBlockCls, fieldInputCls, stateBlockCls } from '../../lib/ui';
@@ -26,6 +26,8 @@ export default function EmployeeProfilesManager({ onNotice, canManage, canOpenPr
   const [editing, setEditing] = useState<EmployeeProfileView | null>(null);
   const [query, setQuery] = useState('');
   const [dept, setDept] = useState('');
+  const [status, setStatus] = useState<'active' | 'exited' | 'all'>('active');
+  const [view, setView] = useState<'table' | 'grid'>('table');
 
   const loadLookups = useCallback(() => {
     Promise.all([hrEmployees.departments.list(), hrEmployees.designations.list()])
@@ -51,14 +53,42 @@ export default function EmployeeProfilesManager({ onNotice, canManage, canOpenPr
     [profiles],
   );
 
+  // Exited = a last working day on or before today. Someone with a FUTURE exit date is still active.
+  const today = new Date().toISOString().slice(0, 10);
+  const isExited = (p: EmployeeProfileView) => !!p.date_of_exit && p.date_of_exit <= today;
+  const counts = useMemo(
+    () => ({ active: profiles.filter((p) => !isExited(p)).length, exited: profiles.filter(isExited).length, all: profiles.length }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [profiles, today],
+  );
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return profiles.filter(
       (p) =>
+        (status === 'all' || (status === 'exited') === isExited(p)) &&
         (!dept || p.department_name === dept) &&
         (!q || [p.full_name, p.email, p.employee_code].some((v) => v?.toLowerCase().includes(q))),
     );
-  }, [profiles, query, dept]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profiles, query, dept, status, today]);
+
+  const exportCsv = () =>
+    exportRows(
+      visible,
+      [
+        { header: 'Name', value: (p) => p.full_name },
+        { header: 'Email', value: (p) => p.email },
+        { header: 'Employee code', value: (p) => p.employee_code },
+        { header: 'Department', value: (p) => p.department_name },
+        { header: 'Designation', value: (p) => p.designation_name },
+        { header: 'Joined', value: (p) => p.date_of_joining },
+        { header: 'Last working day', value: (p) => p.date_of_exit },
+        { header: 'Weekly off', value: (p) => (p.weekly_off_pattern ?? []).map((d) => WEEKDAYS[d]).join(' ') },
+      ],
+      `employees-${today}`,
+      'csv',
+    );
 
   const thisMonth = new Date().toISOString().slice(0, 7);
   const joinedThisMonth = profiles.filter((p) => p.date_of_joining?.startsWith(thisMonth)).length;
@@ -108,12 +138,30 @@ export default function EmployeeProfilesManager({ onNotice, canManage, canOpenPr
             </select>
           </div>
 
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap gap-2" role="tablist" aria-label="Employment status">
+              {([['active', 'Active'], ['exited', 'Exited'], ['all', 'All']] as const).map(([key, label]) => (
+                <button key={key} type="button" role="tab" aria-selected={status === key} onClick={() => setStatus(key)}
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${status === key ? 'border-primary bg-primary-fixed text-on-primary-fixed' : 'border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low'}`}>
+                  {label} <span className="tabular-nums opacity-70">{counts[key]}</span>
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="hidden gap-1 md:flex" role="group" aria-label="Layout">
+                <Button variant={view === 'table' ? 'primary' : 'secondary'} onClick={() => setView('table')} aria-pressed={view === 'table'}>Table</Button>
+                <Button variant={view === 'grid' ? 'primary' : 'secondary'} onClick={() => setView('grid')} aria-pressed={view === 'grid'}>Cards</Button>
+              </div>
+              <Button variant="secondary" onClick={exportCsv} disabled={visible.length === 0}>Export CSV</Button>
+            </div>
+          </div>
+
           {visible.length === 0 ? (
             <p className={emptyBlockCls}>No one matches these filters.</p>
           ) : (
             <>
-              {/* Phone: a card per person. */}
-              <ul className="flex flex-col gap-2 md:hidden">
+              {/* Cards: the phone layout, and the desktop one when "Cards" is chosen. */}
+              <ul className={`${view === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3' : 'flex flex-col gap-2 md:hidden'}`}>
                 {visible.map((p) => (
                   <li key={p.user_id} className="rounded-xl border border-outline-variant bg-surface-container-lowest p-3 shadow-sm">
                     <div className="flex items-start justify-between gap-2">
@@ -133,7 +181,7 @@ export default function EmployeeProfilesManager({ onNotice, canManage, canOpenPr
                 ))}
               </ul>
 
-              <div className="hidden overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm md:block">
+              <div className={`${view === 'grid' ? 'hidden' : 'hidden md:block'} overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm`}>
                 <table className="w-full min-w-[820px] text-sm">
                   <thead>
                     <tr className="border-b border-outline-variant text-left text-xs font-semibold uppercase tracking-wide text-on-surface-variant">

@@ -15,6 +15,14 @@ interface Props {
 export default function MyRequestsTable({ items, onView, onEdit, onCancel, busyId }: Props) {
   if (items.length === 0) return <p className={emptyBlockCls}>No leave requests found.</p>;
 
+  // The approver's open question: shown until the requester edits the request.
+  const infoNote = (r: LeaveRequestView) =>
+    r.info_requested_at && r.status_name === 'pending' ? (
+      <p className="mt-1.5 rounded-lg bg-status-due-container px-2 py-1 text-label-sm text-on-status-due-container">
+        Your approver asked: “{r.info_request_note}” — edit the request to answer.
+      </p>
+    ) : null;
+
   const actions = (r: LeaveRequestView) => (
     <>
       <Button variant="secondary" onClick={() => onView(r)} disabled={busyId === r.id}>
@@ -49,6 +57,7 @@ export default function MyRequestsTable({ items, onView, onEdit, onCancel, busyI
               <StatusChip status={r.status_name} label={r.status_label} />
             </div>
             {r.reason && <p className="mt-2 text-xs text-on-surface-variant">{r.reason}</p>}
+            {infoNote(r)}
             <p className="mt-1 text-label-sm text-outline">Applied {formatDateTime(r.created_at)}</p>
             <div className="mt-2 flex flex-wrap justify-end gap-2">{actions(r)}</div>
           </li>
@@ -74,6 +83,7 @@ export default function MyRequestsTable({ items, onView, onEdit, onCancel, busyI
                 <td className="px-4 py-3 text-on-surface-variant">
                   {formatDateRange(r.start_date, r.end_date, r.start_half, r.end_half)}
                   {r.reason && <p className="mt-0.5 text-label-sm text-outline">{r.reason}</p>}
+                  {infoNote(r)}
                 </td>
                 <td className="px-4 py-3 text-on-surface-variant">{formatDays(r.days_count)}</td>
                 <td className="px-4 py-3">

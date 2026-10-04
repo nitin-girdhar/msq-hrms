@@ -5,3 +5,5 @@ export * from './profile.js';
 export * from './swap.js';
 export * from './payroll.js';
 export * from './extras.js';
+export * from './statutory.js';
+export * from './attendance-tools.js';

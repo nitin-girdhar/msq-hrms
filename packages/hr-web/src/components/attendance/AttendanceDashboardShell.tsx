@@ -15,6 +15,8 @@ import DayDetailPopover from './DayDetailPopover';
 import RegularizationFormModal from './RegularizationFormModal';
 import MyRegularizationsList from './MyRegularizationsList';
 import RegularizationStats from './RegularizationStats';
+import PunchLog from './PunchLog';
+import NudgeBanner from './NudgeBanner';
 import RegularizationDetailModal from './RegularizationDetailModal';
 
 interface Props {
@@ -35,6 +37,7 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [monthTab, setMonthTab] = useState<'calendar' | 'log'>('calendar');
 
   const [punchMode, setPunchMode] = useState<'check_in' | 'check_out' | null>(null);
   const [faceCtx, setFaceCtx] = useState<FaceSelfContext | null>(null);
@@ -201,13 +204,31 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
         {notice && <Alert tone="success">{notice}</Alert>}
         {error && <Alert tone="error">{error}</Alert>}
 
+        <NudgeBanner />
+
         <TodayCard todayRow={todayRow} shift={shift} punchState={punchState} todayEvents={todayEvents} onPunch={startPunch} busy={punchMode !== null || gateBusy} />
 
-        <PageSection title="My month">
-          <MyMonthCalendar
-            refreshKey={refreshKey}
-            onDayClick={(row, date) => { setDetailRow(row); setDetailDate(date); }}
-          />
+        <PageSection
+          title="My month"
+          action={
+            <div className="flex gap-1" role="tablist" aria-label="Month view">
+              {([['calendar', 'Calendar'], ['log', 'Punch log']] as const).map(([key, label]) => (
+                <button key={key} type="button" role="tab" aria-selected={monthTab === key} onClick={() => setMonthTab(key)}
+                  className={`rounded-full border px-3 py-0.5 text-xs font-semibold transition-colors ${monthTab === key ? 'border-primary bg-primary-fixed text-on-primary-fixed' : 'border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          }
+        >
+          {monthTab === 'calendar' ? (
+            <MyMonthCalendar
+              refreshKey={refreshKey}
+              onDayClick={(row, date) => { setDetailRow(row); setDetailDate(date); }}
+            />
+          ) : (
+            <PunchLog />
+          )}
         </PageSection>
 
         <PageSection title="My regularizations">

@@ -14,6 +14,7 @@ import TodayCard from '../attendance/TodayCard';
 import MonthSummaryStrip from '../attendance/MonthSummaryStrip';
 import BalanceCards from '../leave/BalanceCards';
 import AnnouncementsPanel from './AnnouncementsPanel';
+import NudgeBanner from '../attendance/NudgeBanner';
 import { emptyBlockCls } from '../../lib/ui';
 
 interface Props {
@@ -92,6 +93,8 @@ export default function EmployeeDashboardShell({ actor }: Props) {
       <PageBody>
         {(error || today.error) && <Alert tone="error">{error ?? today.error}</Alert>}
         {nothingEnabled && <p className={emptyBlockCls}>Nothing is enabled for your role here yet.</p>}
+
+        {showAttendance && <NudgeBanner />}
 
         {showAttendance && (
           <TodayCard

@@ -14,6 +14,8 @@ import RegularizationDecisionModal from './RegularizationDecisionModal';
 import FaceReviewQueue from './FaceReviewQueue';
 import FaceReviewDecisionModal from './FaceReviewDecisionModal';
 import { notifyFaceReviewsChanged } from '../../hooks/usePendingFaceReviews';
+import { can, CAPABILITY } from '@platform/rbac';
+import { ManualPunchModal, RosterToolbar } from './RosterTools';
 
 interface Props {
   actor: SessionUser;
@@ -33,6 +35,9 @@ export default function AttendanceTeamShell({ actor, hrRank }: Props) {
   const [faceReviews, setFaceReviews] = useState<FaceReviewView[]>([]);
   const [faceReviewsLoading, setFaceReviewsLoading] = useState(true);
   const [reviewingFace, setReviewingFace] = useState<FaceReviewView | null>(null);
+  const canOverride = can(actor, CAPABILITY.HR_ATTENDANCE_ADMIN_OVERRIDE);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [punching, setPunching] = useState<TeamDayRow | null>(null);
 
   const canManage = canManageAttendanceAdmin(actor);
   const canReviewFaces = canReviewFaceMatches(actor);
@@ -74,6 +79,8 @@ export default function AttendanceTeamShell({ actor, hrRank }: Props) {
       .finally(() => setFaceReviewsLoading(false));
   }, [showFaceReviews]);
 
+  // A different day is a different list: a selection must not follow you across dates.
+  useEffect(() => { setSelected(new Set()); }, [date]);
   useEffect(() => { loadRows(); }, [loadRows]);
   useEffect(() => { loadPending(); }, [loadPending]);
   useEffect(() => { loadFaceReviews(); }, [loadFaceReviews]);
@@ -119,7 +126,33 @@ export default function AttendanceTeamShell({ actor, hrRank }: Props) {
             />
           }
         >
-          <TeamDayView rows={rows} loading={rowsLoading} faceEnabled={faceEnabled} canManage={canManage} onChanged={loadRows} />
+          <div className="space-y-3">
+            {canOverride && rows.length > 0 && (
+              <RosterToolbar
+                rows={rows}
+                date={date}
+                selected={selected}
+                onClear={() => setSelected(new Set())}
+                onDone={(m) => { setNotice(m); setError(null); loadRows(); }}
+                onError={(m) => { setError(m); setNotice(null); }}
+              />
+            )}
+            <TeamDayView
+              rows={rows}
+              loading={rowsLoading}
+              faceEnabled={faceEnabled}
+              canManage={canManage}
+              onChanged={loadRows}
+              {...(canOverride ? {
+                tools: {
+                  selected,
+                  onToggle: (id: string) => setSelected((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; }),
+                  onToggleAll: (ids: string[]) => setSelected((prev) => (ids.every((i) => prev.has(i)) ? new Set() : new Set(ids))),
+                  onManualPunch: setPunching,
+                },
+              } : {})}
+            />
+          </div>
         </PageSection>
 
         <PageSection title={`Pending regularizations (${pending.length})`}>
@@ -137,6 +170,9 @@ export default function AttendanceTeamShell({ actor, hrRank }: Props) {
         )}
       </PageBody>
 
+      {punching && (
+        <ManualPunchModal row={punching} date={date} onClose={() => setPunching(null)} onDone={(m) => { setPunching(null); setNotice(m); loadRows(); }} />
+      )}
       <RegularizationDecisionModal request={reviewing} onClose={() => setReviewing(null)} onDecided={handleDecided} />
       <FaceReviewDecisionModal review={reviewingFace} onClose={() => setReviewingFace(null)} onDecided={handleFaceDecided} />
     </div>

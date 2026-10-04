@@ -16,6 +16,8 @@ import { fieldInputCls, fieldLabelCls, stateBlockCls } from '../../lib/ui';
 import { can, CAPABILITY } from '@platform/rbac';
 import ContactsEditor from './ContactsEditor';
 import { MyAssetsList } from './AssetsPanel';
+import { MyStatutorySection } from './StatutoryPanel';
+import { buildChangePasswordUrl } from '@platform/ui-kit';
 
 interface Props {
   actor: SessionUser;
@@ -135,6 +137,20 @@ export default function MyProfileShell({ actor }: Props) {
                 onError={setError}
               />
             </PageSection>
+            <PageSection title="Statutory and bank details">
+              <MyStatutorySection onError={setError} onNotice={setNotice} />
+            </PageSection>
+
+            <PageSection title="Security">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-3 shadow-sm">
+                <div>
+                  <p className="text-sm font-semibold text-on-surface">Password</p>
+                  <p className="text-xs text-on-surface-variant">Changing it signs you out of every other device.</p>
+                </div>
+                <a href={buildChangePasswordUrl()} className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-xs font-semibold text-on-surface-variant hover:border-primary hover:text-primary">Change password</a>
+              </div>
+            </PageSection>
+
             {can(actor, CAPABILITY.HR_EMPLOYEES_ASSETS_VIEW) && (
               <PageSection title="My equipment">
                 <MyAssetsList />

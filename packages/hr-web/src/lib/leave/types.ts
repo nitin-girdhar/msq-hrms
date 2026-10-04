@@ -55,6 +55,11 @@ export interface LeaveRequestView {
   latest_approval_acted_at: string | null;
   created_at: string;
   updated_at: string;
+  /** The approver's open question to the requester (cleared when the requester edits). */
+  info_requested_at?: string | null;
+  info_request_note?: string | null;
+  /** Approval window of the effective policy, in hours. */
+  sla_hours?: number | null;
 }
 
 export type ApprovalAction = 'pending' | 'approved' | 'rejected';
@@ -110,6 +115,9 @@ export interface LeavePolicyView {
   allow_half_day: boolean;
   requires_document_after_days: number | null;
   approval_levels: number;
+  sla_hours?: number;
+  encashable?: boolean;
+  max_encash_days?: number | null;
   applicable_from: string;
   is_active: boolean;
 }

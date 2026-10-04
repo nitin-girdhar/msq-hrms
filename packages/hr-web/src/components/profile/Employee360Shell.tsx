@@ -16,13 +16,15 @@ import {
 import { formatDay, formatDateTime } from '../../lib/attendance/format';
 import { emptyBlockCls, fieldInputCls, stateBlockCls } from '../../lib/ui';
 import AssetsPanel from './AssetsPanel';
+import StatutoryPanel from './StatutoryPanel';
+import { AttendanceTab, AuditTab } from './Employee360Tabs';
 
 interface Props {
   actor: SessionUser;
   userId: string;
 }
 
-type Tab = 'overview' | 'leave' | 'assets' | 'notes';
+type Tab = 'overview' | 'attendance' | 'leave' | 'statutory' | 'assets' | 'notes' | 'audit';
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function tenure(joined: string | null): string {
@@ -51,6 +53,7 @@ export default function Employee360Shell({ actor, userId }: Props) {
   const [tab, setTab] = useState<Tab>('overview');
   const canNotes = can(actor, CAPABILITY.HR_EMPLOYEES_NOTES_MANAGE);
   const canAssets = can(actor, CAPABILITY.HR_EMPLOYEES_ASSETS_MANAGE);
+  const canStatutory = can(actor, CAPABILITY.HR_EMPLOYEES_STATUTORY_MANAGE);
 
   const load = useCallback(() => {
     employee360
@@ -62,9 +65,10 @@ export default function Employee360Shell({ actor, userId }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
-  const tabs: Array<[Tab, string]> = [['overview', 'Overview'], ['leave', 'Leave']];
+  // Everyone who can open a profile sees Overview / Attendance / Leave / Statutory (masked); the rest need their own capability.
+  const tabs: Array<[Tab, string]> = [['overview', 'Overview'], ['attendance', 'Attendance'], ['leave', 'Leave'], ['statutory', 'Statutory & bank']];
   if (canAssets) tabs.push(['assets', 'Assets']);
-  if (canNotes) tabs.push(['notes', 'HR notes']);
+  if (canNotes) tabs.push(['notes', 'HR notes'], ['audit', 'Audit trail']);
 
   if (loading) return <div className="flex w-full flex-1 flex-col"><PageHeader title="Employee" /><PageBody><div className={stateBlockCls}>Loading…</div></PageBody></div>;
   if (!data) {
@@ -194,6 +198,24 @@ export default function Employee360Shell({ actor, userId }: Props) {
                 ))}
               </ul>
             )}
+          </PageSection>
+        )}
+
+        {tab === 'attendance' && (
+          <PageSection title="Attendance">
+            <AttendanceTab userId={userId} onError={setError} />
+          </PageSection>
+        )}
+
+        {tab === 'statutory' && (
+          <PageSection title="Statutory and bank details">
+            <StatutoryPanel userId={userId} canManage={canStatutory} onError={setError} />
+          </PageSection>
+        )}
+
+        {tab === 'audit' && canNotes && (
+          <PageSection title="Audit trail">
+            <AuditTab userId={userId} onError={setError} />
           </PageSection>
         )}
 

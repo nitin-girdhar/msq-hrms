@@ -41,6 +41,9 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
   const [allowHalfDay, setAllowHalfDay] = useState(true);
   const [docAfter, setDocAfter] = useState('');
   const [approvalLevels, setApprovalLevels] = useState('1');
+  const [slaHours, setSlaHours] = useState('48');
+  const [encashable, setEncashable] = useState(false);
+  const [maxEncash, setMaxEncash] = useState('');
   const [applicableFrom, setApplicableFrom] = useState(todayIso());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,6 +102,9 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
         allow_half_day: allowHalfDay,
         requires_document_after_days: num(docAfter),
         approval_levels: Number(approvalLevels),
+        sla_hours: Number(slaHours) || 48,
+        encashable,
+        max_encash_days: encashable ? num(maxEncash) : null,
         applicable_from: applicableFrom,
       };
       await leaveApi.createPolicy(body);
@@ -192,6 +198,7 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
           <NumField id="pf-maxconsec" label="Max consecutive days" value={maxConsecutive} onChange={setMaxConsecutive} disabled={submitting} placeholder="none" />
           <NumField id="pf-notice" label="Min notice (days)" value={minNotice} onChange={setMinNotice} disabled={submitting} />
           <NumField id="pf-docafter" label="Document after (days)" value={docAfter} onChange={setDocAfter} disabled={submitting} placeholder="none" />
+          <NumField id="pf-sla" label="Approval window (hours)" value={slaHours} onChange={setSlaHours} disabled={submitting} />
           <div className="flex flex-col gap-1.5">
             <label htmlFor="pf-levels" className={labelCls}>Approval levels</label>
             <input id="pf-levels" type="number" min={1} value={approvalLevels} onChange={(e) => setApprovalLevels(e.target.value)} disabled={submitting} className={inputCls} />
@@ -211,6 +218,13 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
             <input type="checkbox" checked={allowHalfDay} onChange={(e) => setAllowHalfDay(e.target.checked)} disabled={submitting} className="h-4 w-4 rounded border-outline-variant text-primary" />
             <span>Allow half-days</span>
           </label>
+          <label className="flex items-center gap-2 text-xs text-on-surface">
+            <input type="checkbox" checked={encashable} onChange={(e) => setEncashable(e.target.checked)} disabled={submitting} className="h-4 w-4 rounded border-outline-variant text-primary" />
+            <span>Allow encashment</span>
+          </label>
+          {encashable && (
+            <div className="w-48"><NumField id="pf-maxenc" label="Max days per request" value={maxEncash} onChange={setMaxEncash} disabled={submitting} placeholder="no cap" /></div>
+          )}
         </div>
 
       </form>

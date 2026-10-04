@@ -1,11 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Modal } from '@platform/ui-kit';
 import { attendance as attendanceApi } from '../../lib/api/client';
 import type { AttendanceDayRow, DayEventView } from '../../lib/attendance/types';
 import { formatClockTime, formatWorkedMinutes, formatDay } from '../../lib/attendance/format';
 import { sessionMinutes, toSessions } from '../../lib/attendance/sessions';
+
+// Minutes between the end of one slot and the start of the next (null if either is open).
+const gapMinutes = (a: { out: { occurred_at: string } | null }, b: { in: { occurred_at: string } | null }): number | null =>
+  a.out && b.in ? Math.round((Date.parse(b.in.occurred_at) - Date.parse(a.out.occurred_at)) / 60_000) : null;
 
 interface Props {
   date: string | null;
@@ -93,7 +97,13 @@ export default function DayDetailPopover({ date, row, userId, onClose, onRequest
             <ol className="flex flex-col gap-1">
               {sessions.map((session, i) => {
                 const minutes = sessionMinutes(session);
+                const prev = i > 0 ? sessions[i - 1]! : null;
+                const gap = prev ? gapMinutes(prev, session) : null;
                 return (
+                  <Fragment key={session.in?.event_id ?? session.out?.event_id ?? i}>
+                  {gap != null && gap > 0 && (
+                    <li className="px-3 text-center text-label-sm text-outline" aria-label={`Break of ${formatWorkedMinutes(gap)}`}>Break · {formatWorkedMinutes(gap)}</li>
+                  )}
                   <li
                     key={session.in?.event_id ?? session.out?.event_id ?? i}
                     className="flex items-center justify-between gap-2 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-sm"
@@ -108,6 +118,7 @@ export default function DayDetailPopover({ date, row, userId, onClose, onRequest
                       {minutes == null ? 'Open' : formatWorkedMinutes(minutes)}
                     </span>
                   </li>
+                  </Fragment>
                 );
               })}
             </ol>

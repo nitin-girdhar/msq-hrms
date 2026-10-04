@@ -93,6 +93,18 @@ export const rejectCompOffSchema = z.object({
   comment: z.string().trim().min(1, 'A comment is required when rejecting').max(1000),
 });
 
+// The approver's question to the requester (the request stays pending).
+export const requestLeaveInfoSchema = z.object({
+  comment: z.string().trim().min(1, 'Say what you need to know').max(1000),
+});
+
+// Cash out unused days of a leave type whose policy allows it.
+export const createEncashmentSchema = z.object({
+  leave_type_name: z.string().min(1),
+  days: z.number().positive().max(365),
+  reason: z.string().trim().max(500).optional(),
+});
+
 export const cancelLeaveRequestSchema = z.object({
   comment: z.string().max(1000).optional(),
 });
@@ -140,6 +152,10 @@ export const createPolicySchema = z.object({
   allow_half_day: z.boolean().default(true),
   requires_document_after_days: z.coerce.number().int().positive().nullable().optional(),
   approval_levels: z.coerce.number().int().min(1).default(1),
+  // 1.64.0: approval window shown as a countdown, and cash-out rules.
+  sla_hours: z.coerce.number().int().min(1).max(720).default(48),
+  encashable: z.boolean().default(false),
+  max_encash_days: z.coerce.number().positive().max(365).nullable().optional(),
   applicable_from: isoDate,
 });
 
@@ -154,6 +170,9 @@ export const updatePolicySchema = z.object({
   allow_half_day: z.boolean().optional(),
   requires_document_after_days: z.coerce.number().int().positive().nullable().optional(),
   approval_levels: z.coerce.number().int().min(1).optional(),
+  sla_hours: z.coerce.number().int().min(1).max(720).optional(),
+  encashable: z.boolean().optional(),
+  max_encash_days: z.coerce.number().positive().max(365).nullable().optional(),
   is_active: z.boolean().optional(),
 });
 
@@ -208,6 +227,8 @@ export type ListCompOffQueueInput = z.infer<typeof listCompOffQueueSchema>;
 export type DecideCompOffInput = z.infer<typeof decideCompOffSchema>;
 export type RejectCompOffInput = z.infer<typeof rejectCompOffSchema>;
 export type BulkLeaveDecisionInput = z.infer<typeof bulkLeaveDecisionSchema>;
+export type RequestLeaveInfoInput = z.infer<typeof requestLeaveInfoSchema>;
+export type CreateEncashmentInput = z.infer<typeof createEncashmentSchema>;
 export type CancelLeaveRequestInput = z.infer<typeof cancelLeaveRequestSchema>;
 export type ListBalancesInput = z.infer<typeof listBalancesSchema>;
 export type ListLedgerInput = z.infer<typeof listLedgerSchema>;

@@ -14,6 +14,8 @@ import {
   rejectLeaveRequestSchema,
   cancelLeaveRequestSchema,
   bulkLeaveDecisionSchema,
+  requestLeaveInfoSchema,
+  createEncashmentSchema,
   createCompOffClaimSchema,
   listCompOffQueueSchema,
   decideCompOffSchema,
@@ -61,9 +63,20 @@ export async function leaveRouter(app: FastifyInstance) {
   // Many decisions in one call. Registered before the ':id' routes; the capability
   // (approve vs reject) is checked in the controller because it depends on the body.
   app.post('/leave/requests/bulk-decision', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_VIEW), validate({ body: bulkLeaveDecisionSchema })] }, ctrl.bulkDecide);
+  app.post('/leave/requests/:id/request-info', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_APPROVE, 'You do not have permission to ask for more information'), validate({ body: requestLeaveInfoSchema })] }, ctrl.requestInfo);
   app.post('/leave/requests/:id/approve', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_APPROVE, 'You do not have permission to approve leave'), validate({ body: approveLeaveRequestSchema })] }, ctrl.approve);
   app.post('/leave/requests/:id/reject', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_REJECT, 'You do not have permission to reject leave'), validate({ body: rejectLeaveRequestSchema })] }, ctrl.reject);
   app.post('/leave/requests/:id/cancel', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_REQUEST_CANCEL, 'You do not have permission to cancel leave'), validate({ body: cancelLeaveRequestSchema })] }, ctrl.cancel);
+
+  // ── Policy summary + encashment (1.64.0) ──────────────────────────────────
+  // The employee-safe projection of the policies (admin-only GET /leave/policies keeps accrual etc.).
+  app.get('/leave/policy-summary', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_VIEW)] }, ctrl.policySummary);
+  app.post('/leave/encashments', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_ENCASHMENT_REQUEST, 'You do not have permission to request encashment'), validate({ body: createEncashmentSchema })] }, ctrl.createEncashment);
+  app.get('/leave/encashments', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_VIEW)] }, ctrl.listOwnEncashments);
+  app.get('/leave/encashments/queue', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_ENCASHMENT_APPROVE), validate({ query: listCompOffQueueSchema })] }, ctrl.encashmentQueue);
+  app.post('/leave/encashments/:id/approve', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_ENCASHMENT_APPROVE, 'You do not have permission to decide encashment'), validate({ body: decideCompOffSchema })] }, ctrl.approveEncashment);
+  app.post('/leave/encashments/:id/reject', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_ENCASHMENT_APPROVE, 'You do not have permission to decide encashment'), validate({ body: rejectCompOffSchema })] }, ctrl.rejectEncashment);
+  app.post('/leave/encashments/:id/cancel', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_ENCASHMENT_REQUEST, 'You do not have permission to cancel encashment')] }, ctrl.cancelEncashment);
 
   // ── Comp-off ──────────────────────────────────────────────────────────────
   // Claiming and cancelling need the request capability; the approvals queue and

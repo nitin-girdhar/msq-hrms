@@ -23,7 +23,7 @@ import { pgNotify } from '@platform/db';
 
 const CHANNEL = 'crm_events';
 
-export type LeaveEventType = 'leave:approval_pending' | 'leave:approved' | 'leave:rejected';
+export type LeaveEventType = 'leave:approval_pending' | 'leave:approved' | 'leave:rejected' | 'leave:info_requested';
 
 interface LeaveEventInput {
   type: LeaveEventType;
@@ -53,7 +53,7 @@ export async function publishLeaveEvent(input: LeaveEventInput): Promise<void> {
   }
 }
 
-export type AttendanceEventType = 'attendance:face_review_pending';
+export type AttendanceEventType = 'attendance:face_review_pending' | 'attendance:nudge';
 
 interface AttendanceEventInput {
   type: AttendanceEventType;

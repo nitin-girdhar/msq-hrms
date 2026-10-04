@@ -16,6 +16,8 @@ import ApplyLeaveModal from './ApplyLeaveModal';
 import LeaveRequestDetailModal from './LeaveRequestDetailModal';
 import CompOffClaimModal from './CompOffClaimModal';
 import MyCompOffList from './MyCompOffList';
+import PolicySummaryModal from './PolicySummaryModal';
+import { EncashRequestModal, MyEncashments } from './EncashmentPanel';
 
 interface Props {
   actor: SessionUser;
@@ -38,6 +40,10 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
   const canClaimCompOff = can(actor, CAPABILITY.HR_LEAVE_COMP_OFF_REQUEST);
   const [claims, setClaims] = useState<CompOffClaim[]>([]);
   const [claimOpen, setClaimOpen] = useState(false);
+  const canEncash = can(actor, CAPABILITY.HR_LEAVE_ENCASHMENT_REQUEST);
+  const [policyOpen, setPolicyOpen] = useState(false);
+  const [encashOpen, setEncashOpen] = useState(false);
+  const [encashKey, setEncashKey] = useState(0);
 
   // One call: /leave/balances carries everything an employee may see — the number
   // per leave type as of today, plus whether it is bookable and half-day-able.
@@ -114,6 +120,10 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
         tabs={<LeaveTabs hrRank={hrRank} actor={actor} />}
         actions={
           <>
+            <Button variant="ghost" onClick={() => setPolicyOpen(true)}>Leave policy</Button>
+            {canEncash && (
+              <Button variant="secondary" onClick={() => { setEncashOpen(true); setNotice(null); }}>Encash leave</Button>
+            )}
             {canClaimCompOff && (
               <Button variant="secondary" onClick={() => { setClaimOpen(true); setNotice(null); }}>
                 Claim comp-off
@@ -154,6 +164,12 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
           )}
         </PageSection>
 
+        {canEncash && (
+          <PageSection title="Encashment requests">
+            <MyEncashments refreshKey={encashKey} onChanged={(m) => { setNotice(m); loadStatic(); }} onError={setError} />
+          </PageSection>
+        )}
+
         {canClaimCompOff && (
           <PageSection title="Comp-off claims">
             <MyCompOffList
@@ -164,6 +180,14 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
           </PageSection>
         )}
       </PageBody>
+
+      {policyOpen && <PolicySummaryModal onClose={() => setPolicyOpen(false)} />}
+      {encashOpen && (
+        <EncashRequestModal
+          onClose={() => setEncashOpen(false)}
+          onDone={() => { setEncashOpen(false); setNotice('Encashment request submitted for approval.'); setEncashKey((k) => k + 1); }}
+        />
+      )}
 
       <CompOffClaimModal
         open={claimOpen}
