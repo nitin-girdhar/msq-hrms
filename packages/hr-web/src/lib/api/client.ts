@@ -21,6 +21,13 @@ import type {
   CompOffClaim,
 } from '../leave/types';
 import type {
+  Employee360,
+  MyProfile,
+  PersonalForm,
+  EmergencyContact,
+  EmployeeNote,
+} from '../profile/types';
+import type {
   AttendanceRules,
   PunchResult,
   MyMonthResponse,
@@ -206,6 +213,30 @@ export const leave = {
 };
 
 // ── Holidays & calendars ────────────────────────────────────────────────────
+
+// ── My profile + Employee 360 (schema 1.60.0) ────────────────────────────────
+export const profile = {
+  /** The caller's own personal details and emergency contacts. */
+  mine: () => request<Envelope<MyProfile>>('/hr/profile/me'),
+
+  savePersonal: (body: PersonalForm) =>
+    request<void>('/hr/profile/me/personal', { method: 'PUT', body: JSON.stringify(body) }),
+
+  addContact: (body: Omit<EmergencyContact, 'id'>) =>
+    request<Envelope<{ id: string }>>('/hr/profile/me/contacts', { method: 'POST', body: JSON.stringify(body) }),
+
+  updateContact: (id: string, body: Partial<Omit<EmergencyContact, 'id'>>) =>
+    request<void>(`/hr/profile/me/contacts/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  removeContact: (id: string) => request<void>(`/hr/profile/me/contacts/${id}`, { method: 'DELETE' }),
+};
+
+export const employee360 = {
+  get: (userId: string) => request<Envelope<Employee360>>(`/hr/employees/${userId}/profile-360`),
+
+  addNote: (userId: string, body: { kind: EmployeeNote['kind']; body: string }) =>
+    request<Envelope<{ id: string }>>(`/hr/employees/${userId}/notes`, { method: 'POST', body: JSON.stringify(body) }),
+};
 
 // ── Comp-off (schema 1.59.0) ──────────────────────────────────────────────────
 export const compOff = {

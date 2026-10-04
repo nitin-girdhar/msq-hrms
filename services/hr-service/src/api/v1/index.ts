@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { employeesRouter } from './employees/employees.router.js';
+import { profileRouter } from './profile/profile.router.js';
 import { leaveRouter } from './leave/leave.router.js';
 import { attendanceRouter } from './attendance/attendance.router.js';
 import { modulesRouter } from './modules/modules.router.js';
@@ -22,6 +23,7 @@ import { shiftsRouter } from './shifts/shifts.router.js';
 
 export async function v1Router(app: FastifyInstance) {
   await app.register(employeesRouter);
+  await app.register(profileRouter);
   await app.register(leaveRouter);
   await app.register(attendanceRouter);
   await app.register(modulesRouter);

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { SessionUser } from '@platform/types';
 import { Alert, PageBody, PageHeader } from '@platform/ui-kit';
 import { canManageEmployees } from '@hr/authz';
+import { can, CAPABILITY } from '@platform/rbac';
 import EmployeeProfilesManager from './EmployeeProfilesManager';
 
 interface Props {
@@ -24,7 +25,7 @@ export default function EmployeesShell({ actor }: Props) {
       />
       <PageBody>
         {notice && <Alert tone="success">{notice}</Alert>}
-        <EmployeeProfilesManager onNotice={setNotice} canManage={canManageEmployees(actor)} />
+        <EmployeeProfilesManager onNotice={setNotice} canManage={canManageEmployees(actor)} canOpenProfile={can(actor, CAPABILITY.HR_EMPLOYEES_PROFILE360_VIEW)} />
       </PageBody>
     </div>
   );

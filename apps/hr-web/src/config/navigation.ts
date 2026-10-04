@@ -16,6 +16,8 @@ export const HR_NAV: readonly NavItem[] = [
   { id: 'leave',      label: 'Leave',      href: '/leave',      icon: 'plane', capability: CAPABILITY.HR_LEAVE },
   { id: 'employees',  label: 'Employees',  href: '/employees',  icon: 'id-card', capability: CAPABILITY.HR_EMPLOYEES },
   { id: 'reports',    label: 'Reports',    href: '/reports',    icon: 'chart-column', capability: CAPABILITY.HR_REPORTS },
+  // An OPERATION, not a tool/page node, hence `exact`: holdsUsableNode() wants a granted descendant.
+  { id: 'profile',    label: 'My profile', href: '/profile',    icon: 'users-round', capability: CAPABILITY.HR_EMPLOYEES_PROFILE_EDIT, exact: true },
 ] as const;
 
 // Phone bottom tab bar (AppShell `mobileTabs`): one entry per tab, each a list of

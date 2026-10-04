@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { Modal } from '@platform/ui-kit';
 import { hrEmployees } from '../../lib/api/client';
 import type { EmployeeProfileView, HrLookupOption } from '../../lib/leave/types';
@@ -10,11 +11,13 @@ interface Props {
   onNotice: (msg: string) => void;
   /** hr.employees.manage — without it the list is read-only (no Edit column). */
   canManage: boolean;
+  /** hr.employees.profile360.view — turns each name into a link to the Employee 360 page. */
+  canOpenProfile: boolean;
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export default function EmployeeProfilesManager({ onNotice, canManage }: Props) {
+export default function EmployeeProfilesManager({ onNotice, canManage, canOpenProfile }: Props) {
   const [profiles, setProfiles] = useState<EmployeeProfileView[]>([]);
   const [departments, setDepartments] = useState<HrLookupOption[]>([]);
   const [designations, setDesignations] = useState<HrLookupOption[]>([]);
@@ -59,6 +62,13 @@ export default function EmployeeProfilesManager({ onNotice, canManage }: Props) 
 
   const thisMonth = new Date().toISOString().slice(0, 7);
   const joinedThisMonth = profiles.filter((p) => p.date_of_joining?.startsWith(thisMonth)).length;
+
+  const nameOf = (p: EmployeeProfileView, cls: string) =>
+    canOpenProfile ? (
+      <Link href={`/employees/${p.user_id}`} className={`${cls} hover:text-primary hover:underline`}>{p.full_name}</Link>
+    ) : (
+      <span className={cls}>{p.full_name}</span>
+    );
 
   const editButton = (p: EmployeeProfileView) =>
     canManage ? (
@@ -108,7 +118,7 @@ export default function EmployeeProfilesManager({ onNotice, canManage }: Props) 
                   <li key={p.user_id} className="rounded-xl border border-outline-variant bg-surface-container-lowest p-3 shadow-sm">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-on-surface">{p.full_name}</p>
+                        <p className="truncate">{nameOf(p, 'text-sm font-semibold text-on-surface')}</p>
                         <p className="truncate text-label-sm text-outline">{p.email}</p>
                       </div>
                       {editButton(p)}
@@ -140,9 +150,7 @@ export default function EmployeeProfilesManager({ onNotice, canManage }: Props) 
                     {visible.map((p) => (
                       <tr key={p.user_id} className="border-b border-outline-variant/50 last:border-0 hover:bg-surface-container-low">
                         <td className="px-4 py-3">
-                          {/* Becomes a link to /employees/[userId] once the Employee 360
-                              page exists (backed by GET /hr/employees/:userId). */}
-                          <p className="font-medium text-on-surface">{p.full_name}</p>
+                          <p>{nameOf(p, 'font-medium text-on-surface')}</p>
                           <p className="text-label-sm text-outline">{p.email}</p>
                         </td>
                         <td className="px-4 py-3 text-on-surface-variant">{p.employee_code ?? '—'}</td>
