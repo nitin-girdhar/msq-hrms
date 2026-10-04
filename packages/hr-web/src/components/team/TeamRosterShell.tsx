@@ -5,7 +5,9 @@ import Link from 'next/link';
 import type { SessionUser } from '@platform/types';
 import { can, CAPABILITY } from '@platform/rbac';
 import { Alert, Button, Modal, PageBody, PageHeader, PageSection, SpeechInputButton, appendDictation, exportRows } from '@platform/ui-kit';
-import { swaps } from '../../lib/api/client';
+import { profile as profileApi, swaps } from '../../lib/api/client';
+import type { ChainLink } from '../../lib/profile/types';
+import PersonAvatar from '../common/PersonAvatar';
 import type { Roster, RosterDay, RosterPerson, ShiftSwap } from '../../lib/team/types';
 import { SWAP_STATUS_LABEL } from '../../lib/team/types';
 import { formatDay } from '../../lib/attendance/format';
@@ -76,6 +78,9 @@ export default function TeamRosterShell({ actor }: Props) {
   const [from, setFrom] = useState<string | undefined>(undefined);
   const [roster, setRoster] = useState<Roster | null>(null);
   const [mine, setMine] = useState<ShiftSwap[]>([]);
+  // Who approvals go to. Needs the profile capability; without it the card falls back to the roster's supervisor.
+  const [chain, setChain] = useState<ChainLink[]>([]);
+  useEffect(() => { profileApi.mine().then((r) => setChain(r.data.chain)).catch(() => setChain([])); }, []);
   const [queue, setQueue] = useState<ShiftSwap[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -306,7 +311,7 @@ export default function TeamRosterShell({ actor }: Props) {
                   <tbody>
                     {roster.people.map((p) => (
                       <tr key={p.user_id} className={`border-b border-outline-variant/50 align-top last:border-0 ${p.is_me ? 'bg-primary-fixed/30' : ''}`}>
-                        <td className="px-4 py-2 font-medium text-on-surface">{p.full_name}{p.is_me && <span className="ml-2 text-label-sm text-primary">You</span>}</td>
+                        <td className="px-4 py-2 font-medium text-on-surface"><span className="flex items-center gap-2.5"><PersonAvatar name={p.full_name} userId={p.user_id} size="sm" /><span className="min-w-0 truncate">{p.full_name}{p.is_me && <span className="ml-2 rounded bg-primary px-1.5 py-0.5 text-label-sm font-semibold text-on-primary">YOU</span>}</span></span></td>
                         {p.days.map((d) => (
                           <td key={d.date} className={`px-1.5 py-2 ${d.date === today ? 'bg-primary-fixed/20' : ''}`}>
                             {canSwapCell(p, d) ? (
@@ -357,7 +362,23 @@ export default function TeamRosterShell({ actor }: Props) {
           </PageSection>
         )}
 
-        <PageSection title="My swaps">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <PageSection
+          title="Peer shift swap & handover desk"
+          action={canRequest ? <Button variant="primary" onClick={() => setRequesting({})}>+ New swap ticket</Button> : undefined}
+        >
+          {mine.length === 0 ? (
+            <p className={emptyBlockCls}>No shift swaps yet.</p>
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {mine.map((s) => <SwapTicket key={s.id} swap={s} meId={actor.id} busy={busyId === s.id} onWithdraw={() => void act(s.id, () => swaps.cancel(s.id), 'Swap withdrawn.')} />)}
+            </ul>
+          )}
+        </PageSection>
+        <LeadershipCard supervisor={roster?.supervisor ?? null} chain={chain} />
+        </div>
+
+        <PageSection title="All swap activity" >
           {mine.length === 0 ? (
             <p className={emptyBlockCls}>No shift swaps yet.</p>
           ) : (
@@ -485,5 +506,91 @@ function RejectModal({ swap, onClose, onDone }: { swap: ShiftSwap; onClose: () =
         <textarea id="rj-comment" value={comment} onChange={(e) => setComment(e.target.value)} rows={2} maxLength={1000} className={`${fieldInputCls} h-auto py-2`} disabled={busy} />
       </div>
     </Modal>
+  );
+}
+
+const timeAgo = (iso: string): string => {
+  const mins = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
+  if (mins < 60) return `${mins || 1}m ago`;
+  if (mins < 48 * 60) return `${Math.round(mins / 60)}h ago`;
+  return `${Math.round(mins / 1440)}d ago`;
+};
+
+/** One swap as a ticket: both slots side by side, where it stands in the two-step sign-off, and Withdraw while it is open. */
+function SwapTicket({ swap, meId, busy, onWithdraw }: { swap: ShiftSwap; meId: string; busy: boolean; onWithdraw: () => void }) {
+  const open = swap.status === 'pending_peer' || swap.status === 'pending_manager';
+  const consented = swap.status !== 'pending_peer' && swap.status !== 'declined';
+  const tone = swap.status === 'approved' ? 'bg-status-success-container text-on-status-success-container'
+    : swap.status === 'rejected' || swap.status === 'declined' ? 'bg-status-overdue-container text-on-status-overdue-container'
+    : open ? 'bg-status-due-container text-on-status-due-container' : 'bg-surface-container text-on-surface-variant';
+  const mineIsRequester = swap.requester_id === meId;
+  return (
+    <li className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="flex items-center gap-2 text-xs text-on-surface-variant">
+          <span className="rounded bg-primary-fixed px-1.5 py-0.5 font-mono font-semibold text-on-primary-fixed">SW-{swap.id.slice(-4).toUpperCase()}</span>
+          Requested {timeAgo(swap.created_at)}
+        </p>
+        <span className={`rounded-full px-2.5 py-0.5 text-label-sm font-semibold ${tone}`}>{SWAP_STATUS_LABEL[swap.status] ?? swap.status}</span>
+      </div>
+      <div className="mt-3 grid items-center gap-2 sm:grid-cols-[1fr_auto_1fr]">
+        <div className="rounded-lg bg-surface-container-low px-3 py-2">
+          <p className="text-label-sm text-on-surface-variant">{mineIsRequester ? 'Your slot' : `${swap.requester_name}'s slot`}</p>
+          <p className="text-sm font-semibold text-on-surface">{swap.requester_shift}</p>
+          <p className="text-label-sm text-on-surface-variant">{formatDay(swap.swap_date)}</p>
+        </div>
+        <span className="hidden text-lg text-primary sm:block" aria-hidden="true">⇄</span>
+        <div className="rounded-lg bg-surface-container-low px-3 py-2">
+          <p className="text-label-sm text-on-surface-variant">{mineIsRequester ? `Peer: ${swap.peer_name}` : 'Your slot'}</p>
+          <p className="text-sm font-semibold text-on-surface">{swap.peer_shift}</p>
+          <p className="text-label-sm text-on-surface-variant">{formatDay(swap.swap_date)}</p>
+        </div>
+      </div>
+      {swap.reason && <p className="mt-2 text-xs text-on-surface-variant">Reason: {swap.reason}</p>}
+      <ol className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-label-sm" aria-label="Sign-off progress">
+        <li className={consented ? 'font-semibold text-on-status-success-container' : swap.status === 'declined' ? 'font-semibold text-on-status-overdue-container' : 'text-on-surface-variant'}>
+          {consented ? '✓' : swap.status === 'declined' ? '✕' : '○'} Teammate {consented ? 'consented' : swap.status === 'declined' ? 'declined' : 'to agree'}
+        </li>
+        <li className={swap.status === 'approved' ? 'font-semibold text-on-status-success-container' : swap.status === 'rejected' ? 'font-semibold text-on-status-overdue-container' : 'text-on-surface-variant'}>
+          {swap.status === 'approved' ? '✓' : swap.status === 'rejected' ? '✕' : '○'} Approver {swap.status === 'approved' ? 'approved' : swap.status === 'rejected' ? 'rejected' : 'sign-off'}
+        </li>
+      </ol>
+      {swap.status === 'rejected' && swap.approver_comment && <p className="mt-1 text-label-sm text-on-status-overdue-container">{swap.approver_comment}</p>}
+      {mineIsRequester && open && (
+        <div className="mt-3 flex justify-end">
+          <button type="button" disabled={busy} onClick={onWithdraw} className="rounded-lg border border-status-overdue/40 px-3 py-1 text-xs font-semibold text-on-status-overdue-container hover:bg-status-overdue-container disabled:opacity-50">Withdraw</button>
+        </div>
+      )}
+    </li>
+  );
+}
+
+/** Who approvals go to, nearest first, with a way to reach them. Built from the reporting chain; nothing is invented beyond it. */
+function LeadershipCard({ supervisor, chain }: { supervisor: Roster['supervisor']; chain: ChainLink[] }) {
+  const people = chain.length > 0
+    ? chain.slice(0, 2).map((c, i) => ({ id: c.user_id, name: c.full_name, title: c.designation_name, email: c.email ?? null, role: i === 0 ? 'Direct reporting manager' : 'Secondary approver / head' }))
+    : supervisor ? [{ id: supervisor.user_id, name: supervisor.full_name, title: supervisor.designation_name, email: null, role: 'Direct reporting manager' }] : [];
+  return (
+    <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm">
+      <h3 className="text-base font-semibold text-on-surface">Leadership & escalation</h3>
+      <p className="mb-3 text-xs text-on-surface-variant">Who signs off your swaps and leave</p>
+      {people.length === 0 ? <p className="text-sm text-on-surface-variant">No reporting manager on record. Ask HR to set one.</p> : (
+        <ul className="space-y-3">
+          {people.map((p) => (
+            <li key={p.id} className="rounded-lg bg-surface-container-low p-3">
+              <p className="text-label-sm font-semibold uppercase tracking-wide text-on-surface-variant">{p.role}</p>
+              <div className="mt-1.5 flex items-center gap-2.5">
+                <PersonAvatar name={p.name} userId={p.id} size="md" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-on-surface">{p.name}</p>
+                  {p.title && <p className="truncate text-label-sm text-on-surface-variant">{p.title}</p>}
+                </div>
+              </div>
+              {p.email && <a href={`mailto:${p.email}`} className="mt-2 inline-block text-xs font-semibold text-primary hover:underline">Email {p.name.split(' ')[0]}</a>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

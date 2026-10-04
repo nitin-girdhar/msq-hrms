@@ -57,6 +57,7 @@ export interface EmployeeHeader {
 export interface ChainLink {
   user_id: string;
   full_name: string;
+  email?: string | null;
   designation_name: string | null;
   level: number;
 }

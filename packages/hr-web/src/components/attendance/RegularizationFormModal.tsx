@@ -18,6 +18,8 @@ interface Props {
    * which is a worse experience but never a wrong one.
    */
   rules?: AttendanceRules | null;
+  /** Render as a section of the page (always shown) instead of a pop-up. */
+  inline?: boolean;
   onClose: () => void;
   onSubmitted: () => void;
 }
@@ -53,7 +55,7 @@ function toLocalInput(iso: string | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export default function RegularizationFormModal({ open, date, item, rules, onClose, onSubmitted }: Props) {
+export default function RegularizationFormModal({ open, date, item, rules, inline = false, onClose, onSubmitted }: Props) {
   const [workDate, setWorkDate] = useState('');
   const [mode, setMode] = useState<'status' | 'times'>('status');
   const [statusName, setStatusName] = useState<AttendanceStatusName | ''>('');
@@ -134,6 +136,8 @@ export default function RegularizationFormModal({ open, date, item, rules, onClo
         });
       }
       onSubmitted();
+      // Inline, the form stays on the page, so it is emptied here instead of disappearing with a modal.
+      if (inline) { setWorkDate(''); setMode('status'); setStatusName(''); setInTime(''); setOutTime(''); setReason(''); }
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to submit regularization.');
@@ -157,6 +161,103 @@ export default function RegularizationFormModal({ open, date, item, rules, onClo
     </div>
   );
 
+  const form = (
+    <form id={FORM_ID} onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+        {error && (
+          <div role="alert" className="rounded-xl border border-status-overdue/30 bg-status-overdue-container px-3 py-2 text-xs text-on-status-overdue-container">
+            {error}
+          </div>
+        )}
+
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="rg-date" className="text-xs font-semibold text-on-surface">Date *</label>
+          {/* Locked while editing: only one open request may exist per date, so
+              moving one is a cancel-and-refile, not an edit. */}
+          <input
+            id="rg-date"
+            type="date"
+            value={workDate}
+            onChange={(e) => setWorkDate(e.target.value)}
+            disabled={submitting || editing}
+            {...(!editing && earliestDate ? { min: earliestDate } : {})}
+            {...(!editing && latestDate ? { max: latestDate } : {})}
+            className={inputCls}
+          />
+          {editing ? (
+            <p className="text-[11px] text-outline">
+              To request a different date, cancel this request and file a new one.
+            </p>
+          ) : dateOutOfWindow ? (
+            <p role="alert" className="text-[11px] font-medium text-status-overdue">
+              Pick a date between {earliestDate} and {latestDate}.
+            </p>
+          ) : earliestDate && latestDate ? (
+            <p className="text-[11px] text-outline">
+              {earliestDate === latestDate
+                ? `Only today (${latestDate}) can be regularized.`
+                : `Dates from ${earliestDate} to ${latestDate} can be regularized.`}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex gap-1 rounded-xl border border-outline-variant bg-surface-container-lowest p-1">
+          {(['status', 'times'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              className={mode === m ? 'flex-1 rounded-lg bg-primary-fixed px-3 py-1.5 text-xs font-semibold text-primary' : 'flex-1 rounded-lg px-3 py-1.5 text-xs font-medium text-on-surface-variant hover:bg-surface-container-low'}
+            >
+              {m === 'status' ? 'Requested status' : 'Requested times'}
+            </button>
+          ))}
+        </div>
+
+        {mode === 'status' ? (
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="rg-status" className="text-xs font-semibold text-on-surface">Requested status *</label>
+            <select id="rg-status" value={statusName} onChange={(e) => setStatusName(e.target.value as AttendanceStatusName)} disabled={submitting} className={inputCls}>
+              <option value="">Select…</option>
+              {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="rg-in" className="text-xs font-semibold text-on-surface">Check-in time</label>
+              <input id="rg-in" type="datetime-local" value={inTime} onChange={(e) => setInTime(e.target.value)} disabled={submitting} className={inputCls} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="rg-out" className="text-xs font-semibold text-on-surface">Check-out time</label>
+              <input id="rg-out" type="datetime-local" value={outTime} onChange={(e) => setOutTime(e.target.value)} disabled={submitting} className={inputCls} />
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor="rg-reason" className="text-xs font-semibold text-on-surface">Reason *</label>
+            <SpeechInputButton onText={(t) => setReason((p) => appendDictation(p, t))} disabled={submitting} />
+          </div>
+          <textarea id="rg-reason" value={reason} onChange={(e) => setReason(e.target.value)} disabled={submitting} rows={3} className={inputCls} />
+        </div>
+
+      </form>
+  );
+
+  if (inline) {
+    return (
+      <section id="regularization-inline" className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm sm:p-5">
+        <header className="mb-3">
+          <h2 className="text-lg font-semibold text-on-surface">{editing ? 'Edit your regularization request' : 'Apply for attendance regularization'}</h2>
+          <p className="text-xs text-on-surface-variant">Missed a punch or need a day corrected? Say what it should be and why; your approver decides.</p>
+        </header>
+        {form}
+        <div className="mt-4">{footer}</div>
+      </section>
+    );
+  }
+
   return (
     <Modal
       open={open}
@@ -166,87 +267,7 @@ export default function RegularizationFormModal({ open, date, item, rules, onClo
       maxWidth="max-w-md"
       footer={footer}
     >
-      <form id={FORM_ID} onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
-        {error && (
-          <div role="alert" className="rounded-xl border border-status-overdue/30 bg-status-overdue-container px-3 py-2 text-xs text-on-status-overdue-container">
-            {error}
-          </div>
-        )}
-
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="rg-date" className="text-xs font-semibold text-on-surface">Date *</label>
-          {/* Locked while editing: only one open request may exist per date, so
-              moving one is a cancel-and-refile, not an edit. */}
-          <input
-            id="rg-date"
-            type="date"
-            value={workDate}
-            onChange={(e) => setWorkDate(e.target.value)}
-            disabled={submitting || editing}
-            {...(!editing && earliestDate ? { min: earliestDate } : {})}
-            {...(!editing && latestDate ? { max: latestDate } : {})}
-            className={inputCls}
-          />
-          {editing ? (
-            <p className="text-[11px] text-outline">
-              To request a different date, cancel this request and file a new one.
-            </p>
-          ) : dateOutOfWindow ? (
-            <p role="alert" className="text-[11px] font-medium text-status-overdue">
-              Pick a date between {earliestDate} and {latestDate}.
-            </p>
-          ) : earliestDate && latestDate ? (
-            <p className="text-[11px] text-outline">
-              {earliestDate === latestDate
-                ? `Only today (${latestDate}) can be regularized.`
-                : `Dates from ${earliestDate} to ${latestDate} can be regularized.`}
-            </p>
-          ) : null}
-        </div>
-
-        <div className="flex gap-1 rounded-xl border border-outline-variant bg-surface-container-lowest p-1">
-          {(['status', 'times'] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setMode(m)}
-              className={mode === m ? 'flex-1 rounded-lg bg-primary-fixed px-3 py-1.5 text-xs font-semibold text-primary' : 'flex-1 rounded-lg px-3 py-1.5 text-xs font-medium text-on-surface-variant hover:bg-surface-container-low'}
-            >
-              {m === 'status' ? 'Requested status' : 'Requested times'}
-            </button>
-          ))}
-        </div>
-
-        {mode === 'status' ? (
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="rg-status" className="text-xs font-semibold text-on-surface">Requested status *</label>
-            <select id="rg-status" value={statusName} onChange={(e) => setStatusName(e.target.value as AttendanceStatusName)} disabled={submitting} className={inputCls}>
-              <option value="">Select…</option>
-              {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="rg-in" className="text-xs font-semibold text-on-surface">Check-in time</label>
-              <input id="rg-in" type="datetime-local" value={inTime} onChange={(e) => setInTime(e.target.value)} disabled={submitting} className={inputCls} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="rg-out" className="text-xs font-semibold text-on-surface">Check-out time</label>
-              <input id="rg-out" type="datetime-local" value={outTime} onChange={(e) => setOutTime(e.target.value)} disabled={submitting} className={inputCls} />
-            </div>
-          </div>
-        )}
-
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-center justify-between gap-2">
-            <label htmlFor="rg-reason" className="text-xs font-semibold text-on-surface">Reason *</label>
-            <SpeechInputButton onText={(t) => setReason((p) => appendDictation(p, t))} disabled={submitting} />
-          </div>
-          <textarea id="rg-reason" value={reason} onChange={(e) => setReason(e.target.value)} disabled={submitting} rows={3} className={inputCls} />
-        </div>
-
-      </form>
+      {form}
     </Modal>
   );
 }

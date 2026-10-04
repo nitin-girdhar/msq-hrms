@@ -1,16 +1,31 @@
 import type { AttendanceDayRow } from '../../lib/attendance/types';
 import { formatWorkedMinutes } from '../../lib/attendance/format';
-import { summariseMonth } from '../../lib/attendance/summary';
+import { monthTargets, summariseMonth } from '../../lib/attendance/summary';
 
-// Four headline figures above the month grid (Stitch "Timesheet" KPI row). The
-// design's allowance / slot-adherence tiles are not built: they depend on the
-// fixed-tier and ₹450 allowance model that was ruled out for this product.
-export default function MonthSummaryStrip({ days }: { days: AttendanceDayRow[] }) {
+interface Calendar {
+  year: number;
+  month: number;
+  weeklyOff: readonly number[];
+  holidays: readonly string[];
+  today: string;
+  fullDayMinutes: number;
+}
+
+// Headline figures above the month grid (Stitch "Timesheet" KPI row). Worked-vs-target and the attendance
+// rate come from the same day rows as the grid plus the month's weekly offs and holidays, so the strip
+// cannot disagree with the grid beneath it. The design's night-allowance tile is not built: it depends on
+// an allowance model that was ruled out for now.
+export default function MonthSummaryStrip({ days, calendar }: { days: AttendanceDayRow[]; calendar?: Calendar | undefined }) {
   const s = summariseMonth(days);
+  const t = calendar ? monthTargets(calendar) : null;
+  const rate = t && t.elapsedWorkingDays > 0 ? Math.round((s.presentDays / t.elapsedWorkingDays) * 1000) / 10 : null;
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <Tile label="Worked" value={formatWorkedMinutes(s.workedMinutes)} hint="this month" />
-      <Tile label="Present days" value={String(s.presentDays)} hint="incl. WFH and half days" tone="success" />
+    <div className={`grid grid-cols-2 gap-3 ${t ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
+      <Tile label="Worked" value={formatWorkedMinutes(s.workedMinutes)}
+        hint={t ? `of ${formatWorkedMinutes(t.targetMinutes)} target to date` : 'this month'}
+        tone={t && t.targetMinutes > 0 && s.workedMinutes >= t.targetMinutes ? 'success' : 'neutral'} />
+      <Tile label="Present days" value={String(s.presentDays)} hint={t ? `of ${t.elapsedWorkingDays} working days so far` : 'incl. WFH and half days'} tone="success" />
+      {t && <Tile label="Attendance rate" value={rate === null ? '—' : `${rate}%`} hint={`${t.workingDays} working days this month`} tone={rate !== null && rate < 90 ? 'due' : 'success'} />}
       <Tile label="Late arrivals" value={String(s.lateDays)} hint="days" tone={s.lateDays > 0 ? 'due' : 'neutral'} />
       <Tile label="Needs attention" value={String(s.attentionDays)} hint="absent / missed punch" tone={s.attentionDays > 0 ? 'overdue' : 'neutral'} />
     </div>

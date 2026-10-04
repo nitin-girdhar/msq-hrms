@@ -84,7 +84,7 @@ const HEADER_JOINS = sql`
   LEFT JOIN hr.designations ds ON ds.id = ep.designation_id
   LEFT JOIN iam.users mgr ON mgr.id = u.manager_id`;
 
-export interface ChainLink { user_id: string; full_name: string; designation_name: string | null; level: number }
+export interface ChainLink { user_id: string; full_name: string; email: string | null; designation_name: string | null; level: number }
 
 /** The person's managers, nearest first, up to four levels (the level cap also guards a cycle). */
 async function managerChain(tx: DrizzleTx, userId: string): Promise<ChainLink[]> {
@@ -94,7 +94,7 @@ async function managerChain(tx: DrizzleTx, userId: string): Promise<ChainLink[]>
       UNION ALL
       SELECT u.manager_id, c.lvl + 1 FROM c JOIN iam.users u ON u.id = c.id WHERE u.manager_id IS NOT NULL AND c.lvl < 4
     )
-    SELECT m.id::text AS user_id, m.full_name, ds.name AS designation_name, c.lvl AS level
+    SELECT m.id::text AS user_id, m.full_name, m.email, ds.name AS designation_name, c.lvl AS level
     FROM c JOIN iam.users m ON m.id = c.id
     LEFT JOIN hr.employee_profiles ep ON ep.user_id = m.id AND NOT ep.is_deleted
     LEFT JOIN hr.designations ds ON ds.id = ep.designation_id

@@ -17,6 +17,9 @@ export type AttendanceStatusName =
   | 'not_marked';
 
 export interface AttendanceRules {
+  /** The branch's own coordinates (null when not set), for the distance shown before punching. */
+  office_lat?: number | null;
+  office_lng?: number | null;
   geofence_enabled: boolean;
   geofence_radius_meters: number;
   require_photo: boolean;

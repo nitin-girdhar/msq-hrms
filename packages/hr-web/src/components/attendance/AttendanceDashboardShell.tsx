@@ -9,7 +9,7 @@ import { todayIso } from '../../lib/attendance/format';
 import type { HrRank } from '../../lib/hr-rank';
 import AttendanceTabs from './AttendanceTabs';
 import TodayCard from './TodayCard';
-import PunchModal from './PunchModal';
+import PunchPanel from './PunchPanel';
 import MyMonthCalendar from './MyMonthCalendar';
 import DayDetailPopover from './DayDetailPopover';
 import { useWideScreen } from '../../hooks/useWideScreen';
@@ -50,6 +50,10 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
   const [regFormDate, setRegFormDate] = useState<string | null>(null);
   // Set = the form modal is open in edit mode over this pending request.
   const [regEditing, setRegEditing] = useState<RegularizationView | null>(null);
+  // Asking to regularize a day (from the day panel, the header button, or Edit) brings the on-page form into view.
+  useEffect(() => {
+    if (regFormDate || regEditing) document.getElementById('regularization-inline')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [regFormDate, regEditing]);
   const [viewingRegId, setViewingRegId] = useState<string | null>(null);
 
   // Derive "today" in the org timezone (from rules) so it matches the
@@ -211,6 +215,11 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
 
         <TodayCard todayRow={todayRow} shift={shift} punchState={punchState} todayEvents={todayEvents} onPunch={startPunch} busy={punchMode !== null || gateBusy} rules={rules} timezone={orgTz} />
 
+        {/* The punch itself happens here, on the page (selfie + location side by side), not in a pop-up. */}
+        {rules && punchMode && (
+          <PunchPanel mode={punchMode} rules={rules} geoException={punchState?.geo_exception ?? null} onClose={() => setPunchMode(null)} onSuccess={handlePunchSuccess} />
+        )}
+
         {/* Quick standing, straight under the hero (Stitch): what is waiting, and what was fixed. */}
         {!regLoading && <RegularizationStats items={regularizations} today={todayIso(orgTz)} />}
 
@@ -231,6 +240,8 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
             <div className={wide && detailDate ? 'grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start' : ''}>
               <MyMonthCalendar
                 refreshKey={refreshKey}
+                fullDayMinutes={rules?.min_full_day_minutes}
+                today={todayIso(orgTz)}
                 onDayClick={(row, date) => { setDetailRow(row); setDetailDate(date); }}
               />
               {wide && detailDate && (
@@ -244,7 +255,21 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
           )}
         </PageSection>
 
-        <PageSection title="My regularizations">
+        {/* The correction form sits on the page (Stitch): a missed punch is fixed here, not in a pop-up. */}
+        <RegularizationFormModal
+          inline
+          open
+          date={regFormDate}
+          item={regEditing}
+          rules={rules}
+          onClose={() => { setRegFormDate(null); setRegEditing(null); }}
+          onSubmitted={() => {
+            setNotice(regEditing ? 'Regularization request updated.' : 'Regularization request submitted.');
+            setRefreshKey((k) => k + 1);
+          }}
+        />
+
+        <PageSection title="Regularization history & audit trail">
           <MyRegularizationsList
             items={regularizations}
             loading={regLoading}
@@ -254,17 +279,6 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
           />
         </PageSection>
       </PageBody>
-
-      {rules && punchMode && (
-        <PunchModal
-          open={punchMode !== null}
-          mode={punchMode}
-          rules={rules}
-          geoException={punchState?.geo_exception ?? null}
-          onClose={() => setPunchMode(null)}
-          onSuccess={handlePunchSuccess}
-        />
-      )}
 
       <PhotoUploadModal
         open={facePhotoOpen}
@@ -280,18 +294,6 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
         userId={actor.id}
         onClose={() => setDetailDate(null)}
         onRequestRegularization={(date) => { setDetailDate(null); setRegFormDate(date); }}
-      />
-
-      <RegularizationFormModal
-        open={regFormDate !== null || regEditing !== null}
-        date={regFormDate}
-        item={regEditing}
-        rules={rules}
-        onClose={() => { setRegFormDate(null); setRegEditing(null); }}
-        onSubmitted={() => {
-          setNotice(regEditing ? 'Regularization request updated.' : 'Regularization request submitted.');
-          setRefreshKey((k) => k + 1);
-        }}
       />
 
       <RegularizationDetailModal regularizationId={viewingRegId} onClose={() => setViewingRegId(null)} />

@@ -112,6 +112,10 @@ export interface EffectiveRules {
   // it to derive "today" — using the browser's UTC date mismatched the stored
   // work_date during the UTC+ evening window and hid a just-made check-in.
   timezone: string;
+  // The org's own coordinates, so the punch screen can show the distance from the office before the person
+  // punches. The geofence itself is still enforced here on the server, from the same coordinates.
+  office_lat: number | null;
+  office_lng: number | null;
 }
 
 const DEFAULT_RULES: EffectiveRules = {
@@ -130,6 +134,8 @@ const DEFAULT_RULES: EffectiveRules = {
   regularization_max_backdate_days: 30,
   regularization_approval_levels: 1,
   timezone: 'Asia/Kolkata',
+  office_lat: null,
+  office_lng: null,
 };
 
 /** The org-level thresholds carried on the effective rules, in ShiftThresholds shape. */
@@ -154,7 +160,7 @@ async function loadRulesRow(tx: DrizzleTx, orgId: string): Promise<EffectiveRule
   // default had it on, and "which value is in force" would stop being
   // answerable by looking at one row.
   const rows = (await tx.execute(sql`
-    SELECT o.timezone,
+    SELECT o.timezone, o.geo_lat::float8 AS office_lat, o.geo_lng::float8 AS office_lng,
            r.geofence_enabled, r.geofence_radius_meters, r.require_photo, r.require_geo, r.allow_wfh_checkin,
            r.require_face_match, r.face_match_threshold::float8 AS face_match_threshold, r.face_match_action,
            r.photo_change_cooldown_days, r.image_retention_days,
@@ -176,11 +182,12 @@ async function loadRulesRow(tx: DrizzleTx, orgId: string): Promise<EffectiveRule
   const row = rows[0];
   if (!row) return { ...DEFAULT_RULES };
   const timezone = row.timezone ?? DEFAULT_RULES.timezone;
-  // No attendance_rules row → fall back to defaults, but keep the real org tz.
+  const office = { office_lat: row.office_lat ?? null, office_lng: row.office_lng ?? null };
+  // No attendance_rules row → fall back to defaults, but keep the real org tz and coordinates.
   if (row.geofence_enabled === null || row.geofence_enabled === undefined) {
-    return { ...DEFAULT_RULES, timezone };
+    return { ...DEFAULT_RULES, timezone, ...office };
   }
-  return { ...(row as EffectiveRules), timezone };
+  return { ...(row as EffectiveRules), timezone, ...office };
 }
 
 async function getCachedRules(orgId: string): Promise<EffectiveRules> {
