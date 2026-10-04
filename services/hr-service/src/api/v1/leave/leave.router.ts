@@ -14,6 +14,10 @@ import {
   rejectLeaveRequestSchema,
   cancelLeaveRequestSchema,
   bulkLeaveDecisionSchema,
+  createCompOffClaimSchema,
+  listCompOffQueueSchema,
+  decideCompOffSchema,
+  rejectCompOffSchema,
   listBalancesSchema,
   listLedgerSchema,
   createAdjustmentSchema,
@@ -60,6 +64,17 @@ export async function leaveRouter(app: FastifyInstance) {
   app.post('/leave/requests/:id/approve', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_APPROVE, 'You do not have permission to approve leave'), validate({ body: approveLeaveRequestSchema })] }, ctrl.approve);
   app.post('/leave/requests/:id/reject', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_REJECT, 'You do not have permission to reject leave'), validate({ body: rejectLeaveRequestSchema })] }, ctrl.reject);
   app.post('/leave/requests/:id/cancel', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_REQUEST_CANCEL, 'You do not have permission to cancel leave'), validate({ body: cancelLeaveRequestSchema })] }, ctrl.cancel);
+
+  // ── Comp-off ──────────────────────────────────────────────────────────────
+  // Claiming and cancelling need the request capability; the approvals queue and
+  // decisions need the approve capability. Per-claim authority (assigned approver
+  // or override, never your own claim) is re-checked in the repository.
+  app.post('/leave/comp-off', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_COMP_OFF_REQUEST, 'You do not have permission to claim comp-off'), validate({ body: createCompOffClaimSchema })] }, ctrl.createCompOff);
+  app.get('/leave/comp-off', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_VIEW)] }, ctrl.listOwnCompOff);
+  app.get('/leave/comp-off/queue', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_COMP_OFF_APPROVE), validate({ query: listCompOffQueueSchema })] }, ctrl.listCompOffQueue);
+  app.post('/leave/comp-off/:id/approve', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_COMP_OFF_APPROVE, 'You do not have permission to decide comp-off claims'), validate({ body: decideCompOffSchema })] }, ctrl.approveCompOff);
+  app.post('/leave/comp-off/:id/reject', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_COMP_OFF_APPROVE, 'You do not have permission to decide comp-off claims'), validate({ body: rejectCompOffSchema })] }, ctrl.rejectCompOff);
+  app.post('/leave/comp-off/:id/cancel', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_COMP_OFF_REQUEST, 'You do not have permission to cancel comp-off claims')] }, ctrl.cancelCompOff);
 
   // ── Balances & ledger ─────────────────────────────────────────────────────
   // Balance per leave type as on ?as_of= (default today). This is the ENTIRE

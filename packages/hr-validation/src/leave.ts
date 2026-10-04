@@ -72,6 +72,27 @@ export const bulkLeaveDecisionSchema = z
     path: ['comment'],
   });
 
+// Claim a day off for work done on a day off. Whole or half day only. Whether the
+// date qualifies (a weekly off or holiday, not future, within the backdate
+// window) is decided server-side against the claimant's own roster.
+export const createCompOffClaimSchema = z.object({
+  worked_date: isoDate,
+  days: z.union([z.literal(0.5), z.literal(1)]),
+  reason: z.string().trim().min(1, 'Say what you worked on').max(500),
+});
+
+export const listCompOffQueueSchema = z.object({
+  status: z.enum(['pending', 'approved', 'rejected', 'cancelled']).default('pending'),
+});
+
+export const decideCompOffSchema = z.object({
+  comment: z.string().trim().max(1000).optional(),
+});
+
+export const rejectCompOffSchema = z.object({
+  comment: z.string().trim().min(1, 'A comment is required when rejecting').max(1000),
+});
+
 export const cancelLeaveRequestSchema = z.object({
   comment: z.string().max(1000).optional(),
 });
@@ -182,6 +203,10 @@ export type PreviewLeaveRequestInput = z.infer<typeof previewLeaveRequestSchema>
 export type ListLeaveRequestsInput = z.infer<typeof listLeaveRequestsSchema>;
 export type ApproveLeaveRequestInput = z.infer<typeof approveLeaveRequestSchema>;
 export type RejectLeaveRequestInput = z.infer<typeof rejectLeaveRequestSchema>;
+export type CreateCompOffClaimInput = z.infer<typeof createCompOffClaimSchema>;
+export type ListCompOffQueueInput = z.infer<typeof listCompOffQueueSchema>;
+export type DecideCompOffInput = z.infer<typeof decideCompOffSchema>;
+export type RejectCompOffInput = z.infer<typeof rejectCompOffSchema>;
 export type BulkLeaveDecisionInput = z.infer<typeof bulkLeaveDecisionSchema>;
 export type CancelLeaveRequestInput = z.infer<typeof cancelLeaveRequestSchema>;
 export type ListBalancesInput = z.infer<typeof listBalancesSchema>;

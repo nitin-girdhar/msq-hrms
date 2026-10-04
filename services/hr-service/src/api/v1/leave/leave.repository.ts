@@ -26,6 +26,7 @@ import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '.
 import { computeLeaveDays, type HalfDay } from '../../../lib/leave/compute-leave-days.js';
 import { resolveApprovers } from '../../../lib/leave/resolve-approvers.js';
 import { resolveEffectivePolicy, resolveCycleStartMonth } from '../../../lib/leave/policy.js';
+import { COMP_OFF_EXPIRY_DAYS, COMP_OFF_LEAVE_TYPE, addDaysIso, checkClaimDate } from '../../../lib/leave/comp-off.js';
 import type {
   ApplyLeaveRequestInput,
   UpdateLeaveRequestInput,
@@ -41,6 +42,7 @@ import type {
   UpdateHolidayInput,
   CreateHolidayCalendarInput,
   UpdateHolidayCalendarInput,
+  CreateCompOffClaimInput,
 } from '@hr/validation';
 
 // `capabilities` (Tier C3) rides along so the service-layer gates can ask the
@@ -1117,5 +1119,216 @@ export async function upsertSettings(ctx: LeaveCtx, month: number, scope: 'org' 
       ON CONFLICT (tenant_id, COALESCE(org_id, '00000000-0000-0000-0000-000000000000'::uuid))
       DO UPDATE SET leave_cycle_start_month = EXCLUDED.leave_cycle_start_month, updated_at = CLOCK_TIMESTAMP()
     `);
+  });
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// COMP-OFF (schema 1.59.0)
+//
+// A claim for work done on a day off. The rules (which days qualify, expiry, how
+// much to lapse) are pure and live in lib/leave/comp-off.ts; this file applies
+// them inside a transaction.
+//
+// Writes run in the SERVICE transaction for the same reason applyLeave does: the
+// approver is not the claim's owner, and the ledger is INSERT-only via the
+// service path. Authorization is enforced here in code (assigned approver or an
+// authorized override, plus hr.can_approve_leave so nobody decides their own
+// claim) and every query is explicitly scoped by the gateway-verified org/user.
+// ═════════════════════════════════════════════════════════════════════════════
+export interface CompOffClaimView {
+  id: string;
+  user_id: string;
+  user_full_name: string;
+  user_email: string;
+  worked_date: string;
+  days: number;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  approver_id: string | null;
+  approver_name: string | null;
+  acted_at: string | null;
+  approver_comment: string | null;
+  expires_on: string | null;
+  lapsed_at: string | null;
+  created_at: string;
+}
+
+const COMP_OFF_COLUMNS = sql`
+  c.id::text, c.user_id::text, u.full_name AS user_full_name, u.email AS user_email,
+  c.worked_date::text, c.days::float8 AS days, c.reason, c.status,
+  c.approver_id::text, a.full_name AS approver_name,
+  c.acted_at::text, c.approver_comment, c.expires_on::text, c.lapsed_at::text,
+  c.created_at::text
+`;
+
+const COMP_OFF_FROM = sql`
+  FROM hr.comp_off_claims c
+  JOIN iam.users u ON u.id = c.user_id
+  LEFT JOIN iam.users a ON a.id = c.approver_id
+`;
+
+export async function createCompOffClaim(
+  ctx: LeaveCtx,
+  data: CreateCompOffClaimInput,
+): Promise<{ id: string; approver_id: string | null }> {
+  return serviceTxWithContext(ctx, data.reason, async (tx) => {
+    await assertHomeBranch(tx, ctx.user_id, ctx.org_id);
+
+    // The credit needs somewhere to land. The type is seeded for every tenant, so
+    // a miss means this tenant switched it off — say that, not "unknown type".
+    const typeRows = (await tx.execute(sql`
+      SELECT id::text FROM hr.leave_types
+      WHERE tenant_id = ${ctx.tenant_id} AND name = ${COMP_OFF_LEAVE_TYPE} AND is_active
+    `)) as unknown as Array<{ id: string }>;
+    if (!typeRows[0]) throw new BadRequestError('Comp-off is not enabled for your organisation');
+
+    const holidays = await orgHolidaysBetween(tx, ctx.org_id, data.worked_date, data.worked_date);
+    const weeklyOff = await weeklyOffPattern(tx, ctx.org_id, ctx.user_id);
+    const verdict = checkClaimDate({ workedDate: data.worked_date, today: todayIso(), weeklyOff, holidays });
+    if (!verdict.ok) throw new BadRequestError(verdict.reason);
+
+    const approvers = await resolveApprovers(tx, ctx.org_id, ctx.tenant_id, ctx.user_id, 1);
+    const approverId = approvers[0]?.approverId ?? null;
+
+    try {
+      const rows = (await tx.execute(sql`
+        INSERT INTO hr.comp_off_claims (user_id, org_id, worked_date, days, reason, approver_id, created_by)
+        VALUES (${ctx.user_id}, ${ctx.org_id}, ${data.worked_date}, ${data.days}, ${data.reason},
+                ${approverId}, ${ctx.user_id})
+        RETURNING id::text
+      `)) as unknown as Array<{ id: string }>;
+      return { id: rows[0]!.id, approver_id: approverId };
+    } catch (err) {
+      if (pgErrorCode(err) === '23505') {
+        throw new ConflictError('You already have a comp-off claim for that day');
+      }
+      throw err;
+    }
+  });
+}
+
+/** The caller's own claims, newest first. Own-scope → withRoleTx so RLS applies. */
+export async function listOwnCompOffClaims(ctx: LeaveCtx): Promise<CompOffClaimView[]> {
+  return withRoleTx(ctx, async (tx) => {
+    return (await tx.execute(sql`
+      SELECT ${COMP_OFF_COLUMNS}
+      ${COMP_OFF_FROM}
+      WHERE c.user_id = ${ctx.user_id} AND NOT c.is_deleted
+      ORDER BY c.created_at DESC
+      LIMIT 100
+    `)) as unknown as CompOffClaimView[];
+  });
+}
+
+/**
+ * Claims awaiting (or recently given) a decision. Org admins / leave admins see
+ * the whole org; everyone else sees claims assigned to them, or from their team.
+ * Same scoping rule as the leave approvals queue.
+ */
+export async function listCompOffForApproval(
+  ctx: LeaveCtx,
+  status: CompOffClaimView['status'],
+  seeAllOrg: boolean,
+): Promise<CompOffClaimView[]> {
+  return withServiceTx(async (tx) => {
+    const scope = seeAllOrg
+      ? sql``
+      : sql`AND (
+          c.approver_id = ${ctx.user_id}
+          OR EXISTS (SELECT 1 FROM iam.vw_user_team_members m
+                     WHERE m.manager_id = ${ctx.user_id} AND m.member_id = c.user_id AND m.org_id = ${ctx.org_id})
+        )`;
+    return (await tx.execute(sql`
+      SELECT ${COMP_OFF_COLUMNS}
+      ${COMP_OFF_FROM}
+      WHERE c.org_id = ${ctx.org_id} AND NOT c.is_deleted AND c.status = ${status} ${scope}
+      ORDER BY c.created_at DESC
+      LIMIT 200
+    `)) as unknown as CompOffClaimView[];
+  });
+}
+
+export interface CompOffDecisionResult {
+  claim_id: string;
+  requester_id: string;
+  org_id: string;
+  decision: 'approved' | 'rejected';
+  days: number;
+}
+
+export async function decideCompOffClaim(
+  ctx: LeaveCtx,
+  id: string,
+  decision: 'approve' | 'reject',
+  comment: string | null,
+  isOverride: boolean,
+): Promise<CompOffDecisionResult> {
+  return serviceTxWithContext(ctx, comment, async (tx) => {
+    // FOR UPDATE: two approvers (or a double click) must not both credit the day.
+    const rows = (await tx.execute(sql`
+      SELECT id::text, user_id::text, org_id::text, days::float8 AS days, status, approver_id::text
+      FROM hr.comp_off_claims
+      WHERE id = ${id} AND NOT is_deleted
+      FOR UPDATE
+    `)) as unknown as Array<{ id: string; user_id: string; org_id: string; days: number; status: string; approver_id: string | null }>;
+    const claim = rows[0];
+    // A claim in another org is "not found", not "forbidden": nothing about its existence leaks.
+    if (!claim || claim.org_id !== ctx.org_id) throw new NotFoundError('Comp-off claim not found');
+    if (claim.status !== 'pending') throw new ConflictError(`Claim is already ${claim.status}`);
+
+    const isAssigned = claim.approver_id === ctx.user_id;
+    if (!isAssigned && !isOverride) throw new ForbiddenError('You are not the approver for this claim');
+    if (!(await canApproveLeave(tx, ctx.org_id, ctx.user_id, claim.user_id))) {
+      throw new ForbiddenError('You are not authorized to act on this claim');
+    }
+    const note = isAssigned ? comment : `[override by ${ctx.user_id}] ${comment ?? ''}`.trim();
+
+    if (decision === 'reject') {
+      await tx.execute(sql`
+        UPDATE hr.comp_off_claims
+        SET status = 'rejected', acted_by = ${ctx.user_id}, acted_at = CLOCK_TIMESTAMP(), approver_comment = ${note}
+        WHERE id = ${id}
+      `);
+      return { claim_id: id, requester_id: claim.user_id, org_id: claim.org_id, decision: 'rejected', days: claim.days };
+    }
+
+    const typeRows = (await tx.execute(sql`
+      SELECT id::text FROM hr.leave_types
+      WHERE tenant_id = ${ctx.tenant_id} AND name = ${COMP_OFF_LEAVE_TYPE} AND is_active
+    `)) as unknown as Array<{ id: string }>;
+    if (!typeRows[0]) throw new BadRequestError('Comp-off is not enabled for your organisation');
+    const leaveTypeId = typeRows[0].id;
+
+    const today = todayIso();
+    const expiresOn = addDaysIso(today, COMP_OFF_EXPIRY_DAYS);
+    const ledger = (await tx.execute(sql`
+      INSERT INTO hr.leave_ledger
+        (user_id, org_id, leave_type_id, entry_type, amount, effective_date, note, created_by)
+      VALUES
+        (${claim.user_id}, ${claim.org_id}, ${leaveTypeId}, 'adjustment', ${claim.days},
+         ${today}, 'Comp-off credit', ${ctx.user_id})
+      RETURNING id::text
+    `)) as unknown as Array<{ id: string }>;
+
+    await tx.execute(sql`
+      UPDATE hr.comp_off_claims
+      SET status = 'approved', acted_by = ${ctx.user_id}, acted_at = CLOCK_TIMESTAMP(), approver_comment = ${note},
+          leave_type_id = ${leaveTypeId}, ledger_entry_id = ${ledger[0]!.id}, expires_on = ${expiresOn}
+      WHERE id = ${id}
+    `);
+    return { claim_id: id, requester_id: claim.user_id, org_id: claim.org_id, decision: 'approved', days: claim.days };
+  });
+}
+
+/** Withdraw a still-pending claim. Own-scope: another user's id is "not found". */
+export async function cancelCompOffClaim(ctx: LeaveCtx, id: string): Promise<void> {
+  await serviceTxWithContext(ctx, null, async (tx) => {
+    const res = (await tx.execute(sql`
+      UPDATE hr.comp_off_claims SET status = 'cancelled'
+      WHERE id = ${id} AND user_id = ${ctx.user_id} AND org_id = ${ctx.org_id}
+        AND status = 'pending' AND NOT is_deleted
+      RETURNING id::text
+    `)) as unknown as Row[];
+    if (res.length === 0) throw new NotFoundError('No pending comp-off claim found');
   });
 }

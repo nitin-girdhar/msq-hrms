@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { SessionUser } from '@platform/types';
 import { Alert, Button, PageBody, PageHeader, PageSection } from '@platform/ui-kit';
+import { can, CAPABILITY } from '@platform/rbac';
 import { leave as leaveApi } from '../../lib/api/client';
 import type { BulkLeaveOutcome, LeaveRequestView } from '../../lib/leave/types';
 import { formatDateRange, formatDays, formatDateTime } from '../../lib/leave/format';
@@ -12,6 +13,7 @@ import LeaveTabs from './LeaveTabs';
 import TeamLeaveCalendar from './TeamLeaveCalendar';
 import ApprovalDecisionModal from './ApprovalDecisionModal';
 import BulkLeaveDecisionModal from './BulkLeaveDecisionModal';
+import CompOffQueue from './CompOffQueue';
 
 interface Props {
   actor: SessionUser;
@@ -152,6 +154,12 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
           </>
         )}
         </PageSection>
+
+        {can(actor, CAPABILITY.HR_LEAVE_COMP_OFF_APPROVE) && (
+          <PageSection title="Comp-off claims">
+            <CompOffQueue onNotice={setNotice} onError={setError} />
+          </PageSection>
+        )}
 
         <PageSection title="Team calendar">
           <TeamLeaveCalendar />

@@ -169,3 +169,25 @@ export interface BulkLeaveOutcome {
   failed: number;
   results: BulkLeaveResult[];
 }
+
+export interface CompOffClaim {
+  id: string;
+  user_id: string;
+  user_full_name: string;
+  user_email: string;
+  /** The day off the employee worked (YYYY-MM-DD). */
+  worked_date: string;
+  /** 1 (full day) or 0.5 (half day). */
+  days: number;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  approver_id: string | null;
+  approver_name: string | null;
+  acted_at: string | null;
+  approver_comment: string | null;
+  /** Set on approval: the last day the credit is usable. */
+  expires_on: string | null;
+  /** Set once the credit has lapsed unused. */
+  lapsed_at: string | null;
+  created_at: string;
+}

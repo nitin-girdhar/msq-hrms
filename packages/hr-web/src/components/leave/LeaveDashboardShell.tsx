@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { SessionUser } from '@platform/types';
 import { Alert, Button, PageBody, PageHeader, PageSection } from '@platform/ui-kit';
-import { leave as leaveApi } from '../../lib/api/client';
-import type { LeaveBalance, LeaveRequestView } from '../../lib/leave/types';
+import { can, CAPABILITY } from '@platform/rbac';
+import { compOff as compOffApi, leave as leaveApi } from '../../lib/api/client';
+import type { CompOffClaim, LeaveBalance, LeaveRequestView } from '../../lib/leave/types';
 import { LEAVE_STATUS_FILTERS } from '../../lib/leave/format';
 import type { HrRank } from '../../lib/hr-rank';
 import { stateBlockCls } from '../../lib/ui';
@@ -13,6 +14,8 @@ import BalanceCards from './BalanceCards';
 import MyRequestsTable from './MyRequestsTable';
 import ApplyLeaveModal from './ApplyLeaveModal';
 import LeaveRequestDetailModal from './LeaveRequestDetailModal';
+import CompOffClaimModal from './CompOffClaimModal';
+import MyCompOffList from './MyCompOffList';
 
 interface Props {
   actor: SessionUser;
@@ -31,6 +34,10 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
   const [editing, setEditing] = useState<LeaveRequestView | null>(null);
   const [cancelBusyId, setCancelBusyId] = useState<string | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
+  // Comp-off: shown only to someone who may claim it (the server enforces the same capability).
+  const canClaimCompOff = can(actor, CAPABILITY.HR_LEAVE_COMP_OFF_REQUEST);
+  const [claims, setClaims] = useState<CompOffClaim[]>([]);
+  const [claimOpen, setClaimOpen] = useState(false);
 
   // One call: /leave/balances carries everything an employee may see — the number
   // per leave type as of today, plus whether it is bookable and half-day-able.
@@ -52,7 +59,16 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
       .finally(() => setLoading(false));
   }, [statusFilter]);
 
+  const loadClaims = useCallback(() => {
+    if (!canClaimCompOff) return;
+    compOffApi
+      .mine()
+      .then((res) => setClaims(res.data))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load comp-off claims.'));
+  }, [canClaimCompOff]);
+
   useEffect(() => { loadStatic(); }, [loadStatic]);
+  useEffect(() => { loadClaims(); }, [loadClaims]);
   useEffect(() => { loadRequests(); }, [loadRequests]);
 
   const handleApplied = () => {
@@ -97,9 +113,16 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
         subtitle={`Balances, requests and approvals for ${actor.name || actor.email}.`}
         tabs={<LeaveTabs hrRank={hrRank} actor={actor} />}
         actions={
-          <Button variant="primary" onClick={() => { setEditing(null); setApplyOpen(true); setNotice(null); }}>
-            Apply leave
-          </Button>
+          <>
+            {canClaimCompOff && (
+              <Button variant="secondary" onClick={() => { setClaimOpen(true); setNotice(null); }}>
+                Claim comp-off
+              </Button>
+            )}
+            <Button variant="primary" onClick={() => { setEditing(null); setApplyOpen(true); setNotice(null); }}>
+              Apply leave
+            </Button>
+          </>
         }
       />
 
@@ -130,7 +153,23 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
             <MyRequestsTable items={requests} onView={(r) => setViewingId(r.id)} onEdit={handleEdit} onCancel={handleCancel} busyId={cancelBusyId} />
           )}
         </PageSection>
+
+        {canClaimCompOff && (
+          <PageSection title="Comp-off claims">
+            <MyCompOffList
+              items={claims}
+              onChanged={() => { setNotice('Comp-off claim cancelled.'); loadClaims(); }}
+              onError={setError}
+            />
+          </PageSection>
+        )}
       </PageBody>
+
+      <CompOffClaimModal
+        open={claimOpen}
+        onClose={() => setClaimOpen(false)}
+        onClaimed={() => { setNotice('Comp-off claim submitted for approval.'); loadClaims(); }}
+      />
 
       <ApplyLeaveModal
         open={applyOpen}

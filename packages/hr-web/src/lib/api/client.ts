@@ -18,6 +18,7 @@ import type {
   EmployeeProfileView,
   HrLookupOption,
   BulkLeaveOutcome,
+  CompOffClaim,
 } from '../leave/types';
 import type {
   AttendanceRules,
@@ -205,6 +206,37 @@ export const leave = {
 };
 
 // ── Holidays & calendars ────────────────────────────────────────────────────
+
+// ── Comp-off (schema 1.59.0) ──────────────────────────────────────────────────
+export const compOff = {
+  claim: (body: { worked_date: string; days: 0.5 | 1; reason: string }) =>
+    request<Envelope<{ id: string; approver_id: string | null }>>('/hr/leave/comp-off', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /** The caller's own claims, newest first. */
+  mine: () => request<Envelope<CompOffClaim[]>>('/hr/leave/comp-off'),
+
+  /** Claims this approver may decide (scope is the server's). */
+  queue: (status: CompOffClaim['status'] = 'pending') =>
+    request<Envelope<CompOffClaim[]>>(`/hr/leave/comp-off/queue${qs({ status })}`),
+
+  approve: (id: string, comment?: string) =>
+    request<Envelope<unknown>>(`/hr/leave/comp-off/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ comment }),
+    }),
+
+  reject: (id: string, comment: string) =>
+    request<Envelope<unknown>>(`/hr/leave/comp-off/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ comment }),
+    }),
+
+  cancel: (id: string) =>
+    request<Envelope<{ id: string }>>(`/hr/leave/comp-off/${id}/cancel`, { method: 'POST' }),
+};
 
 export const holidays = {
   list: (params: { year?: number; calendar_id?: string } = {}) =>

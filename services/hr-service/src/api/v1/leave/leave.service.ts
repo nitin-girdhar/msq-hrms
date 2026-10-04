@@ -33,6 +33,7 @@ import type {
   CreateHolidayCalendarInput,
   UpdateHolidayCalendarInput,
   BulkLeaveDecisionInput,
+  CreateCompOffClaimInput,
 } from '@hr/validation';
 
 // Fired from the service layer, which has no request-scoped logger.
@@ -179,6 +180,57 @@ export async function bulkDecideLeave(ctx: LeaveCtx, input: BulkLeaveDecisionInp
   }
   const succeeded = results.filter((r) => r.ok).length;
   return { decision: input.decision, requested: ids.length, succeeded, failed: ids.length - succeeded, results };
+}
+
+// ── Comp-off ────────────────────────────────────────────────────────────────
+export async function createCompOffClaim(ctx: LeaveCtx, data: CreateCompOffClaimInput) {
+  const result = await repo.createCompOffClaim(ctx, data);
+  void logActivity({
+    action_type: 'comp_off_claimed',
+    performed_by: ctx.user_id,
+    subject_user_id: ctx.user_id,
+    org_id: ctx.org_id,
+    new_value: { claim_id: result.id, worked_date: data.worked_date, days: data.days },
+  });
+  return result;
+}
+
+export async function listOwnCompOffClaims(ctx: LeaveCtx) {
+  return repo.listOwnCompOffClaims(ctx);
+}
+
+export async function listCompOffQueue(ctx: LeaveCtx, status: repo.CompOffClaimView['status']) {
+  // Same scoping as the leave approvals queue: leave admins see the whole org,
+  // everyone else only claims assigned to them or from their team.
+  return repo.listCompOffForApproval(ctx, status, canManageLeave(ctx));
+}
+
+export async function decideCompOffClaim(
+  ctx: LeaveCtx,
+  id: string,
+  decision: 'approve' | 'reject',
+  comment: string | null,
+) {
+  const result = await repo.decideCompOffClaim(ctx, id, decision, comment, canOverrideLeaveApproval(ctx));
+  void logActivity({
+    action_type: decision === 'approve' ? 'comp_off_approved' : 'comp_off_rejected',
+    performed_by: ctx.user_id,
+    subject_user_id: result.requester_id,
+    org_id: ctx.org_id,
+    new_value: { claim_id: id, days: result.days },
+  });
+  return result;
+}
+
+export async function cancelCompOffClaim(ctx: LeaveCtx, id: string) {
+  await repo.cancelCompOffClaim(ctx, id);
+  void logActivity({
+    action_type: 'comp_off_cancelled',
+    performed_by: ctx.user_id,
+    subject_user_id: ctx.user_id,
+    org_id: ctx.org_id,
+    new_value: { claim_id: id },
+  });
 }
 
 export async function updateLeaveRequest(ctx: LeaveCtx, id: string, data: UpdateLeaveRequestInput) {

@@ -13,6 +13,10 @@ import type {
   RejectLeaveRequestInput,
   CancelLeaveRequestInput,
   BulkLeaveDecisionInput,
+  CreateCompOffClaimInput,
+  ListCompOffQueueInput,
+  DecideCompOffInput,
+  RejectCompOffInput,
   ListLedgerInput,
   CreateAdjustmentInput,
   ListPoliciesInput,
@@ -88,6 +92,43 @@ export class LeaveController {
     }
     const result = await service.bulkDecideLeave(ctxOf(request), input);
     return reply.send({ success: true, data: result });
+  };
+
+  // ── Comp-off ──────────────────────────────────────────────────────────────
+  createCompOff = async (request: FastifyRequest, reply: FastifyReply) => {
+    const result = await service.createCompOffClaim(ctxOf(request), request.body as CreateCompOffClaimInput);
+    return reply.status(201).send({ success: true, data: result });
+  };
+
+  listOwnCompOff = async (request: FastifyRequest, reply: FastifyReply) => {
+    const data = await service.listOwnCompOffClaims(ctxOf(request));
+    return reply.send({ success: true, data });
+  };
+
+  listCompOffQueue = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { status } = request.query as ListCompOffQueueInput;
+    const data = await service.listCompOffQueue(ctxOf(request), status);
+    return reply.send({ success: true, data });
+  };
+
+  approveCompOff = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = request.params as { id: string };
+    const { comment } = request.body as DecideCompOffInput;
+    const data = await service.decideCompOffClaim(ctxOf(request), id, 'approve', comment ?? null);
+    return reply.send({ success: true, data });
+  };
+
+  rejectCompOff = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = request.params as { id: string };
+    const { comment } = request.body as RejectCompOffInput;
+    const data = await service.decideCompOffClaim(ctxOf(request), id, 'reject', comment);
+    return reply.send({ success: true, data });
+  };
+
+  cancelCompOff = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = request.params as { id: string };
+    await service.cancelCompOffClaim(ctxOf(request), id);
+    return reply.send({ success: true, data: { id } });
   };
 
   update = async (request: FastifyRequest, reply: FastifyReply) => {
