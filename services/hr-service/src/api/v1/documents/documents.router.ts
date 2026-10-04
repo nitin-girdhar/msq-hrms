@@ -10,6 +10,7 @@ import { requireCapability } from '../../../middleware/require-capability.middle
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../../lib/errors.js';
 import { getPhotoStorage } from '../../../lib/storage/photo-storage.js';
 import { sniffDocument } from '../../../lib/documents/sniff.js';
+import { documentLimitFor } from '../../../lib/documents/limit.js';
 import {
   uploadDocumentSchema,
   reviewDocumentSchema,
@@ -40,14 +41,6 @@ const COLUMNS = sql`
   d.review_note, d.reviewed_at::text AS reviewed_at, d.expires_on::text AS expires_on,
   d.tax_section, d.amount::float8 AS amount, d.created_at::text AS created_at`;
 
-/** The upload limit for an org: what HR set (100 KB..3.5 MB), else the 3 MB default. */
-async function limitFor(orgId: string): Promise<number> {
-  const rows = await withServiceTx(async (tx) =>
-    (await tx.execute(sql`
-      SELECT max_bytes FROM hr.document_settings WHERE org_id = ${orgId} AND NOT is_deleted`)) as unknown as Array<{ max_bytes: number }>);
-  return rows[0]?.max_bytes ?? DOCUMENT_DEFAULT_BYTES;
-}
-
 type DocRow = { id: string; user_id: string; file_key: string; file_name: string; mime_type: string; status: string };
 
 export async function documentsRouter(app: FastifyInstance) {
@@ -59,7 +52,7 @@ export async function documentsRouter(app: FastifyInstance) {
     if (!can(request.auth, CAPABILITY.HR_EMPLOYEES_DOCUMENTS_VIEW) && !can(request.auth, CAPABILITY.HR_EMPLOYEES_DOCUMENTS_MANAGE)) {
       throw new ForbiddenError('You do not have permission to use documents');
     }
-    return reply.send({ success: true, data: { max_bytes: await limitFor(request.auth.org_id) } });
+    return reply.send({ success: true, data: { max_bytes: await documentLimitFor(request.auth.org_id) } });
   });
 
   app.put('/documents/settings', { preHandler: [authenticate, manage, validate({ body: documentSettingsSchema })] }, async (request, reply) => {
@@ -95,7 +88,7 @@ export async function documentsRouter(app: FastifyInstance) {
     const b = request.body as UploadDocumentInput;
     const bytes = Buffer.from(b.data_base64, 'base64');
     if (bytes.length === 0) throw new BadRequestError('That file is empty');
-    const limit = await limitFor(org_id);
+    const limit = await documentLimitFor(org_id);
     if (bytes.length > limit) throw new BadRequestError(`That file is over the ${(limit / (1024 * 1024)).toFixed(1).replace(/\.0$/, '')} MB limit`);
     // The type comes from the bytes, not the client's say-so: only PDF and common images are kept.
     const kind = sniffDocument(bytes);

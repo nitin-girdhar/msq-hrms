@@ -13,6 +13,8 @@ import LeaveTabs from './LeaveTabs';
 import BalanceCards from './BalanceCards';
 import MyRequestsTable from './MyRequestsTable';
 import ApplyLeaveModal from './ApplyLeaveModal';
+import ApplyLeavePanel from './ApplyLeavePanel';
+import { TeamAvailabilityCard, UpcomingHolidaysCard } from './LeaveSidePanels';
 import LeaveRequestDetailModal from './LeaveRequestDetailModal';
 import CompOffClaimModal from './CompOffClaimModal';
 import MyCompOffList from './MyCompOffList';
@@ -41,6 +43,7 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
   const [claims, setClaims] = useState<CompOffClaim[]>([]);
   const [claimOpen, setClaimOpen] = useState(false);
   const canEncash = can(actor, CAPABILITY.HR_LEAVE_ENCASHMENT_REQUEST);
+  const canApply = can(actor, CAPABILITY.HR_LEAVE_REQUEST_CREATE);
   const [policyOpen, setPolicyOpen] = useState(false);
   const [encashOpen, setEncashOpen] = useState(false);
   const [encashKey, setEncashKey] = useState(0);
@@ -115,8 +118,8 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
   return (
     <div className="flex w-full flex-1 flex-col">
       <PageHeader
-        title="My Leave"
-        subtitle={`Balances, requests and approvals for ${actor.name || actor.email}.`}
+        title="Leave management & time-off"
+        subtitle={`Plan leave, check who is away, and track your requests, ${actor.name || actor.email}.`}
         tabs={<LeaveTabs hrRank={hrRank} actor={actor} />}
         actions={
           <>
@@ -129,9 +132,11 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
                 Claim comp-off
               </Button>
             )}
-            <Button variant="primary" onClick={() => { setEditing(null); setApplyOpen(true); setNotice(null); }}>
-              Apply leave
-            </Button>
+            {canApply && (
+              <Button variant="primary" onClick={() => { setNotice(null); document.getElementById('apply-leave')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); document.getElementById('al-start')?.focus({ preventScroll: true }); }}>
+                Apply leave
+              </Button>
+            )}
           </>
         }
       />
@@ -144,8 +149,18 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
           <BalanceCards balances={balances} />
         </PageSection>
 
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+          {canApply ? (
+            <ApplyLeavePanel userId={actor.id} balances={balances} onApplied={() => { setNotice('Leave request submitted for approval.'); loadStatic(); loadRequests(); }} />
+          ) : <div />}
+          <div className="flex flex-col gap-4">
+            <TeamAvailabilityCard userId={actor.id} />
+            <UpcomingHolidaysCard />
+          </div>
+        </div>
+
         <PageSection
-          title="My requests"
+          title="Leave history & approval status"
           action={
             <select
               value={statusFilter}

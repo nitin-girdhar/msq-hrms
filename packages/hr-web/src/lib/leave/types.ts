@@ -60,6 +60,14 @@ export interface LeaveRequestView {
   info_request_note?: string | null;
   /** Approval window of the effective policy, in hours. */
   sla_hours?: number | null;
+  /** Apply page (1.67.0): the readable number (shown LV-1001), the covering colleague, the uploaded file and the reviewer. */
+  request_no?: number;
+  handover_user_id?: string | null;
+  handover_name?: string | null;
+  attachment_name?: string | null;
+  attachment_mime?: string | null;
+  attachment_size?: number | null;
+  latest_approver_name?: string | null;
 }
 
 export type ApprovalAction = 'pending' | 'approved' | 'rejected';

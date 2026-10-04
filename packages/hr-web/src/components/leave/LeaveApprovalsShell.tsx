@@ -200,6 +200,8 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
                   <span className="text-on-surface-variant"> · {formatDays(r.days_count)}</span>
                 </p>
                 {r.reason && <p className="line-clamp-2 text-xs text-on-surface-variant">{r.reason}</p>}
+                {r.handover_name && <p className="text-xs text-on-surface-variant">Work handover: <strong className="text-on-surface">{r.handover_name}</strong></p>}
+                {r.attachment_name && <a href={leaveApi.attachmentUrl(r.id)} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-primary hover:underline">📎 {r.attachment_name}</a>}
                 {(() => {
                   const sla = slaState(r.created_at, r.sla_hours);
                   const cls = sla?.tone === 'overdue' ? 'bg-status-overdue-container text-on-status-overdue-container' : sla?.tone === 'due' ? 'bg-status-due-container text-on-status-due-container' : 'bg-surface-container text-on-surface-variant';

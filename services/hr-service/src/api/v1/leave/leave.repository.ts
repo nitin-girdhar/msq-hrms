@@ -21,6 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { sql } from 'drizzle-orm';
+import { sniffDocument } from '../../../lib/documents/sniff.js';
 import { withRoleTx, withServiceTx, pgErrorCode, type RoleTxContext, type DrizzleTx } from '@platform/db';
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../../lib/errors.js';
 import { computeLeaveDays, type HalfDay } from '../../../lib/leave/compute-leave-days.js';
@@ -161,7 +162,7 @@ async function validateRequestInput(
   ctx: LeaveCtx,
   data: ApplyLeaveRequestInput,
   excludeRequestId: string | null,
-): Promise<{ leaveTypeId: string; approvalLevels: number; daysCount: number }> {
+): Promise<{ leaveTypeId: string; approvalLevels: number; daysCount: number; attachment: AttachmentMeta | null }> {
   const leaveType = await resolveLeaveType(tx, ctx.tenant_id, data.leave_type_name);
 
   // Effective policy as of the request start date.
@@ -208,7 +209,8 @@ async function validateRequestInput(
   if (
     policy.requires_document_after_days != null &&
     daysCount > policy.requires_document_after_days &&
-    !data.document_url
+    !data.document_url &&
+    !data.attachment_token
   ) {
     throw new BadRequestError(
       `A supporting document is required for ${data.leave_type_name} longer than ${policy.requires_document_after_days} day(s)`,
@@ -237,7 +239,44 @@ async function validateRequestInput(
     throw new ConflictError('You already have an overlapping leave request');
   }
 
-  return { leaveTypeId: leaveType.id, approvalLevels: policy.approval_levels, daysCount };
+  await assertHandover(tx, ctx, data.handover_user_id ?? null);
+  const attachment = await resolveAttachment(ctx, data);
+
+  return { leaveTypeId: leaveType.id, approvalLevels: policy.approval_levels, daysCount, attachment };
+}
+
+export interface AttachmentMeta { key: string; name: string; mime: string; size: number }
+
+/** The covering colleague must be a different, active employee of the same branch. */
+async function assertHandover(tx: DrizzleTx, ctx: LeaveCtx, handoverId: string | null): Promise<void> {
+  if (!handoverId) return;
+  if (handoverId === ctx.user_id) throw new BadRequestError('You cannot hand your work over to yourself');
+  const rows = (await tx.execute(sql`
+    SELECT 1 FROM hr.employee_profiles WHERE user_id = ${handoverId}::uuid AND org_id = ${ctx.org_id} AND is_active AND NOT is_deleted
+  `)) as unknown as Row[];
+  if (rows.length === 0) throw new BadRequestError('That colleague is not an active employee of your branch');
+}
+
+/**
+ * Turns the upload token on a request into stored metadata. The token is the blob key the upload route
+ * returned; it only counts if it sits under THIS person's own folder, so one person cannot attach
+ * another's file by guessing a key.
+ */
+async function resolveAttachment(ctx: LeaveCtx, data: ApplyLeaveRequestInput): Promise<AttachmentMeta | null> {
+  const key = data.attachment_token;
+  if (!key) return null;
+  if (!key.startsWith(`leave/${ctx.org_id}/${ctx.user_id}/`) || key.includes('..')) {
+    throw new BadRequestError('That attachment does not belong to you');
+  }
+  // Loaded on demand: the storage module reads its env config when imported, which would force every
+  // consumer of this repository (and its tests) to have storage configured.
+  const { getPhotoStorage } = await import('../../../lib/storage/photo-storage.js');
+  const bytes = await getPhotoStorage().get(key);
+  if (!bytes) throw new BadRequestError('The attachment could not be found; upload it again');
+  const kind = sniffDocument(bytes);
+  if (!kind) throw new BadRequestError('Only PDF, JPG, PNG or WebP files can be attached');
+  const name = (data.attachment_name ?? '').trim() || `attachment.${kind.ext}`;
+  return { key, name: name.slice(0, 200), mime: kind.mime, size: bytes.length };
 }
 
 // Someone mapped to more than one branch (iam.user_org_mapping) can switch
@@ -259,18 +298,20 @@ async function assertHomeBranch(tx: DrizzleTx, userId: string, activeOrgId: stri
 export async function applyLeave(ctx: LeaveCtx, data: ApplyLeaveRequestInput): Promise<ApplyResult> {
   return serviceTxWithContext(ctx, data.reason ?? null, async (tx) => {
     await assertHomeBranch(tx, ctx.user_id, ctx.org_id);
-    const { leaveTypeId, approvalLevels, daysCount } = await validateRequestInput(tx, ctx, data, null);
+    const { leaveTypeId, approvalLevels, daysCount, attachment } = await validateRequestInput(tx, ctx, data, null);
 
     const pendingStatusId = await resolveStatusId(tx, ctx.tenant_id, 'pending');
 
     const inserted = (await tx.execute(sql`
       INSERT INTO hr.leave_requests
         (user_id, org_id, leave_type_id, start_date, end_date, start_half, end_half,
-         days_count, reason, status_id, document_url, created_by)
+         days_count, reason, status_id, document_url, handover_user_id,
+         attachment_key, attachment_name, attachment_mime, attachment_size, created_by)
       VALUES
         (${ctx.user_id}, ${ctx.org_id}, ${leaveTypeId}, ${data.start_date}, ${data.end_date},
          ${data.start_half}, ${data.end_half}, ${daysCount}, ${data.reason ?? null},
-         ${pendingStatusId}, ${data.document_url ?? null}, ${ctx.user_id})
+         ${pendingStatusId}, ${data.document_url ?? null}, ${data.handover_user_id ?? null},
+         ${attachment?.key ?? null}, ${attachment?.name ?? null}, ${attachment?.mime ?? null}, ${attachment?.size ?? null}, ${ctx.user_id})
       RETURNING id::text
     `)) as unknown as Array<{ id: string }>;
     const requestId = inserted[0]!.id;
@@ -606,13 +647,18 @@ export async function updateLeaveRequest(
     }
     await assertHomeBranch(tx, ctx.user_id, ctx.org_id);
 
-    const { leaveTypeId, approvalLevels, daysCount } = await validateRequestInput(tx, ctx, data, id);
+    const { leaveTypeId, approvalLevels, daysCount, attachment } = await validateRequestInput(tx, ctx, data, id);
 
+    // An edit that sends no attachment_token keeps the file already on the request; an explicit null removes it.
+    const keepAttachment = data.attachment_token === undefined;
     await tx.execute(sql`
       UPDATE hr.leave_requests
       SET leave_type_id = ${leaveTypeId}, start_date = ${data.start_date}, end_date = ${data.end_date},
           start_half = ${data.start_half}, end_half = ${data.end_half}, days_count = ${daysCount},
           reason = ${data.reason ?? null}, document_url = ${data.document_url ?? null},
+          ${data.handover_user_id === undefined ? sql`` : sql`handover_user_id = ${data.handover_user_id},`}
+          ${keepAttachment ? sql`` : sql`attachment_key = ${attachment?.key ?? null}, attachment_name = ${attachment?.name ?? null},
+          attachment_mime = ${attachment?.mime ?? null}, attachment_size = ${attachment?.size ?? null},`}
           info_requested_at = NULL, info_request_note = NULL
       WHERE id = ${id}
     `);

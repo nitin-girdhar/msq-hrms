@@ -90,6 +90,11 @@ export interface ApplyLeaveBody {
   end_half: HalfDay;
   reason?: string | undefined;
   document_url?: string | undefined;
+  /** The colleague covering the work. */
+  handover_user_id?: string | null | undefined;
+  /** From uploadAttachment: the token and the name to show. */
+  attachment_token?: string | null | undefined;
+  attachment_name?: string | null | undefined;
 }
 
 export interface PreviewParams {
@@ -153,6 +158,11 @@ export const leave = {
 
   preview: (params: PreviewParams) =>
     request<Envelope<LeavePreview>>(`/hr/leave/requests/preview${qs(params)}`),
+
+  uploadAttachment: (body: { file_name: string; data_base64: string }) =>
+    request<Envelope<{ token: string; name: string; mime: string; size: number }>>('/hr/leave/attachments', { method: 'POST', body: JSON.stringify(body) }),
+  /** Authenticated, same-origin; opened in a new tab. */
+  attachmentUrl: (requestId: string) => `/api/hr/leave/requests/${requestId}/attachment`,
 
   apply: (body: ApplyLeaveBody) =>
     request<Envelope<{ id: string; days_count: number; level1_approver_id: string | null }>>(

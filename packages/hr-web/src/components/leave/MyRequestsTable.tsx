@@ -2,6 +2,7 @@ import { Button } from '@platform/ui-kit';
 import type { LeaveRequestView } from '../../lib/leave/types';
 import { formatDateRange, formatDays, formatDateTime, canCancelRequest, canEditRequest } from '../../lib/leave/format';
 import { emptyBlockCls } from '../../lib/ui';
+import { leave as leaveApi } from '../../lib/api/client';
 import StatusChip from './StatusChip';
 
 interface Props {
@@ -49,7 +50,7 @@ export default function MyRequestsTable({ items, onView, onEdit, onCancel, busyI
           <li key={r.id} className="rounded-xl border border-outline-variant bg-surface-container-lowest p-3 shadow-sm">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-on-surface">{r.leave_type_label}</p>
+                <p className="text-sm font-semibold text-on-surface">{r.leave_type_label} {r.request_no ? <span className="font-mono text-xs text-primary">LV-{r.request_no}</span> : null}</p>
                 <p className="text-xs text-on-surface-variant">
                   {formatDateRange(r.start_date, r.end_date, r.start_half, r.end_half)} · {formatDays(r.days_count)}
                 </p>
@@ -65,12 +66,14 @@ export default function MyRequestsTable({ items, onView, onEdit, onCancel, busyI
       </ul>
 
       <div className="hidden overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm md:block">
-        <table className="w-full min-w-[720px] text-sm">
+        <table className="w-full min-w-[860px] text-sm">
           <thead>
             <tr className="border-b border-outline-variant text-left text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+              <th className="px-4 py-3">ID</th>
               <th className="px-4 py-3">Type</th>
               <th className="px-4 py-3">Dates</th>
               <th className="px-4 py-3">Days</th>
+              <th className="px-4 py-3">Reviewer</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Applied</th>
               <th className="px-4 py-3 text-right">Actions</th>
@@ -79,13 +82,17 @@ export default function MyRequestsTable({ items, onView, onEdit, onCancel, busyI
           <tbody>
             {items.map((r) => (
               <tr key={r.id} className="border-b border-outline-variant/50 last:border-0 hover:bg-surface-container-low">
+                <td className="px-4 py-3 font-mono text-xs font-semibold text-primary">{r.request_no ? `LV-${r.request_no}` : '—'}</td>
                 <td className="px-4 py-3 font-medium text-on-surface">{r.leave_type_label}</td>
                 <td className="px-4 py-3 text-on-surface-variant">
                   {formatDateRange(r.start_date, r.end_date, r.start_half, r.end_half)}
                   {r.reason && <p className="mt-0.5 text-label-sm text-outline">{r.reason}</p>}
+                  {r.handover_name && <p className="mt-0.5 text-label-sm text-outline">Handover: {r.handover_name}</p>}
+                  {r.attachment_name && <a href={leaveApi.attachmentUrl(r.id)} target="_blank" rel="noopener noreferrer" className="mt-0.5 inline-block text-label-sm font-semibold text-primary hover:underline">📎 {r.attachment_name}</a>}
                   {infoNote(r)}
                 </td>
                 <td className="px-4 py-3 text-on-surface-variant">{formatDays(r.days_count)}</td>
+                <td className="px-4 py-3 text-xs text-on-surface-variant">{r.latest_approver_name ?? '—'}</td>
                 <td className="px-4 py-3">
                   <StatusChip status={r.status_name} label={r.status_label} />
                 </td>

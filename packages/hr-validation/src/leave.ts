@@ -14,6 +14,11 @@ export const applyLeaveRequestSchema = z.object({
   end_half: halfDay.default('full'),
   reason: z.string().max(1000).optional(),
   document_url: z.string().url().max(2000).optional(),
+  // Apply page (schema 1.67.0): the colleague covering the work, and a file uploaded through
+  // POST /leave/attachments (the token it returned, plus the name to show).
+  handover_user_id: z.string().uuid().nullable().optional(),
+  attachment_token: z.string().max(300).nullable().optional(),
+  attachment_name: z.string().trim().max(200).nullable().optional(),
 });
 
 // Amending a request that is still pending. The full set is required, not a
@@ -29,6 +34,9 @@ export const updateLeaveRequestSchema = z.object({
   end_half: halfDay.default('full'),
   reason: z.string().max(1000).optional(),
   document_url: z.string().url().max(2000).optional(),
+  handover_user_id: z.string().uuid().nullable().optional(),
+  attachment_token: z.string().max(300).nullable().optional(),
+  attachment_name: z.string().trim().max(200).nullable().optional(),
 });
 
 // Read-only working-days preview for the apply form. Same inputs as apply
@@ -242,3 +250,11 @@ export type UpdateHolidayInput = z.infer<typeof updateHolidaySchema>;
 export type CreateHolidayCalendarInput = z.infer<typeof createHolidayCalendarSchema>;
 export type UpdateHolidayCalendarInput = z.infer<typeof updateHolidayCalendarSchema>;
 export type UpdateLeaveSettingsInput = z.infer<typeof updateLeaveSettingsSchema>;
+
+/** Upload a supporting document for a leave request; the returned token goes on the request. */
+export const uploadLeaveAttachmentSchema = z.object({
+  file_name: z.string().trim().min(1).max(200),
+  // Base64 of at most 3.5 MiB (see DOCUMENT_MAX_BYTES), inside the 5 MB request body.
+  data_base64: z.string().min(8).max(4_893_363 + 16),
+});
+export type UploadLeaveAttachmentInput = z.infer<typeof uploadLeaveAttachmentSchema>;
