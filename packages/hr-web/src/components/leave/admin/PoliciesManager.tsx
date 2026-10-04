@@ -31,23 +31,23 @@ export default function PoliciesManager({ actor, onNotice }: Props) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-[#64748B]">Effective-dated leave rules per type. A revision adds a new row from a future date.</p>
-        <button type="button" onClick={() => setFormOpen(true)} className="rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699]">
+        <p className="text-sm text-on-surface-variant">Effective-dated leave rules per type. A revision adds a new row from a future date.</p>
+        <button type="button" onClick={() => setFormOpen(true)} className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary/90">
           Create / revise policy
         </button>
       </div>
 
-      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">{error}</div>}
+      {error && <div className="rounded-lg border border-status-overdue/30 bg-status-overdue-container px-4 py-2 text-xs text-on-status-overdue-container">{error}</div>}
 
       {loading ? (
-        <div className="flex items-center justify-center py-12 text-sm text-[#94A3B8]">Loading…</div>
+        <div className="flex items-center justify-center py-12 text-sm text-outline">Loading…</div>
       ) : policies.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-[#E2E8F0] bg-white px-4 py-8 text-center text-sm text-[#94A3B8]">No policies yet.</p>
+        <p className="rounded-xl border border-dashed border-outline-variant bg-surface-container-lowest px-4 py-8 text-center text-sm text-outline">No policies yet.</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
+        <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
           <table className="w-full min-w-[860px] text-sm">
             <thead>
-              <tr className="border-b border-[#E2E8F0] text-left text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+              <tr className="border-b border-outline-variant text-left text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
                 <th className="px-4 py-3">Type</th>
                 <th className="px-4 py-3">Scope</th>
                 <th className="px-4 py-3">Accrual</th>
@@ -59,21 +59,21 @@ export default function PoliciesManager({ actor, onNotice }: Props) {
             </thead>
             <tbody>
               {policies.map((p) => (
-                <tr key={p.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
-                  <td className="px-4 py-3 font-medium text-[#0F172A]">{p.leave_type_label}</td>
+                <tr key={p.id} className="border-b border-outline-variant/50 last:border-0 hover:bg-surface-container-low">
+                  <td className="px-4 py-3 font-medium text-on-surface">{p.leave_type_label}</td>
                   <td className="px-4 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${p.org_id ? 'bg-blue-50 text-[#0b6cbf]' : 'bg-slate-100 text-slate-600'}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${p.org_id ? 'bg-primary-fixed text-primary' : 'bg-surface-container text-on-surface-variant'}`}>
                       {p.org_id ? 'Org' : 'Tenant-wide'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-[#475569]">
+                  <td className="px-4 py-3 text-on-surface-variant">
                     {p.accrual_frequency === 'none' ? '—' : `${p.accrual_amount}/${p.accrual_frequency}`}
                   </td>
-                  <td className="px-4 py-3 text-[#475569]">{p.allow_half_day ? 'Yes' : 'No'}</td>
-                  <td className="px-4 py-3 text-[#475569]">{p.approval_levels}</td>
-                  <td className="px-4 py-3 text-[#475569]">{p.applicable_from}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{p.allow_half_day ? 'Yes' : 'No'}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{p.approval_levels}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{p.applicable_from}</td>
                   <td className="px-4 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${p.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${p.is_active ? 'bg-status-success-container text-on-status-success-container' : 'bg-surface-container text-on-surface-variant'}`}>
                       {p.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>

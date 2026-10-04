@@ -41,49 +41,49 @@ function PunchPhoto({ event }: { event: DayEventView }) {
 
   return (
     <div className="w-40 shrink-0">
-      <p className="mb-1 flex items-baseline gap-1.5 text-xs font-semibold text-[#64748B]">
+      <p className="mb-1 flex items-baseline gap-1.5 text-xs font-semibold text-on-surface-variant">
         <span>{label}</span>
-        <span className="font-normal text-[#94A3B8]">{formatClockTime(event.occurred_at)}</span>
+        <span className="font-normal text-outline">{formatClockTime(event.occurred_at)}</span>
       </p>
 
       {/* Photos are only half the story — a punch can be flagged, thrown out, or
           made from the wrong place, and the reviewer needs that beside the face. */}
       <div className="mb-1 flex flex-wrap gap-x-1.5 text-[10px] leading-tight">
         {event.face_match_score != null && (
-          <span className={pending ? 'font-semibold text-amber-700' : 'text-[#64748B]'}>
+          <span className={pending ? 'font-semibold text-on-status-due-container' : 'text-on-surface-variant'}>
             {Math.round(event.face_match_score)}%
           </span>
         )}
-        {pending && <span className="font-semibold text-amber-700">Awaiting review</span>}
-        {rejected && <span className="font-semibold text-red-700">Rejected</span>}
-        {event.is_off_segment && <span className="text-amber-700">Outside window</span>}
+        {pending && <span className="font-semibold text-on-status-due-container">Awaiting review</span>}
+        {rejected && <span className="font-semibold text-on-status-overdue-container">Rejected</span>}
+        {event.is_off_segment && <span className="text-on-status-due-container">Outside window</span>}
         {/* An out-of-fence punch is only a red flag when nothing authorised it.
             With an exception on record it is expected, so it reads as the kind of
             work it was — not as a violation the reviewer has to chase. */}
         {event.is_within_geofence === false &&
           (event.geo_exception_type === 'remote_role' ? (
-            <span className="text-indigo-700">Remote</span>
+            <span className="text-on-cat-indigo-container">Remote</span>
           ) : event.geo_exception_type === 'wfh' ? (
-            <span className="text-amber-700">WFH</span>
+            <span className="text-on-status-due-container">WFH</span>
           ) : event.is_wfh ? (
-            <span className="text-amber-700">WFH (self-declared)</span>
+            <span className="text-on-status-due-container">WFH (self-declared)</span>
           ) : (
-            <span className="text-red-700">Outside geofence</span>
+            <span className="text-on-status-overdue-container">Outside geofence</span>
           ))}
       </div>
 
       {!event.has_photo ? (
-        <p className="rounded-lg border border-dashed border-[#E2E8F0] py-5 text-center text-[11px] text-[#94A3B8]">
+        <p className="rounded-lg border border-dashed border-outline-variant py-5 text-center text-[11px] text-outline">
           No photo
         </p>
       ) : failed ? (
         // Retention deletes the blob but leaves photo_url set, so has_photo can
         // be true for an image that no longer exists.
-        <p className="rounded-lg border border-dashed border-[#E2E8F0] py-5 text-center text-[11px] text-[#94A3B8]">
+        <p className="rounded-lg border border-dashed border-outline-variant py-5 text-center text-[11px] text-outline">
           Photo unavailable
         </p>
       ) : show ? (
-        <div className="relative overflow-hidden rounded-lg bg-slate-100">
+        <div className="relative overflow-hidden rounded-lg bg-surface-container">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={attendanceApi.photoUrl(event.event_id)}
@@ -91,7 +91,7 @@ function PunchPhoto({ event }: { event: DayEventView }) {
             onError={() => setFailed(true)}
             className="w-full object-cover"
           />
-          <div className="absolute inset-x-0 bottom-0 bg-black/55 px-2 py-1 text-[10px] leading-tight text-white">
+          <div className="absolute inset-x-0 bottom-0 bg-scrim px-2 py-1 text-[10px] leading-tight text-on-primary">
             <div>{formatClockTime(event.occurred_at)}</div>
             {loc && <div className="opacity-80">📍 {loc}</div>}
           </div>
@@ -100,7 +100,7 @@ function PunchPhoto({ event }: { event: DayEventView }) {
         <button
           type="button"
           onClick={() => setShow(true)}
-          className="w-full rounded-lg border border-dashed border-[#CBD5E1] py-6 text-xs font-medium text-[#0b6cbf] hover:bg-slate-50"
+          className="w-full rounded-lg border border-dashed border-outline py-6 text-xs font-medium text-primary hover:bg-surface-container-low"
         >
           Load photo
         </button>
@@ -160,12 +160,12 @@ export default function TeamPhotoModal({ row, canManage, onClose, onChanged }: P
           type="button"
           onClick={() => setChangeOpen(true)}
           disabled={busy}
-          className="rounded-lg bg-[#0b6cbf] px-3 py-2 text-sm font-medium text-white hover:bg-[#0a5da3] disabled:opacity-50"
+          className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-on-primary hover:bg-primary/90 disabled:opacity-50"
         >
           Change photo
         </button>
       )}
-      <button type="button" onClick={onClose} className="rounded-lg px-3 py-2 text-sm font-medium text-[#475569] hover:bg-slate-50">
+      <button type="button" onClick={onClose} className="rounded-lg px-3 py-2 text-sm font-medium text-on-surface-variant hover:bg-surface-container-low">
         Close
       </button>
     </div>
@@ -181,21 +181,21 @@ export default function TeamPhotoModal({ row, canManage, onClose, onChanged }: P
             ) : (
               <PhotoAvatar src={null} label={row.user_full_name} sizeClass="h-16 w-16" />
             )}
-            <div className="text-xs text-[#64748B]">
-              <p className="font-semibold text-[#0F172A]">Reference photo</p>
+            <div className="text-xs text-on-surface-variant">
+              <p className="font-semibold text-on-surface">Reference photo</p>
               <p>{row.has_photo ? (row.enrolled ? 'Enrolled for face matching' : 'Photo on file (not enrolled)') : 'No photo on file'}</p>
               {row.face_match_score != null && <p className="mt-0.5">Today’s match: {Math.round(row.face_match_score)}%</p>}
             </div>
           </div>
 
           <div>
-            <p className="mb-1.5 text-xs font-semibold text-[#0F172A]">
+            <p className="mb-1.5 text-xs font-semibold text-on-surface">
               Punches{events && events.length > 0 ? ` (${events.length})` : ''}
             </p>
             {events === null ? (
-              <p className="text-xs text-[#94A3B8]">Loading punches…</p>
+              <p className="text-xs text-outline">Loading punches…</p>
             ) : events.length === 0 ? (
-              <p className="text-xs text-[#94A3B8]">No punches recorded for this day.</p>
+              <p className="text-xs text-outline">No punches recorded for this day.</p>
             ) : (
               // Horizontal scroll rather than a wrapping grid: a split shift can
               // run to six punches and the modal must not grow unboundedly.
@@ -207,7 +207,7 @@ export default function TeamPhotoModal({ row, canManage, onClose, onChanged }: P
             )}
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-status-overdue">{error}</p>}
         </div>
       </Modal>
 

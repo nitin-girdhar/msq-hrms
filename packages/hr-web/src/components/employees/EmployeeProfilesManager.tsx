@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Modal } from '@platform/ui-kit';
 import { hrEmployees } from '../../lib/api/client';
 import type { EmployeeProfileView, HrLookupOption } from '../../lib/leave/types';
+import { emptyBlockCls, fieldInputCls, stateBlockCls } from '../../lib/ui';
 
 interface Props {
   onNotice: (msg: string) => void;
@@ -20,6 +21,8 @@ export default function EmployeeProfilesManager({ onNotice, canManage }: Props) 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<EmployeeProfileView | null>(null);
+  const [query, setQuery] = useState('');
+  const [dept, setDept] = useState('');
 
   const loadLookups = useCallback(() => {
     Promise.all([hrEmployees.departments.list(), hrEmployees.designations.list()])
@@ -38,56 +41,126 @@ export default function EmployeeProfilesManager({ onNotice, canManage }: Props) 
 
   useEffect(() => { load(); loadLookups(); }, [load, loadLookups]);
 
+  // Department options come from the people actually listed, not the lookup, so
+  // the filter never offers a department with nobody in it.
+  const deptOptions = useMemo(
+    () => Array.from(new Set(profiles.map((p) => p.department_name).filter((d): d is string => !!d))).sort(),
+    [profiles],
+  );
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return profiles.filter(
+      (p) =>
+        (!dept || p.department_name === dept) &&
+        (!q || [p.full_name, p.email, p.employee_code].some((v) => v?.toLowerCase().includes(q))),
+    );
+  }, [profiles, query, dept]);
+
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const joinedThisMonth = profiles.filter((p) => p.date_of_joining?.startsWith(thisMonth)).length;
+
+  const editButton = (p: EmployeeProfileView) =>
+    canManage ? (
+      <button type="button" onClick={() => setEditing(p)} className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-xs font-semibold text-on-surface-variant hover:border-primary hover:text-primary">
+        Edit
+      </button>
+    ) : null;
+
   return (
     <div className="space-y-3">
-      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">{error}</div>}
+      {error && <div className="rounded-lg border border-status-overdue/30 bg-status-overdue-container px-4 py-2 text-xs text-on-status-overdue-container">{error}</div>}
 
       {loading ? (
-        <div className="flex items-center justify-center py-12 text-sm text-[#94A3B8]">Loading…</div>
+        <div className={stateBlockCls}>Loading…</div>
       ) : profiles.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-[#E2E8F0] bg-white px-4 py-8 text-center text-sm text-[#94A3B8]">No employee profiles yet.</p>
+        <p className={emptyBlockCls}>No employee profiles yet.</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
-          <table className="w-full min-w-[820px] text-sm">
-            <thead>
-              <tr className="border-b border-[#E2E8F0] text-left text-xs font-semibold uppercase tracking-wide text-[#64748B]">
-                <th className="px-4 py-3">Employee</th>
-                <th className="px-4 py-3">Code</th>
-                <th className="px-4 py-3">Joined</th>
-                <th className="px-4 py-3">Department</th>
-                <th className="px-4 py-3">Designation</th>
-                <th className="px-4 py-3">Weekly off</th>
-                {canManage && <th className="px-4 py-3 text-right">Action</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {profiles.map((p) => (
-                <tr key={p.user_id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
-                  <td className="px-4 py-3">
-                    {/* Becomes a link to /employees/[userId] once the employee
-                        profile page exists (backed by GET /hr/employees/:userId). */}
-                    <p className="font-medium text-[#0F172A]">{p.full_name}</p>
-                    <p className="text-[11px] text-[#94A3B8]">{p.email}</p>
-                  </td>
-                  <td className="px-4 py-3 text-[#475569]">{p.employee_code ?? '—'}</td>
-                  <td className="px-4 py-3 text-[#475569]">{p.date_of_joining ?? '—'}</td>
-                  <td className="px-4 py-3 text-[#475569]">{p.department_name ?? '—'}</td>
-                  <td className="px-4 py-3 text-[#475569]">{p.designation_name ?? '—'}</td>
-                  <td className="px-4 py-3 text-[11px] text-[#475569]">
-                    {(p.weekly_off_pattern ?? []).map((d) => WEEKDAYS[d]).join(', ') || '—'}
-                  </td>
-                  {canManage && (
-                    <td className="px-4 py-3 text-right">
-                      <button type="button" onClick={() => setEditing(p)} className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-semibold text-[#475569] hover:border-[#0b6cbf] hover:text-[#0b6cbf]">
-                        Edit
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div className="grid grid-cols-3 gap-3">
+            <Tile label="Employees" value={profiles.length} />
+            <Tile label="Departments" value={deptOptions.length} />
+            <Tile label="Joined this month" value={joinedThisMonth} />
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search name, email or employee code"
+              aria-label="Search employees"
+              className={`${fieldInputCls} w-full sm:max-w-sm`}
+            />
+            <select value={dept} onChange={(e) => setDept(e.target.value)} aria-label="Filter by department" className={`${fieldInputCls} sm:w-56`}>
+              <option value="">All departments</option>
+              {deptOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+
+          {visible.length === 0 ? (
+            <p className={emptyBlockCls}>No one matches these filters.</p>
+          ) : (
+            <>
+              {/* Phone: a card per person. */}
+              <ul className="flex flex-col gap-2 md:hidden">
+                {visible.map((p) => (
+                  <li key={p.user_id} className="rounded-xl border border-outline-variant bg-surface-container-lowest p-3 shadow-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-on-surface">{p.full_name}</p>
+                        <p className="truncate text-label-sm text-outline">{p.email}</p>
+                      </div>
+                      {editButton(p)}
+                    </div>
+                    <p className="mt-2 text-xs text-on-surface-variant">
+                      {[p.designation_name, p.department_name].filter(Boolean).join(' · ') || '—'}
+                    </p>
+                    <p className="text-label-sm text-outline">
+                      {p.employee_code ?? 'No code'} · Joined {p.date_of_joining ?? '—'}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="hidden overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm md:block">
+                <table className="w-full min-w-[820px] text-sm">
+                  <thead>
+                    <tr className="border-b border-outline-variant text-left text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+                      <th className="px-4 py-3">Employee</th>
+                      <th className="px-4 py-3">Code</th>
+                      <th className="px-4 py-3">Joined</th>
+                      <th className="px-4 py-3">Department</th>
+                      <th className="px-4 py-3">Designation</th>
+                      <th className="px-4 py-3">Weekly off</th>
+                      {canManage && <th className="px-4 py-3 text-right">Action</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visible.map((p) => (
+                      <tr key={p.user_id} className="border-b border-outline-variant/50 last:border-0 hover:bg-surface-container-low">
+                        <td className="px-4 py-3">
+                          {/* Becomes a link to /employees/[userId] once the Employee 360
+                              page exists (backed by GET /hr/employees/:userId). */}
+                          <p className="font-medium text-on-surface">{p.full_name}</p>
+                          <p className="text-label-sm text-outline">{p.email}</p>
+                        </td>
+                        <td className="px-4 py-3 text-on-surface-variant">{p.employee_code ?? '—'}</td>
+                        <td className="px-4 py-3 text-on-surface-variant">{p.date_of_joining ?? '—'}</td>
+                        <td className="px-4 py-3 text-on-surface-variant">{p.department_name ?? '—'}</td>
+                        <td className="px-4 py-3 text-on-surface-variant">{p.designation_name ?? '—'}</td>
+                        <td className="px-4 py-3 text-label-sm text-on-surface-variant">
+                          {(p.weekly_off_pattern ?? []).map((d) => WEEKDAYS[d]).join(', ') || '—'}
+                        </td>
+                        {canManage && <td className="px-4 py-3 text-right">{editButton(p)}</td>}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </>
       )}
 
       {canManage && editing && (
@@ -99,6 +172,15 @@ export default function EmployeeProfilesManager({ onNotice, canManage }: Props) 
           onSaved={(msg) => { onNotice(msg); load(); loadLookups(); }}
         />
       )}
+    </div>
+  );
+}
+
+function Tile({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-3 shadow-sm sm:p-4">
+      <p className="text-label-sm font-semibold uppercase tracking-wide text-on-surface-variant">{label}</p>
+      <p className="mt-1 font-mono text-headline-md font-bold tabular-nums text-on-surface">{value}</p>
     </div>
   );
 }
@@ -146,13 +228,13 @@ function EmployeeEditModal({ profile, departments, designations, onClose, onSave
   };
 
   const inputCls =
-    'rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#0F172A] shadow-sm focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20';
-  const labelCls = 'text-xs font-semibold text-[#0F172A]';
+    'rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2.5 text-sm text-on-surface shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20';
+  const labelCls = 'text-xs font-semibold text-on-surface';
 
   const footer = (
     <div className="flex justify-end gap-2">
-      <button type="button" onClick={onClose} disabled={submitting} className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60">Cancel</button>
-      <button type="button" onClick={save} disabled={submitting} className="rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:opacity-60">
+      <button type="button" onClick={onClose} disabled={submitting} className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low disabled:opacity-60">Cancel</button>
+      <button type="button" onClick={save} disabled={submitting} className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary/90 disabled:opacity-60">
         {submitting ? 'Saving…' : 'Save profile'}
       </button>
     </div>
@@ -161,7 +243,7 @@ function EmployeeEditModal({ profile, departments, designations, onClose, onSave
   return (
     <Modal open onClose={onClose} title={`Edit — ${profile.full_name}`} locked={submitting} maxWidth="max-w-lg" footer={footer}>
       <div className="flex flex-col gap-4">
-        {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>}
+        {error && <div role="alert" className="rounded-xl border border-status-overdue/30 bg-status-overdue-container px-3 py-2 text-xs text-on-status-overdue-container">{error}</div>}
 
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">
@@ -188,7 +270,7 @@ function EmployeeEditModal({ profile, departments, designations, onClose, onSave
           <span className={labelCls}>Weekly off</span>
           <div className="flex flex-wrap gap-2">
             {WEEKDAYS.map((w, d) => (
-              <label key={w} className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs ${weeklyOff.includes(d) ? 'border-[#0b6cbf] bg-[#EFF6FF] text-[#0b6cbf]' : 'border-[#E2E8F0] text-[#475569]'}`}>
+              <label key={w} className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs ${weeklyOff.includes(d) ? 'border-primary bg-primary-fixed text-primary' : 'border-outline-variant text-on-surface-variant'}`}>
                 <input type="checkbox" checked={weeklyOff.includes(d)} onChange={() => toggleDay(d)} disabled={submitting} className="h-3.5 w-3.5" />
                 {w}
               </label>

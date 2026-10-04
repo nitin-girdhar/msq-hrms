@@ -26,13 +26,13 @@ function PhotoPane({ src, label, caption }: { src: string | null; label: string;
 
   return (
     <div className="flex-1">
-      <p className="mb-1 text-xs font-semibold text-[#64748B]">{label}</p>
+      <p className="mb-1 text-xs font-semibold text-on-surface-variant">{label}</p>
       {!src || failed ? (
-        <p className="rounded-lg border border-dashed border-[#E2E8F0] py-10 text-center text-[11px] text-[#94A3B8]">
+        <p className="rounded-lg border border-dashed border-outline-variant py-10 text-center text-[11px] text-outline">
           {!src ? 'Not available' : 'Photo unavailable'}
         </p>
       ) : show ? (
-        <div className="overflow-hidden rounded-lg bg-slate-100">
+        <div className="overflow-hidden rounded-lg bg-surface-container">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={src} alt={label} onError={() => setFailed(true)} className="w-full object-cover" />
         </div>
@@ -40,12 +40,12 @@ function PhotoPane({ src, label, caption }: { src: string | null; label: string;
         <button
           type="button"
           onClick={() => setShow(true)}
-          className="w-full rounded-lg border border-dashed border-[#CBD5E1] py-10 text-xs font-medium text-[#0b6cbf] hover:bg-slate-50"
+          className="w-full rounded-lg border border-dashed border-outline py-10 text-xs font-medium text-primary hover:bg-surface-container-low"
         >
           Load photo
         </button>
       )}
-      <p className="mt-1 text-[10px] leading-tight text-[#94A3B8]">{caption}</p>
+      <p className="mt-1 text-[10px] leading-tight text-outline">{caption}</p>
     </div>
   );
 }
@@ -84,7 +84,7 @@ export default function FaceReviewDecisionModal({ review, onClose, onDecided }: 
         type="button"
         onClick={onClose}
         disabled={busy !== null}
-        className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60"
+        className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low disabled:opacity-60"
       >
         Cancel
       </button>
@@ -92,7 +92,7 @@ export default function FaceReviewDecisionModal({ review, onClose, onDecided }: 
         type="button"
         onClick={() => decide('reject')}
         disabled={busy !== null}
-        className="rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"
+        className="rounded-xl border border-status-overdue/30 bg-surface-container-lowest px-4 py-2 text-sm font-semibold text-on-status-overdue-container hover:bg-status-overdue-container disabled:opacity-60"
       >
         {busy === 'reject' ? 'Rejecting…' : 'Reject punch'}
       </button>
@@ -100,7 +100,7 @@ export default function FaceReviewDecisionModal({ review, onClose, onDecided }: 
         type="button"
         onClick={() => decide('clear')}
         disabled={busy !== null}
-        className="rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:opacity-60"
+        className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary/90 disabled:opacity-60"
       >
         {busy === 'clear' ? 'Confirming…' : 'Confirm punch'}
       </button>
@@ -110,20 +110,20 @@ export default function FaceReviewDecisionModal({ review, onClose, onDecided }: 
   return (
     <Modal open onClose={onClose} title="Review face match" locked={busy !== null} maxWidth="max-w-lg" footer={footer}>
       <div className="flex flex-col gap-4">
-        <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 text-sm">
-          <p className="font-semibold text-[#0F172A]">{who}</p>
-          <p className="text-xs text-[#64748B]">
+        <div className="rounded-xl border border-outline-variant bg-surface-container-low px-4 py-3 text-sm">
+          <p className="font-semibold text-on-surface">{who}</p>
+          <p className="text-xs text-on-surface-variant">
             {punch} · {formatDateTime(review.occurred_at)}
           </p>
           <p className="mt-1 text-xs">
             {review.face_match_score != null ? (
               <>
-                Match score <span className="font-semibold text-amber-700">{Math.round(review.face_match_score)}%</span>
+                Match score <span className="font-semibold text-on-status-due-container">{Math.round(review.face_match_score)}%</span>
               </>
             ) : (
               // No comparison happened at all — not the same as a low score, and
               // the reviewer should not read it as evidence either way.
-              <span className="text-[#64748B]">
+              <span className="text-on-surface-variant">
                 No score — the employee was not enrolled, or face matching was unavailable.
               </span>
             )}
@@ -144,13 +144,13 @@ export default function FaceReviewDecisionModal({ review, onClose, onDecided }: 
         </div>
 
         {/* State the consequence: these buttons move someone's recorded hours. */}
-        <p className="text-xs text-[#64748B]">
-          This punch is not counted while it waits. <strong className="font-semibold text-[#0F172A]">Confirm</strong> if
-          the faces match — the time is added back to the day. <strong className="font-semibold text-[#0F172A]">Reject</strong>{' '}
+        <p className="text-xs text-on-surface-variant">
+          This punch is not counted while it waits. <strong className="font-semibold text-on-surface">Confirm</strong> if
+          the faces match — the time is added back to the day. <strong className="font-semibold text-on-surface">Reject</strong>{' '}
           if they do not — the punch is discarded and the day recalculated without it.
         </p>
 
-        {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+        {error && <p role="alert" className="text-sm text-status-overdue">{error}</p>}
       </div>
     </Modal>
   );

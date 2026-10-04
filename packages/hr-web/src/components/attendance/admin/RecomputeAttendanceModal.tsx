@@ -70,15 +70,15 @@ export default function RecomputeAttendanceModal({ open, assignment, onClose, on
   };
 
   const inputCls =
-    'rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#0F172A] shadow-sm focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20 disabled:cursor-not-allowed disabled:bg-[#F8FAFC]';
+    'rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2.5 text-sm text-on-surface shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-surface-container-low';
 
   const footer = (
     <div className="flex justify-end gap-2">
-      <button type="button" onClick={handleClose} disabled={submitting} className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60">
+      <button type="button" onClick={handleClose} disabled={submitting} className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low disabled:opacity-60">
         Cancel
       </button>
-      <button type="submit" form={FORM_ID} disabled={submitting || !from || !to} aria-busy={submitting} className="inline-flex items-center gap-2 rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:cursor-not-allowed disabled:opacity-60">
-        {submitting && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />}
+      <button type="submit" form={FORM_ID} disabled={submitting || !from || !to} aria-busy={submitting} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60">
+        {submitting && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-on-primary/40 border-t-white" aria-hidden />}
         {submitting ? 'Recomputing…' : 'Recompute'}
       </button>
     </div>
@@ -88,43 +88,43 @@ export default function RecomputeAttendanceModal({ open, assignment, onClose, on
     <Modal open={open} onClose={handleClose} title="Recompute attendance" locked={submitting} maxWidth="max-w-md" footer={footer}>
       <form id={FORM_ID} onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
         {error && (
-          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>
+          <div role="alert" className="rounded-xl border border-status-overdue/30 bg-status-overdue-container px-3 py-2 text-xs text-on-status-overdue-container">{error}</div>
         )}
 
-        <p className="text-xs text-[#64748B]">
+        <p className="text-xs text-on-surface-variant">
           Re-applies shift rules to days that were already marked — use this after changing a shift
           or an assignment. Approved regularizations are never overwritten.
         </p>
 
         {assignment && (
-          <div className="rounded-xl bg-[#F8FAFC] px-3 py-2 text-xs text-[#475569]">
-            <span className="font-semibold text-[#0F172A]">{assignment.user_full_name}</span> · {assignment.shift_name}
+          <div className="rounded-xl bg-surface-container-low px-3 py-2 text-xs text-on-surface-variant">
+            <span className="font-semibold text-on-surface">{assignment.user_full_name}</span> · {assignment.shift_name}
           </div>
         )}
 
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="rc-from" className="text-xs font-semibold text-[#0F172A]">From *</label>
+            <label htmlFor="rc-from" className="text-xs font-semibold text-on-surface">From *</label>
             <input id="rc-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} disabled={submitting} className={inputCls} />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="rc-to" className="text-xs font-semibold text-[#0F172A]">To *</label>
+            <label htmlFor="rc-to" className="text-xs font-semibold text-on-surface">To *</label>
             <input id="rc-to" type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} disabled={submitting} className={inputCls} />
           </div>
         </div>
 
         {assignment && (
-          <label className="flex items-start gap-2 text-xs text-[#0F172A]">
+          <label className="flex items-start gap-2 text-xs text-on-surface">
             <input
               type="checkbox"
               checked={wholeOrg}
               onChange={(e) => setWholeOrg(e.target.checked)}
               disabled={submitting}
-              className="mt-0.5 h-4 w-4 rounded border-[#CBD5E1]"
+              className="mt-0.5 h-4 w-4 rounded border-outline"
             />
             <span>
               <span className="font-semibold">Every employee in this branch</span>
-              <span className="block text-[11px] text-[#64748B]">
+              <span className="block text-[11px] text-on-surface-variant">
                 Otherwise only {assignment.user_full_name} is recomputed.
               </span>
             </span>

@@ -67,10 +67,10 @@ export default function MonthlySummaryReport() {
       ) : rows.length === 0 ? (
         <p className={emptyBlockCls}>No attendance data for {month}.</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
+        <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
           <table className="w-full min-w-[1060px] text-sm">
             <thead>
-              <tr className="border-b border-[#E2E8F0] text-left text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+              <tr className="border-b border-outline-variant text-left text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
                 <th className="px-4 py-3">Employee</th>
                 <th className="px-4 py-3">Present</th>
                 <th className="px-4 py-3">Absent</th>
@@ -87,22 +87,22 @@ export default function MonthlySummaryReport() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.user_id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
+                <tr key={r.user_id} className="border-b border-outline-variant/50 last:border-0 hover:bg-surface-container-low">
                   <td className="px-4 py-3">
-                    <p className="font-medium text-[#0F172A]">{r.user_full_name}</p>
-                    <p className="text-[11px] text-[#94A3B8]">{r.user_email}</p>
+                    <p className="font-medium text-on-surface">{r.user_full_name}</p>
+                    <p className="text-[11px] text-outline">{r.user_email}</p>
                   </td>
-                  <td className="px-4 py-3 text-[#475569]">{r.present_count}</td>
-                  <td className="px-4 py-3 text-[#475569]">{r.absent_count}</td>
-                  <td className="px-4 py-3 text-[#475569]">{r.half_day_count}</td>
-                  <td className={`px-4 py-3 ${Number(r.missed_punch_count) > 0 ? 'font-medium text-orange-700' : 'text-[#475569]'}`}>{r.missed_punch_count}</td>
-                  <td className="px-4 py-3 text-[#475569]">{r.on_leave_count}</td>
-                  <td className="px-4 py-3 text-[#475569]">{r.holiday_count}</td>
-                  <td className="px-4 py-3 text-[#475569]">{r.weekly_off_count}</td>
-                  <td className="px-4 py-3 text-[#475569]">{r.wfh_count}</td>
-                  <td className="px-4 py-3 text-[#475569]">{r.late_count}</td>
-                  <td className="px-4 py-3 text-[#475569]">{r.early_exit_count}</td>
-                  <td className="px-4 py-3 text-[#475569]">{formatWorkedMinutes(r.avg_worked_minutes != null ? Math.round(r.avg_worked_minutes) : null)}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{r.present_count}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{r.absent_count}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{r.half_day_count}</td>
+                  <td className={`px-4 py-3 ${Number(r.missed_punch_count) > 0 ? 'font-medium text-on-cat-orange-container' : 'text-on-surface-variant'}`}>{r.missed_punch_count}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{r.on_leave_count}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{r.holiday_count}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{r.weekly_off_count}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{r.wfh_count}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{r.late_count}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{r.early_exit_count}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{formatWorkedMinutes(r.avg_worked_minutes != null ? Math.round(r.avg_worked_minutes) : null)}</td>
                 </tr>
               ))}
             </tbody>

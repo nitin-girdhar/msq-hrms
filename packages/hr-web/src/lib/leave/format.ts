@@ -95,12 +95,12 @@ export function formatDateTime(iso: string | null): string {
 
 // Status chip palette — matches the app's badge style (soft bg + strong fg).
 export const LEAVE_STATUS_STYLES: Record<LeaveStatusName, { bg: string; fg: string }> = {
-  draft: { bg: 'bg-slate-100', fg: 'text-slate-600' },
-  pending: { bg: 'bg-amber-50', fg: 'text-amber-700' },
-  approved: { bg: 'bg-green-50', fg: 'text-green-700' },
-  rejected: { bg: 'bg-red-50', fg: 'text-red-700' },
-  cancelled: { bg: 'bg-slate-100', fg: 'text-slate-500' },
-  withdrawn: { bg: 'bg-slate-100', fg: 'text-slate-500' },
+  draft: { bg: 'bg-surface-container', fg: 'text-on-surface-variant' },
+  pending: { bg: 'bg-status-due-container', fg: 'text-on-status-due-container' },
+  approved: { bg: 'bg-status-success-container', fg: 'text-on-status-success-container' },
+  rejected: { bg: 'bg-status-overdue-container', fg: 'text-on-status-overdue-container' },
+  cancelled: { bg: 'bg-surface-container', fg: 'text-on-surface-variant' },
+  withdrawn: { bg: 'bg-surface-container', fg: 'text-on-surface-variant' },
 };
 
 // Seeded default leave type names (hr.leave_types) with display labels — the

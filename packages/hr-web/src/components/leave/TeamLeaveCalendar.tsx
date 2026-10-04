@@ -6,7 +6,8 @@ import { leave as leaveApi, holidays as holidaysApi } from '../../lib/api/client
 import type { LeaveRequestView, HolidayView } from '../../lib/leave/types';
 
 // Deterministic bar color per leave type (soft, readable palette).
-const PALETTE = ['#0b6cbf', '#7C3AED', '#0891B2', '#DB2777', '#16A34A', '#EA580C'];
+// CSS variables, not hex: the brand colour follows the tenant, the rest are the fixed categorical hues.
+const PALETTE = ['var(--color-primary)', 'var(--color-cat-purple)', 'var(--color-cat-cyan)', 'var(--color-cat-pink)', 'var(--color-status-success)', 'var(--color-cat-orange)'];
 function colorFor(key: string): string {
   let h = 0;
   for (let i = 0; i < key.length; i += 1) h = (h * 31 + key.charCodeAt(i)) >>> 0;
@@ -78,7 +79,7 @@ export default function TeamLeaveCalendar() {
 
   return (
     <div className="space-y-2">
-      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">{error}</div>}
+      {error && <div className="rounded-lg border border-status-overdue/30 bg-status-overdue-container px-4 py-2 text-xs text-on-status-overdue-container">{error}</div>}
       <MonthGrid
         year={year}
         month={month}

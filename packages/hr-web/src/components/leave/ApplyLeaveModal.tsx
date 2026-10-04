@@ -196,7 +196,7 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied, ed
   };
 
   const inputCls =
-    'rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#0F172A] shadow-sm focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20 disabled:cursor-not-allowed disabled:bg-[#F8FAFC]';
+    'rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2.5 text-sm text-on-surface shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-surface-container-low';
 
   // With no bookable leave type there is nothing to submit, so the footer drops
   // to a single dismiss action.
@@ -204,19 +204,19 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied, ed
     typeOptions.length === 0 ? (
       <div className="flex justify-end">
         <button type="button" onClick={handleClose}
-          className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC]">
+          className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low">
           Close
         </button>
       </div>
     ) : (
       <div className="flex justify-end gap-2">
         <button type="button" onClick={handleClose} disabled={submitting}
-          className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60">
+          className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low disabled:opacity-60">
           Cancel
         </button>
         <button type="submit" form={FORM_ID} disabled={blockSubmit} aria-busy={submitting}
-          className="inline-flex items-center gap-2 rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:cursor-not-allowed disabled:opacity-60">
-          {submitting && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />}
+          className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60">
+          {submitting && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-on-primary/40 border-t-white" aria-hidden />}
           {submitting
             ? (editing ? 'Saving…' : 'Submitting…')
             : (editing ? 'Save changes' : 'Submit request')}
@@ -235,19 +235,19 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied, ed
     >
       <form id={FORM_ID} onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
         {error && (
-          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          <div role="alert" className="rounded-xl border border-status-overdue/30 bg-status-overdue-container px-3 py-2 text-xs text-on-status-overdue-container">
             {error}
           </div>
         )}
 
         {typeOptions.length === 0 ? (
-          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          <p className="rounded-xl border border-status-due/30 bg-status-due-container px-3 py-2 text-xs text-on-status-due-container">
             No leave types have an active policy for your org yet. Ask your HR admin to configure one.
           </p>
         ) : (
           <>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="al-type" className="text-xs font-semibold text-[#0F172A]">Leave type *</label>
+              <label htmlFor="al-type" className="text-xs font-semibold text-on-surface">Leave type *</label>
               <select
                 id="al-type"
                 value={leaveTypeName}
@@ -261,13 +261,13 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied, ed
                 ))}
               </select>
               {balance !== undefined && (
-                <span className="text-[11px] text-[#64748B]">Current balance: {formatDays(balance)}</span>
+                <span className="text-[11px] text-on-surface-variant">Current balance: {formatDays(balance)}</span>
               )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="al-start" className="text-xs font-semibold text-[#0F172A]">Start date *</label>
+                <label htmlFor="al-start" className="text-xs font-semibold text-on-surface">Start date *</label>
                 <input
                   id="al-start"
                   type="date"
@@ -282,7 +282,7 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied, ed
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="al-end" className="text-xs font-semibold text-[#0F172A]">End date *</label>
+                <label htmlFor="al-end" className="text-xs font-semibold text-on-surface">End date *</label>
                 <input
                   id="al-end"
                   type="date"
@@ -298,13 +298,13 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied, ed
             {allowHalf && (
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1.5">
-                  <label htmlFor="al-start-half" className="text-xs font-semibold text-[#0F172A]">First day</label>
+                  <label htmlFor="al-start-half" className="text-xs font-semibold text-on-surface">First day</label>
                   <select id="al-start-half" value={startHalf} onChange={(e) => setStartHalf(e.target.value as HalfDay)} disabled={submitting} className={inputCls}>
                     {HALF_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label htmlFor="al-end-half" className="text-xs font-semibold text-[#0F172A]">Last day</label>
+                  <label htmlFor="al-end-half" className="text-xs font-semibold text-on-surface">Last day</label>
                   <select id="al-end-half" value={endHalf} onChange={(e) => setEndHalf(e.target.value as HalfDay)} disabled={submitting} className={inputCls}>
                     {HALF_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
@@ -314,7 +314,7 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied, ed
 
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between gap-2">
-                <label htmlFor="al-reason" className="text-xs font-semibold text-[#0F172A]">Reason</label>
+                <label htmlFor="al-reason" className="text-xs font-semibold text-on-surface">Reason</label>
                 <SpeechInputButton onText={(t) => setReason((p) => appendDictation(p, t))} disabled={submitting} />
               </div>
               <textarea
@@ -329,7 +329,7 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied, ed
 
             {showDocField && (
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="al-doc" className="text-xs font-semibold text-[#0F172A]">Supporting document URL *</label>
+                <label htmlFor="al-doc" className="text-xs font-semibold text-on-surface">Supporting document URL *</label>
                 <input
                   id="al-doc"
                   type="url"
@@ -339,34 +339,34 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied, ed
                   placeholder="https://…"
                   className={inputCls}
                 />
-                <span className="text-[11px] text-[#94A3B8]">
+                <span className="text-[11px] text-outline">
                   Required for this leave beyond {preview?.requires_document_after_days} day(s). No file upload yet — paste a link (e.g. a shared doc).
                 </span>
               </div>
             )}
 
             {/* Live computed working-days display */}
-            <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2.5">
+            <div className="rounded-xl border border-outline-variant bg-surface-container-low px-3 py-2.5">
               {previewLoading ? (
-                <span className="text-xs text-[#94A3B8]">Calculating…</span>
+                <span className="text-xs text-outline">Calculating…</span>
               ) : preview ? (
                 <div className="space-y-1">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-[#64748B]">Working days</span>
-                    <span className="font-semibold text-[#0F172A]">{formatDays(preview.days_count)}</span>
+                    <span className="text-on-surface-variant">Working days</span>
+                    <span className="font-semibold text-on-surface">{formatDays(preview.days_count)}</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-[#94A3B8]">Remaining after this leave</span>
-                    <span className={preview.sufficient ? 'text-[#475569]' : 'text-red-600'}>
+                    <span className="text-outline">Remaining after this leave</span>
+                    <span className={preview.sufficient ? 'text-on-surface-variant' : 'text-status-overdue'}>
                       {preview.is_paid ? formatDays(preview.balance - preview.days_count) : 'n/a (unpaid)'}
                     </span>
                   </div>
                   {preview.warnings.map((w, i) => (
-                    <p key={i} className="text-[11px] text-amber-700">⚠ {w}</p>
+                    <p key={i} className="text-[11px] text-on-status-due-container">⚠ {w}</p>
                   ))}
                 </div>
               ) : (
-                <span className="text-xs text-[#94A3B8]">Select a type and dates to see the working-day count.</span>
+                <span className="text-xs text-outline">Select a type and dates to see the working-day count.</span>
               )}
             </div>
 

@@ -24,14 +24,14 @@ function dmy(date: string | null): string {
 }
 
 const CODE_CLS: Record<Exclude<MusterCode, ''>, string> = {
-  P: 'text-[#15803D]',
-  HD: 'bg-[#FEF9C3] text-[#854D0E]',
-  'HD/L': 'bg-[#FEF9C3] text-[#854D0E]',
-  A: 'bg-[#FEE2E2] text-[#B91C1C]',
-  L: 'bg-[#DBEAFE] text-[#1D4ED8]',
-  LOP: 'bg-[#FECACA] text-[#991B1B]',
-  WO: 'bg-[#F1F5F9] text-[#64748B]',
-  H: 'bg-[#E2E8F0] text-[#334155]',
+  P: 'text-on-status-success-container',
+  HD: 'bg-status-due-container text-on-status-due-container',
+  'HD/L': 'bg-status-due-container text-on-status-due-container',
+  A: 'bg-status-overdue-container text-on-status-overdue-container',
+  L: 'bg-primary-fixed text-on-status-info-container',
+  LOP: 'bg-status-overdue-container text-on-status-overdue-container',
+  WO: 'bg-surface-container text-on-surface-variant',
+  H: 'bg-surface-container-high text-on-surface-variant',
 };
 
 const LEGEND: Array<[Exclude<MusterCode, ''>, string]> = [
@@ -104,7 +104,7 @@ export default function MusterReport({ actor }: Props) {
           onClick={download}
           disabled={loading || rows.length === 0}
           title={rows.length === 0 ? 'Nothing to export' : 'Download this sheet as Excel'}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-semibold text-[#475569] shadow-sm transition-colors hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-xs font-semibold text-on-surface-variant shadow-sm transition-colors hover:bg-surface-container-low disabled:cursor-not-allowed disabled:opacity-50"
         >
           <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
@@ -144,7 +144,7 @@ export default function MusterReport({ actor }: Props) {
 
       <div className="mb-3 flex flex-wrap gap-1.5 text-[11px]">
         {LEGEND.map(([code, label]) => (
-          <span key={code} className="inline-flex items-center gap-1 rounded-md border border-[#E2E8F0] bg-white px-1.5 py-0.5 text-[#475569]">
+          <span key={code} className="inline-flex items-center gap-1 rounded-md border border-outline-variant bg-surface-container-lowest px-1.5 py-0.5 text-on-surface-variant">
             <span className={`rounded px-1 font-semibold ${CODE_CLS[code]}`}>{code}</span>
             {label}
           </span>
@@ -158,12 +158,12 @@ export default function MusterReport({ actor }: Props) {
       ) : rows.length === 0 ? (
         <p className={emptyBlockCls}>No attendance data for {month}.</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
+        <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
           <table className="w-max border-collapse text-xs">
             <thead>
-              <tr className="border-b border-[#E2E8F0] bg-[#FEF9C3] text-left font-semibold text-[#0F172A]">
-                <th className="sticky left-0 z-10 bg-[#FEF9C3] px-2 py-2">SL</th>
-                <th className="sticky left-8 z-10 min-w-[160px] bg-[#FEF9C3] px-2 py-2">Name</th>
+              <tr className="border-b border-outline-variant bg-status-due-container text-left font-semibold text-on-surface">
+                <th className="sticky left-0 z-10 bg-status-due-container px-2 py-2">SL</th>
+                <th className="sticky left-8 z-10 min-w-[160px] bg-status-due-container px-2 py-2">Name</th>
                 <th className="px-2 py-2">Profile</th>
                 <th className="px-2 py-2">Department</th>
                 <th className="px-2 py-2">DOJ</th>
@@ -180,33 +180,33 @@ export default function MusterReport({ actor }: Props) {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={`${r.org_id}|${r.user_id}`} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
-                  <td className="sticky left-0 bg-white px-2 py-1.5 text-[#94A3B8]">{r.sl_no}</td>
-                  <td className="sticky left-8 min-w-[160px] bg-white px-2 py-1.5">
-                    <p className="font-medium text-[#0F172A]">{r.name}</p>
-                    {r.employee_code && <p className="text-[10px] text-[#94A3B8]">{r.employee_code}</p>}
+                <tr key={`${r.org_id}|${r.user_id}`} className="border-b border-outline-variant/50 last:border-0 hover:bg-surface-container-low">
+                  <td className="sticky left-0 bg-surface-container-lowest px-2 py-1.5 text-outline">{r.sl_no}</td>
+                  <td className="sticky left-8 min-w-[160px] bg-surface-container-lowest px-2 py-1.5">
+                    <p className="font-medium text-on-surface">{r.name}</p>
+                    {r.employee_code && <p className="text-[10px] text-outline">{r.employee_code}</p>}
                   </td>
-                  <td className="px-2 py-1.5 text-[#475569]">{r.designation ?? '—'}</td>
-                  <td className="px-2 py-1.5 text-[#475569]">{r.department ?? '—'}</td>
-                  <td className="whitespace-nowrap px-2 py-1.5 text-[#475569]">{dmy(r.date_of_joining)}</td>
-                  {showBranch && <td className="whitespace-nowrap px-2 py-1.5 text-[#475569]">{r.branch}</td>}
+                  <td className="px-2 py-1.5 text-on-surface-variant">{r.designation ?? '—'}</td>
+                  <td className="px-2 py-1.5 text-on-surface-variant">{r.department ?? '—'}</td>
+                  <td className="whitespace-nowrap px-2 py-1.5 text-on-surface-variant">{dmy(r.date_of_joining)}</td>
+                  {showBranch && <td className="whitespace-nowrap px-2 py-1.5 text-on-surface-variant">{r.branch}</td>}
                   {r.days.map((code, i) => (
-                    <td key={i} className={`border-l border-[#F1F5F9] px-0 py-1.5 text-center font-semibold ${code ? CODE_CLS[code] : ''}`}>
+                    <td key={i} className={`border-l border-outline-variant/50 px-0 py-1.5 text-center font-semibold ${code ? CODE_CLS[code] : ''}`}>
                       {code}
                     </td>
                   ))}
-                  <td className="px-2 py-1.5 text-right font-medium text-[#0F172A]">{num(r.present)}</td>
-                  <td className="px-2 py-1.5 text-right text-[#475569]">{num(r.weekoff_paid)}</td>
-                  <td className="px-2 py-1.5 text-right text-[#475569]">{num(r.paid_leave)}</td>
-                  <td className="px-2 py-1.5 text-right text-[#475569]">{num(r.holidays)}</td>
-                  <td className="px-2 py-1.5 text-right font-semibold text-[#0F172A]">{num(r.total_paid)}</td>
+                  <td className="px-2 py-1.5 text-right font-medium text-on-surface">{num(r.present)}</td>
+                  <td className="px-2 py-1.5 text-right text-on-surface-variant">{num(r.weekoff_paid)}</td>
+                  <td className="px-2 py-1.5 text-right text-on-surface-variant">{num(r.paid_leave)}</td>
+                  <td className="px-2 py-1.5 text-right text-on-surface-variant">{num(r.holidays)}</td>
+                  <td className="px-2 py-1.5 text-right font-semibold text-on-surface">{num(r.total_paid)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
-      <p className="mt-2 text-[11px] text-[#94A3B8]">
+      <p className="mt-2 text-[11px] text-outline">
         Half day counts as 0.5. Total paid = present + weekly offs + paid leave + holidays. The Excel download adds a blank Final Paid Days column for HR.
       </p>
     </PageSection>

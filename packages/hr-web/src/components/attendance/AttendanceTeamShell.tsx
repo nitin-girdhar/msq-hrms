@@ -115,7 +115,7 @@ export default function AttendanceTeamShell({ actor, hrRank }: Props) {
               value={date}
               onChange={(e) => setDate(e.target.value)}
               aria-label="Select date"
-              className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs text-[#0F172A] focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20"
+              className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-xs text-on-surface focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
           }
         >

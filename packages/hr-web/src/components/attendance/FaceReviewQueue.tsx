@@ -19,21 +19,21 @@ interface Props {
 
 export default function FaceReviewQueue({ items, loading, onReview }: Props) {
   if (loading) {
-    return <div className="flex items-center justify-center py-12 text-sm text-[#94A3B8]">Loading…</div>;
+    return <div className="flex items-center justify-center py-12 text-sm text-outline">Loading…</div>;
   }
   if (items.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-[#E2E8F0] bg-white px-4 py-8 text-center text-sm text-[#94A3B8]">
+      <p className="rounded-xl border border-dashed border-outline-variant bg-surface-container-lowest px-4 py-8 text-center text-sm text-outline">
         No punches are awaiting face review.
       </p>
     );
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
+    <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
       <table className="w-full min-w-[720px] text-sm">
         <thead>
-          <tr className="border-b border-[#E2E8F0] text-left text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+          <tr className="border-b border-outline-variant text-left text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
             <th className="px-4 py-3">Employee</th>
             <th className="px-4 py-3">Punch</th>
             <th className="px-4 py-3">When</th>
@@ -43,24 +43,24 @@ export default function FaceReviewQueue({ items, loading, onReview }: Props) {
         </thead>
         <tbody>
           {items.map((r) => (
-            <tr key={r.event_id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
-              <td className="px-4 py-3 font-medium text-[#0F172A]">{r.user_full_name ?? r.user_id}</td>
-              <td className="px-4 py-3 text-[#475569]">{r.event_type === 'check_in' ? 'Check-in' : 'Check-out'}</td>
-              <td className="px-4 py-3 text-[11px] text-[#94A3B8]">{formatDateTime(r.occurred_at)}</td>
+            <tr key={r.event_id} className="border-b border-outline-variant/50 last:border-0 hover:bg-surface-container-low">
+              <td className="px-4 py-3 font-medium text-on-surface">{r.user_full_name ?? r.user_id}</td>
+              <td className="px-4 py-3 text-on-surface-variant">{r.event_type === 'check_in' ? 'Check-in' : 'Check-out'}</td>
+              <td className="px-4 py-3 text-[11px] text-outline">{formatDateTime(r.occurred_at)}</td>
               <td className="px-4 py-3">
                 {r.face_match_score != null ? (
-                  <span className="font-semibold text-amber-700">{Math.round(r.face_match_score)}%</span>
+                  <span className="font-semibold text-on-status-due-container">{Math.round(r.face_match_score)}%</span>
                 ) : (
                   // Not enrolled, or the face service was unreachable. Nothing was
                   // compared at all, which is a different problem from a low score.
-                  <span className="text-[11px] text-[#94A3B8]">No score</span>
+                  <span className="text-[11px] text-outline">No score</span>
                 )}
               </td>
               <td className="px-4 py-3 text-right">
                 <button
                   type="button"
                   onClick={() => onReview(r)}
-                  className="rounded-lg bg-[#0b6cbf] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#095699]"
+                  className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-on-primary hover:bg-primary/90"
                 >
                   Review
                 </button>

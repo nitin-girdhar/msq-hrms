@@ -82,7 +82,7 @@ export default function PunchModal({ open, mode, rules, geoException, onClose, o
 
   const footer = (
     <div className="flex justify-end gap-2">
-      <button type="button" onClick={handleClose} disabled={submitting} className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60">
+      <button type="button" onClick={handleClose} disabled={submitting} className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low disabled:opacity-60">
         Cancel
       </button>
       <button
@@ -90,9 +90,9 @@ export default function PunchModal({ open, mode, rules, geoException, onClose, o
         onClick={handleSubmit}
         disabled={blockSubmit}
         aria-busy={submitting}
-        className="inline-flex items-center gap-2 rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {submitting && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />}
+        {submitting && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-on-primary/40 border-t-white" aria-hidden />}
         {submitting ? 'Submitting…' : title}
       </button>
     </div>
@@ -102,7 +102,7 @@ export default function PunchModal({ open, mode, rules, geoException, onClose, o
     <Modal open={open} onClose={handleClose} title={title} locked={submitting} maxWidth="max-w-lg" footer={footer}>
       <div className="flex flex-col gap-4">
         {error && (
-          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          <div role="alert" className="rounded-xl border border-status-overdue/30 bg-status-overdue-container px-3 py-2 text-xs text-on-status-overdue-container">
             {error}
           </div>
         )}
@@ -111,7 +111,7 @@ export default function PunchModal({ open, mode, rules, geoException, onClose, o
             exemption already marks the punch as work-from-home server-side, so
             re-asking would be a question whose answer is ignored. */}
         {geoException ? (
-          <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-800">
+          <div className="rounded-xl border border-cat-indigo/30 bg-cat-indigo-container px-3 py-2 text-xs text-on-cat-indigo-container">
             {geoException.exception_type === 'wfh' ? (
               <>
                 <span className="font-semibold">Approved work from home</span>
@@ -129,13 +129,13 @@ export default function PunchModal({ open, mode, rules, geoException, onClose, o
           </div>
         ) : (
           rules.allow_wfh_checkin && (
-            <label className="flex items-center gap-2 text-sm text-[#0F172A]">
+            <label className="flex items-center gap-2 text-sm text-on-surface">
               <input
                 type="checkbox"
                 checked={isWfh}
                 onChange={(e) => setIsWfh(e.target.checked)}
                 disabled={submitting}
-                className="h-4 w-4 rounded border-[#E2E8F0] text-[#0b6cbf]"
+                className="h-4 w-4 rounded border-outline-variant text-primary"
               />
               <span>Working from home</span>
             </label>
@@ -143,65 +143,65 @@ export default function PunchModal({ open, mode, rules, geoException, onClose, o
         )}
 
         {/* ── Location ─────────────────────────────────────────────────────── */}
-        <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2.5">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-[#64748B]">Location</p>
-          {geo.state.status === 'idle' && <span className="text-xs text-[#94A3B8]">Waiting…</span>}
+        <div className="rounded-xl border border-outline-variant bg-surface-container-low px-3 py-2.5">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Location</p>
+          {geo.state.status === 'idle' && <span className="text-xs text-outline">Waiting…</span>}
           {geo.state.status === 'prompting' && (
-            <span className="inline-flex items-center gap-2 text-xs text-[#64748B]">
-              <span className="h-3 w-3 animate-spin rounded-full border-2 border-[#0b6cbf]/30 border-t-[#0b6cbf]" aria-hidden />
+            <span className="inline-flex items-center gap-2 text-xs text-on-surface-variant">
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-primary/30 border-t-primary" aria-hidden />
               Getting your location…
             </span>
           )}
           {geo.state.status === 'success' && (
-            <span className="text-xs text-green-700">
+            <span className="text-xs text-on-status-success-container">
               Location captured{geo.state.coords.accuracy != null ? ` (±${Math.round(geo.state.coords.accuracy)}m)` : ''}.
             </span>
           )}
           {geo.state.status === 'error' && (
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs text-red-600">{geo.state.message}</span>
+              <span className="text-xs text-status-overdue">{geo.state.message}</span>
               {!geo.state.unavailable && (
-                <button type="button" onClick={geo.request} className="shrink-0 rounded-lg border border-[#E2E8F0] bg-white px-2 py-1 text-[11px] font-semibold text-[#475569] hover:bg-[#F8FAFC]">
+                <button type="button" onClick={geo.request} className="shrink-0 rounded-lg border border-outline-variant bg-surface-container-lowest px-2 py-1 text-[11px] font-semibold text-on-surface-variant hover:bg-surface-container-low">
                   Retry
                 </button>
               )}
             </div>
           )}
-          {!rules.require_geo && <p className="mt-1 text-[11px] text-[#94A3B8]">Optional for this organization.</p>}
+          {!rules.require_geo && <p className="mt-1 text-[11px] text-outline">Optional for this organization.</p>}
         </div>
 
         {/* ── Photo ────────────────────────────────────────────────────────── */}
-        <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2.5">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#64748B]">Photo</p>
+        <div className="rounded-xl border border-outline-variant bg-surface-container-low px-3 py-2.5">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Photo</p>
 
           {camera.state.status === 'captured' ? (
             <div className="space-y-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={camera.state.dataUrl} alt="Captured" className="mx-auto max-h-48 rounded-lg border border-[#E2E8F0]" />
-              <button type="button" onClick={camera.retake} disabled={submitting} className="w-full rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60">
+              <img src={camera.state.dataUrl} alt="Captured" className="mx-auto max-h-48 rounded-lg border border-outline-variant" />
+              <button type="button" onClick={camera.retake} disabled={submitting} className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-xs font-semibold text-on-surface-variant hover:bg-surface-container-low disabled:opacity-60">
                 Retake
               </button>
             </div>
           ) : camera.isSupported ? (
             <div className="space-y-2">
-              <video ref={camera.videoRef} muted playsInline className="mx-auto max-h-48 w-full rounded-lg border border-[#E2E8F0] bg-black object-cover" />
-              {camera.state.status === 'error' && <p className="text-xs text-red-600">{camera.state.message}</p>}
+              <video ref={camera.videoRef} muted playsInline className="mx-auto max-h-48 w-full rounded-lg border border-outline-variant bg-inverse-surface object-cover" />
+              {camera.state.status === 'error' && <p className="text-xs text-status-overdue">{camera.state.message}</p>}
               <button
                 type="button"
                 onClick={camera.capture}
                 disabled={submitting || camera.state.status !== 'streaming'}
-                className="w-full rounded-lg bg-[#0b6cbf] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#095699] disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-on-primary hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Capture photo
               </button>
             </div>
           ) : (
             <div className="space-y-2">
-              <p className="text-xs text-[#64748B]">Camera capture isn't available on this device.</p>
+              <p className="text-xs text-on-surface-variant">Camera capture isn't available on this device.</p>
               <input ref={fileInputRef} type="file" accept="image/*" capture="user" onChange={handleFileChange} disabled={submitting} className="w-full text-xs" />
             </div>
           )}
-          {!rules.require_photo && <p className="mt-1 text-[11px] text-[#94A3B8]">Optional for this organization.</p>}
+          {!rules.require_photo && <p className="mt-1 text-[11px] text-outline">Optional for this organization.</p>}
         </div>
 
       </div>

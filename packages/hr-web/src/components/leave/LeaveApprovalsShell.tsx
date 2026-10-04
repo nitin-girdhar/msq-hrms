@@ -6,6 +6,7 @@ import { Alert, Button, PageBody, PageHeader, PageSection } from '@platform/ui-k
 import { leave as leaveApi } from '../../lib/api/client';
 import type { LeaveRequestView } from '../../lib/leave/types';
 import { formatDateRange, formatDays, formatDateTime } from '../../lib/leave/format';
+import { emptyBlockCls, stateBlockCls } from '../../lib/ui';
 import type { HrRank } from '../../lib/hr-rank';
 import LeaveTabs from './LeaveTabs';
 import TeamLeaveCalendar from './TeamLeaveCalendar';
@@ -53,48 +54,38 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
 
         <PageSection title={`Pending approvals (${pending.length})`}>
         {loading ? (
-          <div className="flex items-center justify-center py-12 text-sm text-[#94A3B8]">Loading…</div>
+          <div className={stateBlockCls}>Loading…</div>
         ) : pending.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-[#E2E8F0] bg-white px-4 py-8 text-center text-sm text-[#94A3B8]">
-            Nothing awaiting approval. You’re all caught up.
-          </p>
+          <p className={emptyBlockCls}>Nothing awaiting approval. You’re all caught up.</p>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
-            <table className="w-full min-w-[760px] text-sm">
-              <thead>
-                <tr className="border-b border-[#E2E8F0] text-left text-xs font-semibold uppercase tracking-wide text-[#64748B]">
-                  <th className="px-4 py-3">Requester</th>
-                  <th className="px-4 py-3">Type</th>
-                  <th className="px-4 py-3">Dates</th>
-                  <th className="px-4 py-3">Days</th>
-                  <th className="px-4 py-3">Applied</th>
-                  <th className="px-4 py-3 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pending.map((r) => (
-                  <tr key={r.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-[#0F172A]">{r.user_full_name}</p>
-                      <p className="text-[11px] text-[#94A3B8]">{r.user_email}</p>
-                    </td>
-                    <td className="px-4 py-3 text-[#475569]">{r.leave_type_label}</td>
-                    <td className="px-4 py-3 text-[#475569]">
-                      {formatDateRange(r.start_date, r.end_date, r.start_half, r.end_half)}
-                      {r.reason && <p className="mt-0.5 text-[11px] text-[#94A3B8]">{r.reason}</p>}
-                    </td>
-                    <td className="px-4 py-3 text-[#475569]">{formatDays(r.days_count)}</td>
-                    <td className="px-4 py-3 text-[11px] text-[#94A3B8]">{formatDateTime(r.created_at)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <Button variant="primary" onClick={() => { setReviewing(r); setNotice(null); }}>
-                        Review
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          // Card per request (Stitch approvals queue): everything the approver needs
+          // to decide — who, what, how long, why — without opening the modal first.
+          <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {pending.map((r) => (
+              <li key={r.id} className="flex flex-col gap-2 rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-on-surface">{r.user_full_name}</p>
+                    <p className="truncate text-label-sm text-outline">{r.user_email}</p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-status-due-container px-2 py-0.5 text-label-sm font-semibold text-on-status-due-container">
+                    {r.leave_type_label}
+                  </span>
+                </div>
+                <p className="text-sm text-on-surface">
+                  {formatDateRange(r.start_date, r.end_date, r.start_half, r.end_half)}
+                  <span className="text-on-surface-variant"> · {formatDays(r.days_count)}</span>
+                </p>
+                {r.reason && <p className="line-clamp-2 text-xs text-on-surface-variant">{r.reason}</p>}
+                <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+                  <span className="text-label-sm text-outline">Applied {formatDateTime(r.created_at)}</span>
+                  <Button variant="primary" onClick={() => { setReviewing(r); setNotice(null); }}>
+                    Review
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
         </PageSection>
 

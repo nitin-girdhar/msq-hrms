@@ -99,15 +99,15 @@ export default function ShiftAssignmentFormModal({ open, assignment, onClose, on
   };
 
   const inputCls =
-    'rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#0F172A] shadow-sm focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20 disabled:cursor-not-allowed disabled:bg-[#F8FAFC]';
+    'rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2.5 text-sm text-on-surface shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-surface-container-low';
 
   const footer = (
     <div className="flex justify-end gap-2">
-      <button type="button" onClick={handleClose} disabled={submitting} className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60">
+      <button type="button" onClick={handleClose} disabled={submitting} className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low disabled:opacity-60">
         Cancel
       </button>
-      <button type="submit" form={FORM_ID} disabled={blockSubmit} aria-busy={submitting} className="inline-flex items-center gap-2 rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:cursor-not-allowed disabled:opacity-60">
-        {submitting && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />}
+      <button type="submit" form={FORM_ID} disabled={blockSubmit} aria-busy={submitting} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60">
+        {submitting && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-on-primary/40 border-t-white" aria-hidden />}
         {submitting ? 'Saving…' : isEdit ? 'Save changes' : 'Assign'}
       </button>
     </div>
@@ -117,11 +117,11 @@ export default function ShiftAssignmentFormModal({ open, assignment, onClose, on
     <Modal open={open} onClose={handleClose} title={isEdit ? 'Edit shift assignment' : 'Assign shift'} locked={submitting} maxWidth="max-w-md" footer={footer}>
       <form id={FORM_ID} onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
         {error && (
-          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>
+          <div role="alert" className="rounded-xl border border-status-overdue/30 bg-status-overdue-container px-3 py-2 text-xs text-on-status-overdue-container">{error}</div>
         )}
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="sa-user" className="text-xs font-semibold text-[#0F172A]">Employee *</label>
+          <label htmlFor="sa-user" className="text-xs font-semibold text-on-surface">Employee *</label>
           <select id="sa-user" value={userId} onChange={(e) => setUserId(e.target.value)} disabled={submitting || loadingLookups || isEdit} className={inputCls}>
             <option value="">{loadingLookups ? 'Loading…' : 'Select…'}</option>
             {/* In edit mode the roster may not contain this user (inactive profile),
@@ -132,47 +132,47 @@ export default function ShiftAssignmentFormModal({ open, assignment, onClose, on
             {employees.map((e) => <option key={e.user_id} value={e.user_id}>{e.full_name} ({e.email})</option>)}
           </select>
           {isEdit && (
-            <p className="text-[11px] text-[#64748B]">
+            <p className="text-[11px] text-on-surface-variant">
               The employee cannot be changed. End this assignment and create a new one instead.
             </p>
           )}
           {!isEdit && !loadingLookups && !error && employees.length === 0 && (
-            <p className="text-[11px] text-[#B45309]">
+            <p className="text-[11px] text-on-status-due-container">
               No employee profiles in this branch yet — add them under Leave → Admin → Employees before assigning shifts.
             </p>
           )}
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="sa-shift" className="text-xs font-semibold text-[#0F172A]">Shift *</label>
+          <label htmlFor="sa-shift" className="text-xs font-semibold text-on-surface">Shift *</label>
           <select id="sa-shift" value={shiftId} onChange={(e) => setShiftId(e.target.value)} disabled={submitting || loadingLookups} className={inputCls}>
             <option value="">{loadingLookups ? 'Loading…' : 'Select…'}</option>
             {shiftOptions.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.start_time.slice(0, 5)}–{s.end_time.slice(0, 5)})</option>)}
           </select>
           {!loadingLookups && !error && shiftOptions.length === 0 && (
-            <p className="text-[11px] text-[#B45309]">No active shifts — create one on the Shifts tab first.</p>
+            <p className="text-[11px] text-on-status-due-container">No active shifts — create one on the Shifts tab first.</p>
           )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="sa-from" className="text-xs font-semibold text-[#0F172A]">Effective from *</label>
+            <label htmlFor="sa-from" className="text-xs font-semibold text-on-surface">Effective from *</label>
             <input id="sa-from" type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} disabled={submitting} className={inputCls} />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="sa-to" className="text-xs font-semibold text-[#0F172A]">Effective to</label>
+            <label htmlFor="sa-to" className="text-xs font-semibold text-on-surface">Effective to</label>
             <input id="sa-to" type="date" value={effectiveTo} min={effectiveFrom} onChange={(e) => setEffectiveTo(e.target.value)} disabled={submitting} className={inputCls} />
           </div>
         </div>
 
         {isEdit && (
-          <label className="flex items-center gap-2 text-xs font-semibold text-[#0F172A]">
+          <label className="flex items-center gap-2 text-xs font-semibold text-on-surface">
             <input
               type="checkbox"
               checked={isActive}
               onChange={(e) => setIsActive(e.target.checked)}
               disabled={submitting}
-              className="h-4 w-4 rounded border-[#CBD5E1]"
+              className="h-4 w-4 rounded border-outline"
             />
             Active
           </label>

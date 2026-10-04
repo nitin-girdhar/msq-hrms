@@ -18,14 +18,14 @@ interface Props {
 }
 
 const ACTION_STYLES: Record<string, { bg: string; fg: string; label: string }> = {
-  pending: { bg: 'bg-amber-50', fg: 'text-amber-700', label: 'Pending' },
-  approved: { bg: 'bg-emerald-50', fg: 'text-emerald-700', label: 'Approved' },
-  rejected: { bg: 'bg-red-50', fg: 'text-red-700', label: 'Rejected' },
+  pending: { bg: 'bg-status-due-container', fg: 'text-on-status-due-container', label: 'Pending' },
+  approved: { bg: 'bg-status-success-container', fg: 'text-on-status-success-container', label: 'Approved' },
+  rejected: { bg: 'bg-status-overdue-container', fg: 'text-on-status-overdue-container', label: 'Rejected' },
 };
 
 export default function ApprovalChainList({ steps, formatDateTime }: Props) {
   if (steps.length === 0) {
-    return <p className="text-sm text-[#94A3B8]">No approval chain recorded for this request.</p>;
+    return <p className="text-sm text-outline">No approval chain recorded for this request.</p>;
   }
 
   // The first step still pending is the one currently holding the request —
@@ -42,24 +42,24 @@ export default function ApprovalChainList({ steps, formatDateTime }: Props) {
         return (
           <li
             key={step.level}
-            className="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm"
+            className="rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2.5 text-sm"
           >
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-[#94A3B8]">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-outline">
                   Level {step.level}
                 </span>
-                <span className="font-medium text-[#0F172A]">{step.approver_name}</span>
+                <span className="font-medium text-on-surface">{step.approver_name}</span>
               </div>
               <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${style.bg} ${style.fg}`}>
                 {isUpcoming ? 'Upcoming' : style.label}
               </span>
             </div>
             {step.acted_at && (
-              <p className="mt-1 text-[11px] text-[#94A3B8]">{formatDateTime(step.acted_at)}</p>
+              <p className="mt-1 text-[11px] text-outline">{formatDateTime(step.acted_at)}</p>
             )}
             {step.comment && (
-              <p className="mt-1.5 rounded-lg bg-[#F8FAFC] px-2.5 py-1.5 text-[13px] text-[#475569]">
+              <p className="mt-1.5 rounded-lg bg-surface-container-low px-2.5 py-1.5 text-[13px] text-on-surface-variant">
                 {step.comment}
               </p>
             )}

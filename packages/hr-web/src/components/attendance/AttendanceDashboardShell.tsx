@@ -14,6 +14,7 @@ import MyMonthCalendar from './MyMonthCalendar';
 import DayDetailPopover from './DayDetailPopover';
 import RegularizationFormModal from './RegularizationFormModal';
 import MyRegularizationsList from './MyRegularizationsList';
+import RegularizationStats from './RegularizationStats';
 import RegularizationDetailModal from './RegularizationDetailModal';
 
 interface Props {
@@ -210,6 +211,7 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
         </PageSection>
 
         <PageSection title="My regularizations">
+          {!regLoading && <RegularizationStats items={regularizations} today={todayIso(orgTz)} />}
           <MyRegularizationsList
             items={regularizations}
             loading={regLoading}

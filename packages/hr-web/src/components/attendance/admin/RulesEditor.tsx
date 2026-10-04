@@ -41,20 +41,20 @@ function ToggleRow({
   children?: ReactNode;
 }) {
   return (
-    <div className="border-b border-[#F1F5F9] py-3 last:border-b-0">
+    <div className="border-b border-outline-variant/50 py-3 last:border-b-0">
       <div className="flex items-start gap-3">
         <input
           id={id}
           type="checkbox"
           checked={checked}
           onChange={(e) => onChange(e.target.checked)}
-          className="mt-0.5 h-4 w-4 shrink-0 rounded border-[#CBD5E1] text-[#0b6cbf] focus:ring-2 focus:ring-[#0b6cbf]/20"
+          className="mt-0.5 h-4 w-4 shrink-0 rounded border-outline text-primary focus:ring-2 focus:ring-primary/20"
         />
         <div className="min-w-0">
-          <label htmlFor={id} className="block cursor-pointer text-sm font-medium text-[#0F172A]">
+          <label htmlFor={id} className="block cursor-pointer text-sm font-medium text-on-surface">
             {label}
           </label>
-          <p className="mt-0.5 text-xs text-[#64748B]">{description}</p>
+          <p className="mt-0.5 text-xs text-on-surface-variant">{description}</p>
           {children}
         </div>
       </div>
@@ -170,7 +170,7 @@ export default function RulesEditor({ actor, onNotice }: Props) {
           typing, not when they reach the save button. */}
       {canSetTenantWide && (
         <PageSection title="Apply to">
-          <div className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-3">
+          <div className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
               <label htmlFor="re-scope" className={fieldLabelCls}>These settings apply to</label>
               <select
@@ -183,7 +183,7 @@ export default function RulesEditor({ actor, onNotice }: Props) {
                 <option value="tenant">{`All ${actor.tenant_name} Branches`}</option>
               </select>
             </div>
-            <p className="mt-2 text-xs text-[#64748B]">
+            <p className="mt-2 text-xs text-on-surface-variant">
               {scope === 'tenant'
                 ? 'Saves the tenant-wide default. Organizations that have their own settings keep them — this only changes what the rest inherit.'
                 : 'Saves an override for this organization only, leaving the tenant-wide default untouched.'}
@@ -193,14 +193,14 @@ export default function RulesEditor({ actor, onNotice }: Props) {
       )}
 
       {!locationSet && canSetLocation && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+        <div className="rounded-lg border border-status-due/30 bg-status-due-container px-3 py-2 text-xs font-medium text-on-status-due-container">
           Set the office coordinates below — geofenced check-in stays off until they exist.
         </div>
       )}
 
       {canSetLocation && (
         <PageSection title="Organization location">
-          <div className="rounded-xl border border-[#E2E8F0] bg-white p-4">
+          <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
             <div className="flex flex-wrap items-end gap-3">
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="re-lat" className={fieldLabelCls}>Latitude</label>
@@ -228,9 +228,9 @@ export default function RulesEditor({ actor, onNotice }: Props) {
               </Button>
             </div>
 
-            <p className="mt-2.5 text-xs text-[#64748B]">
+            <p className="mt-2.5 text-xs text-on-surface-variant">
               {geo.state.status === 'error' ? (
-                <span className="text-red-600">{geo.state.message}</span>
+                <span className="text-status-overdue">{geo.state.message}</span>
               ) : geo.state.status === 'success' && geo.state.coords.accuracy != null ? (
                 `Captured to about ${Math.round(geo.state.coords.accuracy)} m — review before saving.`
               ) : (
@@ -242,11 +242,11 @@ export default function RulesEditor({ actor, onNotice }: Props) {
       )}
 
       {!canSetLocation && !locationSet && (
-        <p className="text-xs text-[#94A3B8]">Only an org admin can set the organization location.</p>
+        <p className="text-xs text-outline">Only an org admin can set the organization location.</p>
       )}
 
       <PageSection title="Check-in rules">
-        <div className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-1">
+        <div className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-1">
           <ToggleRow
             id="re-geofence"
             label="Geofence enabled"
@@ -266,7 +266,7 @@ export default function RulesEditor({ actor, onNotice }: Props) {
                 disabled={!rules.geofence_enabled}
                 className={`${inputCls} w-24`}
               />
-              <span className={`text-xs ${rules.geofence_enabled ? 'text-[#64748B]' : 'text-[#CBD5E1]'}`}>
+              <span className={`text-xs ${rules.geofence_enabled ? 'text-on-surface-variant' : 'text-outline-variant'}`}>
                 meters
               </span>
             </div>
@@ -297,8 +297,8 @@ export default function RulesEditor({ actor, onNotice }: Props) {
       </PageSection>
 
       <PageSection title="Day classification">
-        <div className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-4">
-          <p className="text-xs text-[#64748B]">
+        <div className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-4">
+          <p className="text-xs text-on-surface-variant">
             How much time an employee must actually work for a day to count. Time is
             the total of every check-in/check-out session, so a break punched out and
             back in is not counted. Employees on a shift use their shift&apos;s own
@@ -314,7 +314,7 @@ export default function RulesEditor({ actor, onNotice }: Props) {
                   onChange={(e) => setRules({ ...rules, min_half_day_minutes: Number(e.target.value) })}
                   className={`${inputCls} w-24`}
                 />
-                <span className="text-xs text-[#64748B]">minutes</span>
+                <span className="text-xs text-on-surface-variant">minutes</span>
               </div>
             </div>
             <div className="flex flex-col gap-1.5">
@@ -326,19 +326,19 @@ export default function RulesEditor({ actor, onNotice }: Props) {
                   onChange={(e) => setRules({ ...rules, min_full_day_minutes: Number(e.target.value) })}
                   className={`${inputCls} w-24`}
                 />
-                <span className="text-xs text-[#64748B]">minutes</span>
+                <span className="text-xs text-on-surface-variant">minutes</span>
               </div>
             </div>
           </div>
           {/* The consequential part: below the half-day floor the day is Absent,
               not Half Day. Spelled out because it is the surprising outcome. */}
-          <p className="mt-3 text-xs text-[#64748B]">
+          <p className="mt-3 text-xs text-on-surface-variant">
             Below {rules.min_half_day_minutes} minutes a day with attendance is marked{' '}
-            <span className="font-semibold text-[#0F172A]">Absent</span>, and the employee
+            <span className="font-semibold text-on-surface">Absent</span>, and the employee
             can request regularization. The check-in and check-out times are still kept.
           </p>
           {thresholdOrderInvalid && (
-            <p role="alert" className="mt-2 text-xs font-medium text-red-600">
+            <p role="alert" className="mt-2 text-xs font-medium text-status-overdue">
               The half-day minimum must not exceed the full-day minimum.
             </p>
           )}
@@ -346,15 +346,15 @@ export default function RulesEditor({ actor, onNotice }: Props) {
       </PageSection>
 
       <PageSection title="Regularization">
-        <div className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-4">
-          <p className="text-xs text-[#64748B]">
+        <div className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-4">
+          <p className="text-xs text-on-surface-variant">
             A regularization is an employee&apos;s request to correct what a past day
             says about their attendance. These settings decide how far back they may
             reach and who has to sign it off.
           </p>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <label htmlFor="re-backdate" className="block text-sm font-medium text-[#0F172A]">
+            <label htmlFor="re-backdate" className="block text-sm font-medium text-on-surface">
               Allow requests up to
             </label>
             <input
@@ -363,17 +363,17 @@ export default function RulesEditor({ actor, onNotice }: Props) {
               onChange={(e) => setRules({ ...rules, regularization_max_backdate_days: Number(e.target.value) })}
               className={`${inputCls} w-24`}
             />
-            <span className="text-xs text-[#64748B]">days old</span>
+            <span className="text-xs text-on-surface-variant">days old</span>
           </div>
-          <p className="mt-0.5 text-xs text-[#64748B]">
+          <p className="mt-0.5 text-xs text-on-surface-variant">
             {rules.regularization_max_backdate_days === 0
               ? 'Employees can only regularize today.'
               : `Employees can regularize today and the previous ${rules.regularization_max_backdate_days} day(s) — on or after ${earliestWorkDate}.`}{' '}
             A date in the future is never accepted.
           </p>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#F1F5F9] pt-3">
-            <label htmlFor="re-levels" className="block text-sm font-medium text-[#0F172A]">
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-outline-variant/50 pt-3">
+            <label htmlFor="re-levels" className="block text-sm font-medium text-on-surface">
               Require
             </label>
             <input
@@ -382,12 +382,12 @@ export default function RulesEditor({ actor, onNotice }: Props) {
               onChange={(e) => setRules({ ...rules, regularization_approval_levels: Number(e.target.value) })}
               className={`${inputCls} w-24`}
             />
-            <span className="text-xs text-[#64748B]">level(s) of approval</span>
+            <span className="text-xs text-on-surface-variant">level(s) of approval</span>
           </div>
           {/* The approver chain is materialized when the request is submitted, so
               a change here can never reshuffle something already under review —
               worth saying, because the opposite is the natural assumption. */}
-          <p className="mt-0.5 text-xs text-[#64748B]">
+          <p className="mt-0.5 text-xs text-on-surface-variant">
             How far up the reporting chain a request travels before it is approved.
             1 = the direct manager only. Applies to requests filed from now on;
             requests already awaiting a decision keep the approvers they started with.
@@ -396,7 +396,7 @@ export default function RulesEditor({ actor, onNotice }: Props) {
       </PageSection>
 
       <PageSection title="Face verification">
-        <div className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-1">
+        <div className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-1">
           <ToggleRow
             id="re-face-match"
             label="Require face match"
@@ -414,7 +414,7 @@ export default function RulesEditor({ actor, onNotice }: Props) {
                   disabled={!rules.require_face_match}
                   className={`${inputCls} w-24`}
                 />
-                <span className={`text-xs ${rules.require_face_match ? 'text-[#64748B]' : 'text-[#CBD5E1]'}`}>%</span>
+                <span className={`text-xs ${rules.require_face_match ? 'text-on-surface-variant' : 'text-outline-variant'}`}>%</span>
               </div>
               <div className="flex items-center gap-2">
                 <label htmlFor="re-face-action" className={fieldLabelCls}>On mismatch</label>
@@ -433,9 +433,9 @@ export default function RulesEditor({ actor, onNotice }: Props) {
             </div>
           </ToggleRow>
 
-          <div className="border-b border-[#F1F5F9] py-3">
+          <div className="border-b border-outline-variant/50 py-3">
             <div className="flex flex-wrap items-center gap-2">
-              <label htmlFor="re-cooldown" className="block text-sm font-medium text-[#0F172A]">
+              <label htmlFor="re-cooldown" className="block text-sm font-medium text-on-surface">
                 Photo change cooldown
               </label>
               <input
@@ -444,16 +444,16 @@ export default function RulesEditor({ actor, onNotice }: Props) {
                 onChange={(e) => setRules({ ...rules, photo_change_cooldown_days: Number(e.target.value) })}
                 className={`${inputCls} w-24`}
               />
-              <span className="text-xs text-[#64748B]">days</span>
+              <span className="text-xs text-on-surface-variant">days</span>
             </div>
-            <p className="mt-0.5 text-xs text-[#64748B]">
+            <p className="mt-0.5 text-xs text-on-surface-variant">
               How long a member must wait before changing their own reference photo. Admins can change it any time from the Team screen.
             </p>
           </div>
 
           <div className="py-3">
             <div className="flex flex-wrap items-center gap-2">
-              <label htmlFor="re-retention" className="block text-sm font-medium text-[#0F172A]">
+              <label htmlFor="re-retention" className="block text-sm font-medium text-on-surface">
                 Check-in photo retention
               </label>
               <input
@@ -462,9 +462,9 @@ export default function RulesEditor({ actor, onNotice }: Props) {
                 onChange={(e) => setRules({ ...rules, image_retention_days: Number(e.target.value) })}
                 className={`${inputCls} w-24`}
               />
-              <span className="text-xs text-[#64748B]">days</span>
+              <span className="text-xs text-on-surface-variant">days</span>
             </div>
-            <p className="mt-0.5 text-xs text-[#64748B]">
+            <p className="mt-0.5 text-xs text-on-surface-variant">
               Daily check-in/out selfies are deleted by the cleanup job after this many days. The enrolled reference photo is never auto-deleted.
             </p>
           </div>
@@ -474,8 +474,8 @@ export default function RulesEditor({ actor, onNotice }: Props) {
       {/* One action for the whole form. Two separate save buttons meant the page
           could not say whether an edit was persisted, and editing both halves
           then pressing one of them silently dropped the other. */}
-      <div className="flex items-center justify-end gap-3 border-t border-[#E2E8F0] pt-4">
-        {dirty && <span className="text-xs text-[#64748B]">Unsaved changes</span>}
+      <div className="flex items-center justify-end gap-3 border-t border-outline-variant pt-4">
+        {dirty && <span className="text-xs text-on-surface-variant">Unsaved changes</span>}
         <Button variant="primary" size="md" onClick={save} disabled={saving || !dirty || thresholdOrderInvalid}>
           {saving ? 'Saving…' : 'Save changes'}
         </Button>

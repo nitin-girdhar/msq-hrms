@@ -1,6 +1,7 @@
 import { Button } from '@platform/ui-kit';
 import type { LeaveRequestView } from '../../lib/leave/types';
 import { formatDateRange, formatDays, formatDateTime, canCancelRequest, canEditRequest } from '../../lib/leave/format';
+import { emptyBlockCls } from '../../lib/ui';
 import StatusChip from './StatusChip';
 
 interface Props {
@@ -12,61 +13,81 @@ interface Props {
 }
 
 export default function MyRequestsTable({ items, onView, onEdit, onCancel, busyId }: Props) {
-  if (items.length === 0) {
-    return (
-      <p className="rounded-xl border border-dashed border-[#E2E8F0] bg-white px-4 py-8 text-center text-sm text-[#94A3B8]">
-        No leave requests found.
-      </p>
-    );
-  }
+  if (items.length === 0) return <p className={emptyBlockCls}>No leave requests found.</p>;
+
+  const actions = (r: LeaveRequestView) => (
+    <>
+      <Button variant="secondary" onClick={() => onView(r)} disabled={busyId === r.id}>
+        View
+      </Button>
+      {canEditRequest(r.status_name) && (
+        <Button variant="secondary" onClick={() => onEdit(r)} disabled={busyId === r.id}>
+          Edit
+        </Button>
+      )}
+      {canCancelRequest(r.status_name) && (
+        <Button variant="danger" onClick={() => onCancel(r)} disabled={busyId === r.id}>
+          {busyId === r.id ? 'Cancelling…' : 'Cancel'}
+        </Button>
+      )}
+    </>
+  );
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
-      <table className="w-full min-w-[720px] text-sm">
-        <thead>
-          <tr className="border-b border-[#E2E8F0] text-left text-xs font-semibold uppercase tracking-wide text-[#64748B]">
-            <th className="px-4 py-3">Type</th>
-            <th className="px-4 py-3">Dates</th>
-            <th className="px-4 py-3">Days</th>
-            <th className="px-4 py-3">Status</th>
-            <th className="px-4 py-3">Applied</th>
-            <th className="px-4 py-3 text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((r) => (
-            <tr key={r.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
-              <td className="px-4 py-3 font-medium text-[#0F172A]">{r.leave_type_label}</td>
-              <td className="px-4 py-3 text-[#475569]">
-                {formatDateRange(r.start_date, r.end_date, r.start_half, r.end_half)}
-                {r.reason && <p className="mt-0.5 text-[11px] text-[#94A3B8]">{r.reason}</p>}
-              </td>
-              <td className="px-4 py-3 text-[#475569]">{formatDays(r.days_count)}</td>
-              <td className="px-4 py-3">
-                <StatusChip status={r.status_name} label={r.status_label} />
-              </td>
-              <td className="px-4 py-3 text-[11px] text-[#94A3B8]">{formatDateTime(r.created_at)}</td>
-              <td className="px-4 py-3">
-                <div className="flex justify-end gap-2">
-                  <Button variant="secondary" onClick={() => onView(r)} disabled={busyId === r.id}>
-                    View
-                  </Button>
-                  {canEditRequest(r.status_name) && (
-                    <Button variant="secondary" onClick={() => onEdit(r)} disabled={busyId === r.id}>
-                      Edit
-                    </Button>
-                  )}
-                  {canCancelRequest(r.status_name) && (
-                    <Button variant="danger" onClick={() => onCancel(r)} disabled={busyId === r.id}>
-                      {busyId === r.id ? 'Cancelling…' : 'Cancel'}
-                    </Button>
-                  )}
-                </div>
-              </td>
+    <>
+      {/* Phone: a card per request instead of a 6-column table scrolled sideways. */}
+      <ul className="flex flex-col gap-2 md:hidden">
+        {items.map((r) => (
+          <li key={r.id} className="rounded-xl border border-outline-variant bg-surface-container-lowest p-3 shadow-sm">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-on-surface">{r.leave_type_label}</p>
+                <p className="text-xs text-on-surface-variant">
+                  {formatDateRange(r.start_date, r.end_date, r.start_half, r.end_half)} · {formatDays(r.days_count)}
+                </p>
+              </div>
+              <StatusChip status={r.status_name} label={r.status_label} />
+            </div>
+            {r.reason && <p className="mt-2 text-xs text-on-surface-variant">{r.reason}</p>}
+            <p className="mt-1 text-label-sm text-outline">Applied {formatDateTime(r.created_at)}</p>
+            <div className="mt-2 flex flex-wrap justify-end gap-2">{actions(r)}</div>
+          </li>
+        ))}
+      </ul>
+
+      <div className="hidden overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm md:block">
+        <table className="w-full min-w-[720px] text-sm">
+          <thead>
+            <tr className="border-b border-outline-variant text-left text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+              <th className="px-4 py-3">Type</th>
+              <th className="px-4 py-3">Dates</th>
+              <th className="px-4 py-3">Days</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Applied</th>
+              <th className="px-4 py-3 text-right">Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {items.map((r) => (
+              <tr key={r.id} className="border-b border-outline-variant/50 last:border-0 hover:bg-surface-container-low">
+                <td className="px-4 py-3 font-medium text-on-surface">{r.leave_type_label}</td>
+                <td className="px-4 py-3 text-on-surface-variant">
+                  {formatDateRange(r.start_date, r.end_date, r.start_half, r.end_half)}
+                  {r.reason && <p className="mt-0.5 text-label-sm text-outline">{r.reason}</p>}
+                </td>
+                <td className="px-4 py-3 text-on-surface-variant">{formatDays(r.days_count)}</td>
+                <td className="px-4 py-3">
+                  <StatusChip status={r.status_name} label={r.status_label} />
+                </td>
+                <td className="px-4 py-3 text-label-sm text-outline">{formatDateTime(r.created_at)}</td>
+                <td className="px-4 py-3">
+                  <div className="flex justify-end gap-2">{actions(r)}</div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }

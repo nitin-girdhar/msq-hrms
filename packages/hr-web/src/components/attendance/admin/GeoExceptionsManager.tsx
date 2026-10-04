@@ -14,8 +14,8 @@ const TYPE_LABEL: Record<GeoExceptionType, string> = {
 };
 
 const TYPE_CHIP: Record<GeoExceptionType, string> = {
-  remote_role: 'bg-indigo-50 text-indigo-700',
-  wfh: 'bg-amber-50 text-amber-700',
+  remote_role: 'bg-cat-indigo-container text-on-cat-indigo-container',
+  wfh: 'bg-status-due-container text-on-status-due-container',
 };
 
 interface Props {
@@ -69,19 +69,19 @@ export default function GeoExceptionsManager({ onNotice }: Props) {
         </Button>
       }
     >
-      <p className="mb-3 text-xs text-[#64748B]">
+      <p className="mb-3 text-xs text-on-surface-variant">
         People who may check in from outside the office radius — a rotating field role, or an approved
         work-from-home stretch. Their location is still captured on every punch; only the radius check is skipped.
       </p>
 
       {error && <div className="mb-3"><Alert tone="error">{error}</Alert></div>}
 
-      <label className="mb-3 flex items-center gap-2 text-xs text-[#475569]">
+      <label className="mb-3 flex items-center gap-2 text-xs text-on-surface-variant">
         <input
           type="checkbox"
           checked={includeInactive}
           onChange={(e) => setIncludeInactive(e.target.checked)}
-          className="h-4 w-4 rounded border-[#CBD5E1]"
+          className="h-4 w-4 rounded border-outline"
         />
         Include ended and switched-off exceptions
       </label>
@@ -95,10 +95,10 @@ export default function GeoExceptionsManager({ onNotice }: Props) {
             : 'No exceptions are in force. Everyone is held to the office radius.'}
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
+        <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
           <table className="w-full min-w-[820px] text-sm">
             <thead>
-              <tr className="border-b border-[#E2E8F0] text-left text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+              <tr className="border-b border-outline-variant text-left text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
                 <th className="px-4 py-3">Employee</th>
                 <th className="px-4 py-3">Kind</th>
                 <th className="px-4 py-3">From</th>
@@ -110,21 +110,21 @@ export default function GeoExceptionsManager({ onNotice }: Props) {
             </thead>
             <tbody>
               {items.map((g) => (
-                <tr key={g.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
-                  <td className="px-4 py-3 font-medium text-[#0F172A]">
+                <tr key={g.id} className="border-b border-outline-variant/50 last:border-0 hover:bg-surface-container-low">
+                  <td className="px-4 py-3 font-medium text-on-surface">
                     {g.user_full_name}
-                    {g.employee_code && <span className="ml-1.5 text-xs font-normal text-[#94A3B8]">{g.employee_code}</span>}
+                    {g.employee_code && <span className="ml-1.5 text-xs font-normal text-outline">{g.employee_code}</span>}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${TYPE_CHIP[g.exception_type]}`}>
                       {TYPE_LABEL[g.exception_type]}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-[#475569]">{formatDay(g.effective_from)}</td>
-                  <td className="px-4 py-3 text-[#475569]">{g.effective_to ? formatDay(g.effective_to) : 'Open-ended'}</td>
-                  <td className="px-4 py-3 max-w-[240px] truncate text-[#475569]" title={g.reason}>{g.reason}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{formatDay(g.effective_from)}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{g.effective_to ? formatDay(g.effective_to) : 'Open-ended'}</td>
+                  <td className="px-4 py-3 max-w-[240px] truncate text-on-surface-variant" title={g.reason}>{g.reason}</td>
                   <td className="px-4 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${g.is_in_force ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${g.is_in_force ? 'bg-status-success-container text-on-status-success-container' : 'bg-surface-container text-on-surface-variant'}`}>
                       {g.is_in_force ? 'In force' : g.is_active ? 'Ended' : 'Switched off'}
                     </span>
                   </td>
@@ -133,7 +133,7 @@ export default function GeoExceptionsManager({ onNotice }: Props) {
                       <button
                         type="button"
                         onClick={() => { setEditing(g); setFormOpen(true); }}
-                        className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-semibold text-[#0b6cbf] hover:bg-[#F8FAFC]"
+                        className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-xs font-semibold text-primary hover:bg-surface-container-low"
                       >
                         Edit
                       </button>
@@ -143,7 +143,7 @@ export default function GeoExceptionsManager({ onNotice }: Props) {
                           onClick={() => endToday(g)}
                           disabled={endingId === g.id}
                           title="Set the end date to today; past punches keep their reason"
-                          className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60"
+                          className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-xs font-semibold text-on-surface-variant hover:bg-surface-container-low disabled:opacity-60"
                         >
                           {endingId === g.id ? 'Ending…' : 'End now'}
                         </button>

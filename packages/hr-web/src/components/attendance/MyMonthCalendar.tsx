@@ -5,6 +5,7 @@ import { MonthGrid, type MonthGridBar, type MonthGridMarker } from '@platform/ui
 import { attendance as attendanceApi } from '../../lib/api/client';
 import type { AttendanceDayRow, MyMonthResponse } from '../../lib/attendance/types';
 import { ATTENDANCE_STATUS_STYLES } from '../../lib/attendance/format';
+import MonthSummaryStrip from './MonthSummaryStrip';
 
 interface Props {
   onDayClick: (row: AttendanceDayRow | undefined, date: string) => void;
@@ -53,8 +54,9 @@ export default function MyMonthCalendar({ onDayClick, refreshKey }: Props) {
   );
 
   return (
-    <div className="space-y-2">
-      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">{error}</div>}
+    <div className="space-y-3">
+      {data && <MonthSummaryStrip days={data.days} />}
+      {error &&<div className="rounded-lg border border-status-overdue/30 bg-status-overdue-container px-4 py-2 text-xs text-on-status-overdue-container">{error}</div>}
       <MonthGrid
         year={year}
         month={month}

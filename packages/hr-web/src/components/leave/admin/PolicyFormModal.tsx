@@ -113,13 +113,13 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
   };
 
   const inputCls =
-    'rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#0F172A] shadow-sm focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20';
-  const labelCls = 'text-xs font-semibold text-[#0F172A]';
+    'rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2.5 text-sm text-on-surface shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20';
+  const labelCls = 'text-xs font-semibold text-on-surface';
 
   const footer = (
     <div className="flex justify-end gap-2">
-      <button type="button" onClick={handleClose} disabled={submitting} className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60">Cancel</button>
-      <button type="submit" form={FORM_ID} disabled={submitting} className="rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:opacity-60">
+      <button type="button" onClick={handleClose} disabled={submitting} className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low disabled:opacity-60">Cancel</button>
+      <button type="submit" form={FORM_ID} disabled={submitting} className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary/90 disabled:opacity-60">
         {submitting ? 'Saving…' : 'Save policy'}
       </button>
     </div>
@@ -128,9 +128,9 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
   return (
     <Modal open={open} onClose={handleClose} title="Create / revise leave policy" locked={submitting} maxWidth="max-w-2xl" footer={footer}>
       <form id={FORM_ID} onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
-        {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>}
+        {error && <div role="alert" className="rounded-xl border border-status-overdue/30 bg-status-overdue-container px-3 py-2 text-xs text-on-status-overdue-container">{error}</div>}
 
-        <p className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2 text-[11px] text-[#64748B]">
+        <p className="rounded-xl border border-outline-variant bg-surface-container-low px-3 py-2 text-[11px] text-on-surface-variant">
           A revision is a <strong>new row effective from the chosen date</strong> — existing policy history is never modified.
         </p>
 
@@ -155,7 +155,7 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
               <option value="org">Specific branch</option>
               <option value="tenant">{`All ${actor.tenant_name} Branches`}</option>
             </select>
-            <p className="text-[11px] text-[#94A3B8]">
+            <p className="text-[11px] text-outline">
               {scope === 'tenant'
                 ? 'Applies to every branch unless a specific branch has its own policy.'
                 : (branches?.length ?? 0) > 1
@@ -198,17 +198,17 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
           </div>
         </div>
 
-        <p className="text-[11px] text-[#94A3B8]">
+        <p className="text-[11px] text-outline">
           Approval levels ≥ 1. The approver chain walks up the requester’s <strong>manager chain</strong> that many levels; short chains stop at the top-most manager, falling back to an org/HR admin.
         </p>
 
         <div className="flex flex-wrap gap-4">
-          <label className="flex items-center gap-2 text-xs text-[#0F172A]">
-            <input type="checkbox" checked={carryForward} onChange={(e) => setCarryForward(e.target.checked)} disabled={submitting} className="h-4 w-4 rounded border-[#E2E8F0] text-[#0b6cbf]" />
+          <label className="flex items-center gap-2 text-xs text-on-surface">
+            <input type="checkbox" checked={carryForward} onChange={(e) => setCarryForward(e.target.checked)} disabled={submitting} className="h-4 w-4 rounded border-outline-variant text-primary" />
             <span>Carry forward unused balance</span>
           </label>
-          <label className="flex items-center gap-2 text-xs text-[#0F172A]">
-            <input type="checkbox" checked={allowHalfDay} onChange={(e) => setAllowHalfDay(e.target.checked)} disabled={submitting} className="h-4 w-4 rounded border-[#E2E8F0] text-[#0b6cbf]" />
+          <label className="flex items-center gap-2 text-xs text-on-surface">
+            <input type="checkbox" checked={allowHalfDay} onChange={(e) => setAllowHalfDay(e.target.checked)} disabled={submitting} className="h-4 w-4 rounded border-outline-variant text-primary" />
             <span>Allow half-days</span>
           </label>
         </div>
@@ -229,7 +229,7 @@ interface NumFieldProps {
 function NumField({ id, label, value, onChange, disabled, placeholder }: NumFieldProps) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-xs font-semibold text-[#0F172A]">{label}</label>
+      <label htmlFor={id} className="text-xs font-semibold text-on-surface">{label}</label>
       <input
         id={id}
         type="number"
@@ -238,7 +238,7 @@ function NumField({ id, label, value, onChange, disabled, placeholder }: NumFiel
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        className="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#0F172A] shadow-sm focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20"
+        className="rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2.5 text-sm text-on-surface shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
       />
     </div>
   );

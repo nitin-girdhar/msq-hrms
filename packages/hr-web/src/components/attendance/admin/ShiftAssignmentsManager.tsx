@@ -43,7 +43,7 @@ export default function ShiftAssignmentsManager({ onNotice }: Props) {
         </Button>
       }
     >
-      <p className="mb-3 text-xs text-[#64748B]">Effective-dated shift assignments per employee.</p>
+      <p className="mb-3 text-xs text-on-surface-variant">Effective-dated shift assignments per employee.</p>
 
       {error && <div className="mb-3"><Alert tone="error">{error}</Alert></div>}
 
@@ -52,10 +52,10 @@ export default function ShiftAssignmentsManager({ onNotice }: Props) {
       ) : items.length === 0 ? (
         <p className={emptyBlockCls}>No shift assignments yet.</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
+        <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
           <table className="w-full min-w-[680px] text-sm">
             <thead>
-              <tr className="border-b border-[#E2E8F0] text-left text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+              <tr className="border-b border-outline-variant text-left text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
                 <th className="px-4 py-3">Employee</th>
                 <th className="px-4 py-3">Shift</th>
                 <th className="px-4 py-3">From</th>
@@ -66,13 +66,13 @@ export default function ShiftAssignmentsManager({ onNotice }: Props) {
             </thead>
             <tbody>
               {items.map((a) => (
-                <tr key={a.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
-                  <td className="px-4 py-3 font-medium text-[#0F172A]">{a.user_full_name}</td>
-                  <td className="px-4 py-3 text-[#475569]">{a.shift_name}</td>
-                  <td className="px-4 py-3 text-[#475569]">{formatDay(a.effective_from)}</td>
-                  <td className="px-4 py-3 text-[#475569]">{a.effective_to ? formatDay(a.effective_to) : '—'}</td>
+                <tr key={a.id} className="border-b border-outline-variant/50 last:border-0 hover:bg-surface-container-low">
+                  <td className="px-4 py-3 font-medium text-on-surface">{a.user_full_name}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{a.shift_name}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{formatDay(a.effective_from)}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{a.effective_to ? formatDay(a.effective_to) : '—'}</td>
                   <td className="px-4 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${a.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${a.is_active ? 'bg-status-success-container text-on-status-success-container' : 'bg-surface-container text-on-surface-variant'}`}>
                       {a.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
@@ -81,7 +81,7 @@ export default function ShiftAssignmentsManager({ onNotice }: Props) {
                       <button
                         type="button"
                         onClick={() => { setEditing(a); setFormOpen(true); }}
-                        className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-semibold text-[#0b6cbf] hover:bg-[#F8FAFC]"
+                        className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-xs font-semibold text-primary hover:bg-surface-container-low"
                       >
                         Edit
                       </button>
@@ -89,7 +89,7 @@ export default function ShiftAssignmentsManager({ onNotice }: Props) {
                         type="button"
                         onClick={() => { setRecomputing(a); setRecomputeOpen(true); }}
                         title="Re-apply shift rules to days already marked"
-                        className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-semibold text-[#475569] hover:bg-[#F8FAFC]"
+                        className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-xs font-semibold text-on-surface-variant hover:bg-surface-container-low"
                       >
                         Recompute
                       </button>

@@ -45,19 +45,19 @@ export default function LeaveCycleSetting({ actor, onNotice }: Props) {
   };
 
   const inputCls =
-    'rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#0F172A] shadow-sm focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20';
+    'rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2.5 text-sm text-on-surface shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20';
 
-  if (loading) return <div className="py-8 text-center text-sm text-[#94A3B8]">Loading…</div>;
+  if (loading) return <div className="py-8 text-center text-sm text-outline">Loading…</div>;
 
   return (
     <div className="max-w-md space-y-4">
-      <p className="text-sm text-[#64748B]">
+      <p className="text-sm text-on-surface-variant">
         The leave cycle determines accrual periods and year-end carry-forward. It is not the calendar year.
       </p>
-      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">{error}</div>}
+      {error && <div className="rounded-lg border border-status-overdue/30 bg-status-overdue-container px-4 py-2 text-xs text-on-status-overdue-container">{error}</div>}
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="lc-month" className="text-xs font-semibold text-[#0F172A]">Cycle start month</label>
+        <label htmlFor="lc-month" className="text-xs font-semibold text-on-surface">Cycle start month</label>
         <select id="lc-month" value={month} onChange={(e) => setMonth(Number(e.target.value))} disabled={saving} className={inputCls}>
           {MONTHS.map((_, i) => (
             <option key={i + 1} value={i + 1}>{monthLabel(i + 1)}</option>
@@ -67,7 +67,7 @@ export default function LeaveCycleSetting({ actor, onNotice }: Props) {
 
       {canManageTenantLeave(actor.rank) && (
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="lc-scope" className="text-xs font-semibold text-[#0F172A]">Scope</label>
+          <label htmlFor="lc-scope" className="text-xs font-semibold text-on-surface">Scope</label>
           <select id="lc-scope" value={scope} onChange={(e) => setScope(e.target.value as 'org' | 'tenant')} disabled={saving} className={inputCls}>
             <option value="org">Specific branch</option>
             <option value="tenant">{`All ${actor.tenant_name} Branches`}</option>
@@ -75,7 +75,7 @@ export default function LeaveCycleSetting({ actor, onNotice }: Props) {
         </div>
       )}
 
-      <button type="button" onClick={save} disabled={saving} className="rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:opacity-60">
+      <button type="button" onClick={save} disabled={saving} className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary/90 disabled:opacity-60">
         {saving ? 'Saving…' : 'Save cycle'}
       </button>
     </div>

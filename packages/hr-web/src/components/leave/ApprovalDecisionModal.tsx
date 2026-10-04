@@ -58,20 +58,20 @@ export default function ApprovalDecisionModal({ request, onClose, onDecided }: P
   };
 
   const inputCls =
-    'rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#0F172A] shadow-sm focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20';
+    'rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2.5 text-sm text-on-surface shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20';
 
   const footer = (
     <div className="flex justify-end gap-2">
       <button type="button" onClick={onClose} disabled={busy !== null}
-        className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60">
+        className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low disabled:opacity-60">
         Close
       </button>
       <button type="button" onClick={() => decide('reject')} disabled={busy !== null}
-        className="rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-60">
+        className="rounded-xl border border-status-overdue/30 bg-surface-container-lowest px-4 py-2 text-sm font-semibold text-status-overdue hover:bg-status-overdue-container disabled:opacity-60">
         {busy === 'reject' ? 'Rejecting…' : 'Reject'}
       </button>
       <button type="button" onClick={() => decide('approve')} disabled={busy !== null}
-        className="rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699] disabled:opacity-60">
+        className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary/90 disabled:opacity-60">
         {busy === 'approve' ? 'Approving…' : 'Approve'}
       </button>
     </div>
@@ -81,10 +81,10 @@ export default function ApprovalDecisionModal({ request, onClose, onDecided }: P
     <Modal open onClose={onClose} title="Review leave request" locked={busy !== null} maxWidth="max-w-lg" footer={footer}>
       <div className="flex flex-col gap-4">
         {error && (
-          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>
+          <div role="alert" className="rounded-xl border border-status-overdue/30 bg-status-overdue-container px-3 py-2 text-xs text-on-status-overdue-container">{error}</div>
         )}
 
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 text-sm">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-outline-variant bg-surface-container-low px-4 py-3 text-sm">
           <Row label="Requester" value={request.user_full_name} />
           <Row label="Type" value={request.leave_type_label} />
           <Row label="Dates" value={formatDateRange(request.start_date, request.end_date, request.start_half, request.end_half)} />
@@ -95,8 +95,8 @@ export default function ApprovalDecisionModal({ request, onClose, onDecided }: P
 
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between gap-2">
-            <label htmlFor="ad-comment" className="text-xs font-semibold text-[#0F172A]">
-              Comment <span className="font-normal text-[#94A3B8]">(required to reject)</span>
+            <label htmlFor="ad-comment" className="text-xs font-semibold text-on-surface">
+              Comment <span className="font-normal text-outline">(required to reject)</span>
             </label>
             <SpeechInputButton onText={(t) => setComment((p) => appendDictation(p, t))} disabled={busy !== null} />
           </div>
@@ -111,8 +111,8 @@ export default function ApprovalDecisionModal({ request, onClose, onDecided }: P
 function Row({ label, value, full }: { label: string; value: string; full?: boolean }) {
   return (
     <div className={full ? 'col-span-2' : ''}>
-      <dt className="text-[11px] font-semibold uppercase tracking-wide text-[#94A3B8]">{label}</dt>
-      <dd className="text-[#0F172A]">{value}</dd>
+      <dt className="text-[11px] font-semibold uppercase tracking-wide text-outline">{label}</dt>
+      <dd className="text-on-surface">{value}</dd>
     </div>
   );
 }

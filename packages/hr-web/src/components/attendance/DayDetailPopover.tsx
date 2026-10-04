@@ -46,14 +46,14 @@ export default function DayDetailPopover({ date, row, userId, onClose, onRequest
 
   const footer = (
     <div className="flex justify-end gap-2">
-      <button type="button" onClick={onClose} className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-2 text-sm font-semibold text-[#475569] hover:bg-[#F8FAFC]">
+      <button type="button" onClick={onClose} className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low">
         Close
       </button>
       {canRegularize && (
         <button
           type="button"
           onClick={() => onRequestRegularization(date)}
-          className="rounded-xl bg-[#0b6cbf] px-4 py-2 text-sm font-semibold text-white hover:bg-[#095699]"
+          className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary/90"
         >
           Request regularization
         </button>
@@ -64,7 +64,7 @@ export default function DayDetailPopover({ date, row, userId, onClose, onRequest
   return (
     <Modal open onClose={onClose} title={formatDay(date)} maxWidth="max-w-sm" footer={footer}>
       <div className="flex flex-col gap-4">
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 text-sm">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-outline-variant bg-surface-container-low px-4 py-3 text-sm">
           <Row label="Status" value={row?.status_label ?? 'Not marked'} />
           <Row label="Worked" value={formatWorkedMinutes(row?.worked_minutes ?? null)} />
           {/* first_in/last_out bracket the whole day, so once the punches are
@@ -87,7 +87,7 @@ export default function DayDetailPopover({ date, row, userId, onClose, onRequest
             split shift this is the only place the middle punches appear at all. */}
         {sessions.length > 0 && (
           <div>
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#94A3B8]">
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-outline">
               Sessions ({sessions.length})
             </p>
             <ol className="flex flex-col gap-1">
@@ -96,15 +96,15 @@ export default function DayDetailPopover({ date, row, userId, onClose, onRequest
                 return (
                   <li
                     key={session.in?.event_id ?? session.out?.event_id ?? i}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-sm"
+                    className="flex items-center justify-between gap-2 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-sm"
                   >
-                    <span className="flex items-center gap-1.5 tabular-nums text-[#0F172A]">
-                      <span className="text-[11px] font-semibold text-[#94A3B8]">{i + 1}</span>
+                    <span className="flex items-center gap-1.5 tabular-nums text-on-surface">
+                      <span className="text-[11px] font-semibold text-outline">{i + 1}</span>
                       {formatClockTime(session.in?.occurred_at ?? null)}
-                      <span className="text-[#CBD5E1]">→</span>
+                      <span className="text-outline-variant">→</span>
                       {formatClockTime(session.out?.occurred_at ?? null)}
                     </span>
-                    <span className="text-xs text-[#64748B]">
+                    <span className="text-xs text-on-surface-variant">
                       {minutes == null ? 'Open' : formatWorkedMinutes(minutes)}
                     </span>
                   </li>
@@ -114,7 +114,7 @@ export default function DayDetailPopover({ date, row, userId, onClose, onRequest
             {/* The sum of the sessions can exceed counted time — a punch held for
                 face review, or one outside the shift window, is not paid. */}
             {(row?.has_pending_face_review || row?.has_off_window_punch) && (
-              <p className="mt-1.5 text-[11px] text-[#94A3B8]">
+              <p className="mt-1.5 text-[11px] text-outline">
                 Not every session above counts towards worked time.
               </p>
             )}
@@ -124,7 +124,7 @@ export default function DayDetailPopover({ date, row, userId, onClose, onRequest
         {/* Withheld time looks like a payroll error unless the reason is stated.
             The remedy is review, not regularization, so don't send them there. */}
         {row?.has_pending_face_review && (
-          <p className="text-xs text-[#64748B]">
+          <p className="text-xs text-on-surface-variant">
             A photo check on one of your punches needs confirming, so that punch is not
             counted yet. Your manager will review it — the time is added back once it is
             confirmed.
@@ -134,7 +134,7 @@ export default function DayDetailPopover({ date, row, userId, onClose, onRequest
         {/* Worked time is the sum of the day's sessions, so an unclosed one reads
             as lost time. Say why rather than leaving a bare flag above. */}
         {row?.has_open_session && (
-          <p className="text-xs text-[#64748B]">
+          <p className="text-xs text-on-surface-variant">
             A check-in was never closed with a check-out, so that session counted as no
             time worked. Request regularization to have it corrected.
           </p>
@@ -148,8 +148,8 @@ export default function DayDetailPopover({ date, row, userId, onClose, onRequest
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-[11px] font-semibold uppercase tracking-wide text-[#94A3B8]">{label}</dt>
-      <dd className="text-[#0F172A]">{value}</dd>
+      <dt className="text-[11px] font-semibold uppercase tracking-wide text-outline">{label}</dt>
+      <dd className="text-on-surface">{value}</dd>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { leave as leaveApi } from '../../lib/api/client';
 import type { LeaveBalance, LeaveRequestView } from '../../lib/leave/types';
 import { LEAVE_STATUS_FILTERS } from '../../lib/leave/format';
 import type { HrRank } from '../../lib/hr-rank';
+import { stateBlockCls } from '../../lib/ui';
 import LeaveTabs from './LeaveTabs';
 import BalanceCards from './BalanceCards';
 import MyRequestsTable from './MyRequestsTable';
@@ -117,14 +118,14 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               aria-label="Filter by status"
-              className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs text-[#0F172A] focus:border-[#0b6cbf] focus:outline-none focus:ring-2 focus:ring-[#0b6cbf]/20"
+              className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-xs text-on-surface focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
               {LEAVE_STATUS_FILTERS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
             </select>
           }
         >
           {loading ? (
-            <div className="flex items-center justify-center py-12 text-sm text-[#94A3B8]">Loading…</div>
+            <div className={stateBlockCls}>Loading…</div>
           ) : (
             <MyRequestsTable items={requests} onView={(r) => setViewingId(r.id)} onEdit={handleEdit} onCancel={handleCancel} busyId={cancelBusyId} />
           )}

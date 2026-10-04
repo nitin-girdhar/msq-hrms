@@ -55,22 +55,22 @@ export function canManageTenantAttendance(rank: number): boolean {
 }
 
 export const ATTENDANCE_STATUS_STYLES: Record<AttendanceStatusName, { bg: string; fg: string; dot: string }> = {
-  present: { bg: 'bg-green-50', fg: 'text-green-700', dot: '#16A34A' },
-  absent: { bg: 'bg-red-50', fg: 'text-red-700', dot: '#DC2626' },
-  half_day: { bg: 'bg-amber-50', fg: 'text-amber-700', dot: '#D97706' },
-  on_leave: { bg: 'bg-blue-50', fg: 'text-[#0b6cbf]', dot: '#0b6cbf' },
-  holiday: { bg: 'bg-purple-50', fg: 'text-purple-700', dot: '#7C3AED' },
-  weekly_off: { bg: 'bg-slate-100', fg: 'text-slate-500', dot: '#94A3B8' },
-  wfh: { bg: 'bg-cyan-50', fg: 'text-cyan-700', dot: '#0891B2' },
-  missed_punch: { bg: 'bg-orange-50', fg: 'text-orange-700', dot: '#EA580C' },
-  not_marked: { bg: 'bg-slate-100', fg: 'text-slate-400', dot: '#CBD5E1' },
+  present: { bg: 'bg-status-success-container', fg: 'text-on-status-success-container', dot: 'var(--color-status-success)' },
+  absent: { bg: 'bg-status-overdue-container', fg: 'text-on-status-overdue-container', dot: 'var(--color-status-overdue)' },
+  half_day: { bg: 'bg-status-due-container', fg: 'text-on-status-due-container', dot: 'var(--color-status-due)' },
+  on_leave: { bg: 'bg-primary-fixed', fg: 'text-primary', dot: 'var(--color-primary)' },
+  holiday: { bg: 'bg-cat-purple-container', fg: 'text-on-cat-purple-container', dot: 'var(--color-cat-purple)' },
+  weekly_off: { bg: 'bg-surface-container', fg: 'text-on-surface-variant', dot: 'var(--color-cat-slate)' },
+  wfh: { bg: 'bg-cat-cyan-container', fg: 'text-on-cat-cyan-container', dot: 'var(--color-cat-cyan)' },
+  missed_punch: { bg: 'bg-cat-orange-container', fg: 'text-on-cat-orange-container', dot: 'var(--color-cat-orange)' },
+  not_marked: { bg: 'bg-surface-container', fg: 'text-outline', dot: 'var(--color-outline-variant)' },
 };
 
 export const REGULARIZATION_STATUS_STYLES: Record<RegularizationStatus, { bg: string; fg: string }> = {
-  pending: { bg: 'bg-amber-50', fg: 'text-amber-700' },
-  approved: { bg: 'bg-green-50', fg: 'text-green-700' },
-  rejected: { bg: 'bg-red-50', fg: 'text-red-700' },
-  cancelled: { bg: 'bg-slate-100', fg: 'text-slate-600' },
+  pending: { bg: 'bg-status-due-container', fg: 'text-on-status-due-container' },
+  approved: { bg: 'bg-status-success-container', fg: 'text-on-status-success-container' },
+  rejected: { bg: 'bg-status-overdue-container', fg: 'text-on-status-overdue-container' },
+  cancelled: { bg: 'bg-surface-container', fg: 'text-on-surface-variant' },
 };
 
 export function formatWorkedMinutes(minutes: number | null): string {
