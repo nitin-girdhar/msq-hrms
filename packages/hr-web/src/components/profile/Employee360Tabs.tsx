@@ -65,3 +65,38 @@ export function AuditTab({ userId, onError }: { userId: string; onError: (m: str
     </ol>
   );
 }
+
+/** This month at a glance for the Overview: counted from the person's real day rows. */
+export function AttendanceSnapshot({ userId, onOpen }: { userId: string; onOpen: () => void }) {
+  const [rows, setRows] = useState<Employee360AttendanceRow[] | null>(null);
+  const month = new Date().toISOString().slice(0, 7);
+  useEffect(() => {
+    setRows(null);
+    employeeViews.attendance(userId, month).then((r) => setRows(r.data)).catch(() => setRows([]));
+  }, [userId, month]);
+
+  const present = (rows ?? []).filter((r) => ['present', 'wfh', 'half_day'].includes(r.status_name));
+  const worked = present.reduce((n, r) => n + (r.worked_minutes ?? 0), 0);
+  const onTime = present.length === 0 ? null : Math.round(((present.length - present.filter((r) => r.is_late).length) / present.length) * 100);
+  const open = (rows ?? []).filter((r) => r.has_open_session).length;
+  const stat = (label: string, value: string, hint: string) => (
+    <div className="rounded-lg border border-outline-variant/60 bg-surface-container-low px-3 py-2.5">
+      <p className="text-label-sm font-semibold text-on-surface-variant">{label}</p>
+      <p className="font-mono text-headline-md font-bold tabular-nums text-on-surface">{value}</p>
+      <p className="text-label-sm text-outline">{hint}</p>
+    </div>
+  );
+  return (
+    <div className="space-y-3">
+      {rows === null ? <div className={stateBlockCls}>Loading…</div> : (
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+          {stat('Present days', String(present.length), `of ${rows.length} recorded`)}
+          {stat('Avg worked', present.length ? formatWorkedMinutes(Math.round(worked / present.length)) : '—', 'per present day')}
+          {stat('On-time', onTime === null ? '—' : `${onTime}%`, 'present days not late')}
+          {stat('Open sessions', String(open), open === 1 ? 'check-out missing' : 'check-outs missing')}
+        </div>
+      )}
+      <button type="button" onClick={onOpen} className="text-xs font-semibold text-primary hover:underline">View the day-by-day attendance →</button>
+    </div>
+  );
+}

@@ -18,7 +18,9 @@ import { emptyBlockCls, fieldInputCls, stateBlockCls } from '../../lib/ui';
 import AssetsPanel from './AssetsPanel';
 import { EmployeeDocumentsPanel } from '../documents/DocumentsPanels';
 import StatutoryPanel from './StatutoryPanel';
-import { AttendanceTab, AuditTab } from './Employee360Tabs';
+import { AttendanceSnapshot, AttendanceTab, AuditTab } from './Employee360Tabs';
+import { Avatar, Card, CompletenessRing, LeaveBalanceCard, ReportingChain, Tile } from './ProfileParts';
+import { profileCompleteness } from '../../lib/profile/completeness';
 
 interface Props {
   actor: SessionUser;
@@ -87,7 +89,8 @@ export default function Employee360Shell({ actor, userId }: Props) {
   }
 
   const h = data.header;
-  const initials = h.full_name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+  const done = profileCompleteness(h, data.personal, data.contacts);
+  const weeklyOff = (h.weekly_off_pattern ?? []).map((d) => WEEKDAYS[d]).join(', ');
 
   return (
     <div className="flex w-full flex-1 flex-col">
@@ -95,25 +98,37 @@ export default function Employee360Shell({ actor, userId }: Props) {
       <PageBody>
         <Link href="/employees" className="text-xs font-semibold text-primary hover:underline">← Employees</Link>
 
-        <section className="flex flex-col gap-4 rounded-xl bg-primary-container p-4 text-on-primary-container shadow-lg sm:flex-row sm:items-center sm:p-5">
-          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-on-primary-container/15 text-lg font-bold text-on-primary" aria-hidden="true">{initials}</span>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate text-headline-md font-bold text-on-primary">{h.full_name}</h2>
-              <span className={`rounded-full px-2.5 py-0.5 text-label-sm font-semibold ${h.is_active ? 'bg-status-success text-on-status-success' : 'bg-status-overdue text-on-status-overdue'}`}>
-                {h.is_active ? 'Active' : 'Inactive'}
-              </span>
+        <section className="grid gap-4 rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm sm:p-5 lg:grid-cols-[1fr_auto]">
+          <div className="flex min-w-0 flex-col gap-4 sm:flex-row">
+            <Avatar name={h.full_name} />
+            <div className="min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="truncate text-headline-md font-bold text-on-surface">{h.full_name}</h2>
+                <span className={`rounded-full px-2.5 py-0.5 text-label-sm font-semibold ${h.is_active ? 'bg-status-success-container text-on-status-success-container' : 'bg-status-overdue-container text-on-status-overdue-container'}`}>
+                  {h.is_active ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+              <p className="text-sm font-medium text-primary">{[h.designation_name, h.department_name].filter(Boolean).join(' — ') || h.role_name}</p>
+              <div className="flex flex-wrap gap-2">
+                <Chip>{h.employee_code ?? 'No employee code'}</Chip>
+                <Chip>{h.date_of_joining ? `Joined ${formatDay(h.date_of_joining)} (${tenure(h.date_of_joining)})` : 'Joining date not set'}</Chip>
+                {h.employment_type_label && <Chip>{h.employment_type_label}</Chip>}
+                {weeklyOff && <Chip>Weekly off {weeklyOff}</Chip>}
+              </div>
+              <p className="text-sm text-on-surface-variant">{h.email}{h.mobile ? ` · ${h.mobile}` : ''}</p>
             </div>
-            <p className="text-sm opacity-90">{h.email}{h.mobile ? ` · ${h.mobile}` : ''}</p>
           </div>
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
-            <HeroStat label="Employee code" value={h.employee_code ?? '—'} />
-            <HeroStat label="Joined" value={h.date_of_joining ? formatDay(h.date_of_joining) : '—'} />
-            <HeroStat label="Tenure" value={tenure(h.date_of_joining)} />
-          </dl>
+          <div className="flex flex-col gap-3 lg:w-72">
+            <div className="rounded-lg border border-outline-variant/60 bg-surface-container-low px-3 py-2.5">
+              <p className="text-label-sm font-semibold uppercase tracking-wide text-on-surface-variant">Reports to</p>
+              <p className="text-sm font-semibold text-on-surface">{h.manager_name ?? 'No reporting manager'}</p>
+              {data.chain[0]?.designation_name && <p className="text-label-sm text-outline">{data.chain[0].designation_name}</p>}
+            </div>
+            <CompletenessRing value={done} />
+          </div>
         </section>
 
-        <div className="flex gap-1 border-b border-outline-variant" role="tablist">
+        <div className="flex gap-1 overflow-x-auto border-b border-outline-variant" role="tablist">
           {tabs.map(([key, label]) => (
             <button
               key={key}
@@ -121,7 +136,7 @@ export default function Employee360Shell({ actor, userId }: Props) {
               role="tab"
               aria-selected={tab === key}
               onClick={() => setTab(key)}
-              className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${
+              className={`-mb-px shrink-0 border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${
                 tab === key ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
               }`}
             >
@@ -131,47 +146,56 @@ export default function Employee360Shell({ actor, userId }: Props) {
         </div>
 
         {tab === 'overview' && (
-          <div className="grid gap-4 lg:grid-cols-2">
-            <PageSection title="Job details">
-              <Facts
-                rows={[
-                  ['Department', h.department_name],
-                  ['Designation', h.designation_name],
-                  ['Employment type', h.employment_type_label],
-                  ['Reports to', h.manager_name],
-                  ['Probation ends', h.probation_end_date ? formatDay(h.probation_end_date) : null],
-                  ['Last working day', h.date_of_exit ? formatDay(h.date_of_exit) : null],
-                  ['Weekly off', (h.weekly_off_pattern ?? []).map((d) => WEEKDAYS[d]).join(', ') || null],
-                ]}
-              />
-            </PageSection>
-            <PageSection title="Personal details">
-              {data.personal ? (
-                <Facts
-                  rows={[
-                    ['Preferred name', data.personal.preferred_name],
-                    ['Date of birth', data.personal.date_of_birth ? formatDay(data.personal.date_of_birth) : null],
-                    ['Gender', data.personal.gender ? optionLabel(GENDER_OPTIONS, data.personal.gender) : null],
-                    ['Marital status', data.personal.marital_status ? optionLabel(MARITAL_OPTIONS, data.personal.marital_status) : null],
-                    ['Blood group', data.personal.blood_group],
-                    ['Nationality', data.personal.nationality],
-                    ['Personal email', data.personal.personal_email],
-                    ['Current address', data.personal.current_address],
-                    ['Permanent address', data.personal.permanent_address],
-                  ]}
-                />
-              ) : (
-                <p className={emptyBlockCls}>This person has not filled in their personal details yet.</p>
-              )}
-            </PageSection>
-            <div className="lg:col-span-2">
-              <PageSection title="Emergency contacts">
-                {data.contacts.length === 0 ? (
-                  <p className={emptyBlockCls}>No emergency contacts on file.</p>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="space-y-4 lg:col-span-2">
+              <Card title="Job & organizational hierarchy" subtitle="Where this person sits and who they report to">
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <Tile label="Department" value={h.department_name} />
+                  <Tile label="Designation" value={h.designation_name} />
+                  <Tile label="Employment type" value={h.employment_type_label} />
+                  <Tile label="Probation ends" value={h.probation_end_date ? formatDay(h.probation_end_date) : null} />
+                  <Tile label="Last working day" value={h.date_of_exit ? formatDay(h.date_of_exit) : null} />
+                  <Tile label="Weekly off" value={weeklyOff || null} />
+                </div>
+                <div className="mt-4">
+                  <p className="mb-2 text-label-sm font-semibold uppercase tracking-wide text-on-surface-variant">Direct reporting chain</p>
+                  <ReportingChain self={h.full_name} chain={data.chain} />
+                </div>
+              </Card>
+
+              <Card title="This month's attendance" subtitle="Counted from the recorded days">
+                <AttendanceSnapshot userId={userId} onOpen={() => setTab('attendance')} />
+              </Card>
+            </div>
+
+            <div className="space-y-4">
+              <LeaveBalanceCard balances={data.balances} />
+
+              <Card title="Personal & contact details" subtitle="Confidential identity record">
+                {data.personal ? (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <Tile label="Date of birth" value={data.personal.date_of_birth ? formatDay(data.personal.date_of_birth) : null} />
+                      <Tile label="Gender · blood" value={[data.personal.gender ? optionLabel(GENDER_OPTIONS, data.personal.gender) : null, data.personal.blood_group].filter(Boolean).join(' · ') || null} />
+                      <Tile label="Marital status" value={data.personal.marital_status ? optionLabel(MARITAL_OPTIONS, data.personal.marital_status) : null} />
+                      <Tile label="Nationality" value={data.personal.nationality} />
+                    </div>
+                    <Tile label="Personal email" value={data.personal.personal_email} />
+                    <Tile label="Current address" value={data.personal.current_address} />
+                    <Tile label="Permanent address" value={data.personal.permanent_address} />
+                  </div>
                 ) : (
-                  <ul className="grid gap-2 sm:grid-cols-2">
+                  <p className={emptyBlockCls}>This person has not filled in their personal details yet.</p>
+                )}
+              </Card>
+
+              <Card title="Emergency contacts">
+                {data.contacts.length === 0 ? (
+                  <p className="text-sm text-on-surface-variant">No emergency contacts on file.</p>
+                ) : (
+                  <ul className="space-y-2">
                     {data.contacts.map((c) => (
-                      <li key={c.id} className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-3 shadow-sm">
+                      <li key={c.id} className="rounded-lg border border-outline-variant/60 bg-surface-container-low px-3 py-2">
                         <p className="text-sm font-semibold text-on-surface">
                           {c.name}
                           {c.is_primary && <span className="ml-2 rounded-full bg-primary-fixed px-2 py-0.5 text-label-sm font-semibold text-on-primary-fixed">Primary</span>}
@@ -181,7 +205,7 @@ export default function Employee360Shell({ actor, userId }: Props) {
                     ))}
                   </ul>
                 )}
-              </PageSection>
+              </Card>
             </div>
           </div>
         )}
@@ -240,13 +264,8 @@ export default function Employee360Shell({ actor, userId }: Props) {
   );
 }
 
-function HeroStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-label-sm opacity-80">{label}</dt>
-      <dd className="font-semibold text-on-primary">{value}</dd>
-    </div>
-  );
+function Chip({ children }: { children: React.ReactNode }) {
+  return <span className="rounded-full border border-outline-variant bg-surface-container-low px-2.5 py-0.5 text-label-sm font-medium text-on-surface-variant">{children}</span>;
 }
 
 function Facts({ rows }: { rows: Array<[string, string | null | undefined]> }) {

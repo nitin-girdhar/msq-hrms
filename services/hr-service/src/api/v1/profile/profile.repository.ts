@@ -68,8 +68,56 @@ function nul(v: string | undefined): string | null {
 // ═════════════════════════════════════════════════════════════════════════════
 // MY PROFILE (self)
 // ═════════════════════════════════════════════════════════════════════════════
-export async function getOwnProfile(ctx: RoleTxContext): Promise<{ personal: PersonalDetails | null; contacts: EmergencyContact[] }> {
+const HEADER_COLUMNS = sql`
+  ep.user_id::text, u.full_name, u.email, u.mobile, ep.employee_code,
+  ep.date_of_joining::text AS date_of_joining, ep.date_of_exit::text AS date_of_exit,
+  ep.probation_end_date::text AS probation_end_date, ep.weekly_off_pattern, ep.is_active,
+  et.label AS employment_type_label, d.name AS department_name, ds.name AS designation_name,
+  ur.name AS role_name, mgr.id::text AS manager_id, mgr.full_name AS manager_name`;
+const HEADER_JOINS = sql`
+  FROM hr.employee_profiles ep
+  JOIN iam.users u ON u.id = ep.user_id
+  JOIN iam.user_roles ur ON ur.id = u.role_id
+  LEFT JOIN hr.employment_types et ON et.id = ep.employment_type_id
+  LEFT JOIN iam.departments d ON d.id = ep.department_id
+  LEFT JOIN hr.designations ds ON ds.id = ep.designation_id
+  LEFT JOIN iam.users mgr ON mgr.id = u.manager_id`;
+
+export interface ChainLink { user_id: string; full_name: string; designation_name: string | null; level: number }
+
+/** The person's managers, nearest first, up to four levels (the level cap also guards a cycle). */
+async function managerChain(tx: DrizzleTx, userId: string): Promise<ChainLink[]> {
+  return (await tx.execute(sql`
+    WITH RECURSIVE c(id, lvl) AS (
+      SELECT u.manager_id, 1 FROM iam.users u WHERE u.id = ${userId} AND u.manager_id IS NOT NULL
+      UNION ALL
+      SELECT u.manager_id, c.lvl + 1 FROM c JOIN iam.users u ON u.id = c.id WHERE u.manager_id IS NOT NULL AND c.lvl < 4
+    )
+    SELECT m.id::text AS user_id, m.full_name, ds.name AS designation_name, c.lvl AS level
+    FROM c JOIN iam.users m ON m.id = c.id
+    LEFT JOIN hr.employee_profiles ep ON ep.user_id = m.id AND NOT ep.is_deleted
+    LEFT JOIN hr.designations ds ON ds.id = ep.designation_id
+    ORDER BY c.lvl`)) as unknown as ChainLink[];
+}
+
+export interface OwnProfile {
+  /** null for an account with no employee profile (e.g. a platform admin). */
+  header: Row | null;
+  personal: PersonalDetails | null;
+  contacts: EmergencyContact[];
+  balances: Array<{ leave_type_label: string; balance: number }>;
+  chain: ChainLink[];
+}
+
+export async function getOwnProfile(ctx: RoleTxContext): Promise<OwnProfile> {
   return withRoleTx(ctx, async (tx) => {
+    const header = (await tx.execute(sql`
+      SELECT ${HEADER_COLUMNS} ${HEADER_JOINS}
+      WHERE ep.user_id = ${ctx.user_id} AND ep.org_id = ${ctx.org_id} AND NOT ep.is_deleted`)) as unknown as Row[];
+    const balances = (await tx.execute(sql`
+      SELECT leave_type_label, balance::float8 AS balance FROM hr.vw_leave_balances
+      WHERE user_id = ${ctx.user_id} AND org_id = ${ctx.org_id} ORDER BY leave_type_label`)) as unknown as OwnProfile['balances'];
+    const chain = await managerChain(tx, ctx.user_id);
     const personal = (await tx.execute(sql`
       SELECT ${PERSONAL_COLUMNS} FROM hr.employee_personal
       WHERE user_id = ${ctx.user_id} AND NOT is_deleted
@@ -79,7 +127,7 @@ export async function getOwnProfile(ctx: RoleTxContext): Promise<{ personal: Per
       WHERE user_id = ${ctx.user_id} AND NOT is_deleted
       ORDER BY is_primary DESC, created_at
     `)) as unknown as EmergencyContact[];
-    return { personal: personal[0] ?? null, contacts };
+    return { header: header[0] ?? null, personal: personal[0] ?? null, contacts, balances, chain };
   });
 }
 
@@ -175,6 +223,7 @@ export interface Employee360 {
   contacts: EmergencyContact[];
   balances: Array<{ leave_type_label: string; balance: number }>;
   notes: EmployeeNote[];
+  chain: ChainLink[];
 }
 
 export async function getEmployee360(ctx: RoleTxContext, userId: string, includeNotes: boolean): Promise<Employee360> {
@@ -228,7 +277,8 @@ export async function getEmployee360(ctx: RoleTxContext, userId: string, include
         `)) as unknown as EmployeeNote[])
       : [];
 
-    return { header: header[0]!, personal: personal[0] ?? null, contacts, balances, notes };
+    const chain = await managerChain(tx, userId);
+    return { header: header[0]!, personal: personal[0] ?? null, contacts, balances, notes, chain };
   });
 }
 

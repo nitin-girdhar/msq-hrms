@@ -47,17 +47,30 @@ export interface EmployeeHeader {
   manager_name: string | null;
 }
 
+/** One manager above the person; level 1 is the direct manager. */
+export interface ChainLink {
+  user_id: string;
+  full_name: string;
+  designation_name: string | null;
+  level: number;
+}
+
 export interface Employee360 {
   header: EmployeeHeader;
   personal: PersonalDetails | null;
   contacts: EmergencyContact[];
   balances: Array<{ leave_type_label: string; balance: number }>;
   notes: EmployeeNote[];
+  chain: ChainLink[];
 }
 
 export interface MyProfile {
+  /** null for an account with no employee profile (e.g. a platform admin). */
+  header: EmployeeHeader | null;
   personal: PersonalDetails | null;
   contacts: EmergencyContact[];
+  balances: Array<{ leave_type_label: string; balance: number }>;
+  chain: ChainLink[];
 }
 
 /** The form's wire shape: every field is a string, '' meaning "clear". */
