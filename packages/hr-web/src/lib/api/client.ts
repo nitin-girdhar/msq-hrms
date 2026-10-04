@@ -26,6 +26,7 @@ import type {
   AuditEntry, BulkRegularizeOutcome, ChangeRequest, Employee360AttendanceRow, Encashment, Nudge,
   OrgChartPerson, PolicySummaryRow, PunchLogRow, StatutoryForm, StatutoryView, StatutoryValues,
 } from '../h7/types';
+import type { EmployeeDocument, PendingDocument, UploadDocumentBody } from '../documents/types';
 import type { PayrollOverview, PayrollReadiness, PayslipDetail, PayslipSummary } from '../payroll/types';
 import type {
   Employee360,
@@ -298,6 +299,20 @@ export const assets = {
   assign: (id: string, userId: string) =>
     request<void>(`/hr/assets/${id}/assign`, { method: 'POST', body: JSON.stringify({ user_id: userId }) }),
   returnAsset: (id: string) => request<void>(`/hr/assets/${id}/return`, { method: 'POST' }),
+};
+
+// ── Documents vault (schema 1.65.0) ───────────────────────────────────────────
+export const documents = {
+  mine: () => request<Envelope<EmployeeDocument[]>>('/hr/documents/mine'),
+  upload: (body: UploadDocumentBody) =>
+    request<Envelope<{ id: string }>>('/hr/documents/mine', { method: 'POST', body: JSON.stringify(body) }),
+  forEmployee: (userId: string) => request<Envelope<EmployeeDocument[]>>(`/hr/documents/employee/${userId}`),
+  pending: () => request<Envelope<PendingDocument[]>>('/hr/documents/admin/pending'),
+  review: (id: string, decision: 'verified' | 'rejected', note?: string) =>
+    request<void>(`/hr/documents/${id}/review`, { method: 'POST', body: JSON.stringify({ decision, ...(note ? { note } : {}) }) }),
+  remove: (id: string) => request<void>(`/hr/documents/${id}`, { method: 'DELETE' }),
+  /** Authenticated, same-origin; opened in a new tab. */
+  fileUrl: (id: string) => `/api/hr/documents/${id}/file`,
 };
 
 // ── Payroll viewer + month lock (schema 1.62.0) ───────────────────────────────

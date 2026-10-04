@@ -34,3 +34,29 @@ export const assignAssetSchema = z.object({
 export type CreateAnnouncementInput = z.infer<typeof createAnnouncementSchema>;
 export type CreateAssetInput = z.infer<typeof createAssetSchema>;
 export type AssignAssetInput = z.infer<typeof assignAssetSchema>;
+
+// ── Documents vault (schema 1.65.0) ─────────────────────────────────────────
+export const DOCUMENT_CATEGORIES = ['id_proof', 'address_proof', 'education', 'employment', 'tax_proof', 'medical', 'other'] as const;
+/** Largest file, in bytes. The CHECK on hr.employee_documents.size_bytes says the same. */
+export const DOCUMENT_MAX_BYTES = 3 * 1024 * 1024;
+
+export const uploadDocumentSchema = z.object({
+  category: z.enum(DOCUMENT_CATEGORIES),
+  title: z.string().trim().min(1, 'Give the document a title').max(150),
+  file_name: z.string().trim().min(1).max(200),
+  // The file itself, base64. 3 MiB of bytes is ~4.2 MB of base64, inside the 5 MB body limit.
+  data_base64: z.string().min(8, 'Choose a file').max(Math.ceil((DOCUMENT_MAX_BYTES * 4) / 3) + 8),
+  expires_on: isoDate.optional(),
+  tax_section: z.string().trim().max(30).optional(),
+  amount: z.number().min(0).max(1_000_000_000).optional(),
+});
+
+export const reviewDocumentSchema = z
+  .object({
+    decision: z.enum(['verified', 'rejected']),
+    note: z.string().trim().max(500).optional(),
+  })
+  .refine((v) => v.decision === 'verified' || (v.note ?? '').length > 0, { message: 'Say why it was rejected', path: ['note'] });
+
+export type UploadDocumentInput = z.infer<typeof uploadDocumentSchema>;
+export type ReviewDocumentInput = z.infer<typeof reviewDocumentSchema>;

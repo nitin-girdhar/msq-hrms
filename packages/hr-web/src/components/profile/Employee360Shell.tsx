@@ -16,6 +16,7 @@ import {
 import { formatDay, formatDateTime } from '../../lib/attendance/format';
 import { emptyBlockCls, fieldInputCls, stateBlockCls } from '../../lib/ui';
 import AssetsPanel from './AssetsPanel';
+import { EmployeeDocumentsPanel } from '../documents/DocumentsPanels';
 import StatutoryPanel from './StatutoryPanel';
 import { AttendanceTab, AuditTab } from './Employee360Tabs';
 
@@ -24,7 +25,7 @@ interface Props {
   userId: string;
 }
 
-type Tab = 'overview' | 'attendance' | 'leave' | 'statutory' | 'assets' | 'notes' | 'audit';
+type Tab = 'overview' | 'attendance' | 'leave' | 'statutory' | 'assets' | 'documents' | 'notes' | 'audit';
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function tenure(joined: string | null): string {
@@ -53,6 +54,7 @@ export default function Employee360Shell({ actor, userId }: Props) {
   const [tab, setTab] = useState<Tab>('overview');
   const canNotes = can(actor, CAPABILITY.HR_EMPLOYEES_NOTES_MANAGE);
   const canAssets = can(actor, CAPABILITY.HR_EMPLOYEES_ASSETS_MANAGE);
+  const canDocuments = can(actor, CAPABILITY.HR_EMPLOYEES_DOCUMENTS_MANAGE);
   const canStatutory = can(actor, CAPABILITY.HR_EMPLOYEES_STATUTORY_MANAGE);
 
   const load = useCallback(() => {
@@ -68,6 +70,7 @@ export default function Employee360Shell({ actor, userId }: Props) {
   // Everyone who can open a profile sees Overview / Attendance / Leave / Statutory (masked); the rest need their own capability.
   const tabs: Array<[Tab, string]> = [['overview', 'Overview'], ['attendance', 'Attendance'], ['leave', 'Leave'], ['statutory', 'Statutory & bank']];
   if (canAssets) tabs.push(['assets', 'Assets']);
+  if (canDocuments) tabs.push(['documents', 'Documents']);
   if (canNotes) tabs.push(['notes', 'HR notes'], ['audit', 'Audit trail']);
 
   if (loading) return <div className="flex w-full flex-1 flex-col"><PageHeader title="Employee" /><PageBody><div className={stateBlockCls}>Loading…</div></PageBody></div>;
@@ -222,6 +225,12 @@ export default function Employee360Shell({ actor, userId }: Props) {
         {tab === 'assets' && canAssets && (
           <PageSection title="Equipment">
             <AssetsPanel userId={userId} onError={setError} />
+          </PageSection>
+        )}
+
+        {tab === 'documents' && canDocuments && (
+          <PageSection title="Documents">
+            <EmployeeDocumentsPanel userId={userId} onError={setError} />
           </PageSection>
         )}
 

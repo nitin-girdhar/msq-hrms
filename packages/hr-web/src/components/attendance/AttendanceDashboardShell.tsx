@@ -12,6 +12,7 @@ import TodayCard from './TodayCard';
 import PunchModal from './PunchModal';
 import MyMonthCalendar from './MyMonthCalendar';
 import DayDetailPopover from './DayDetailPopover';
+import { useWideScreen } from '../../hooks/useWideScreen';
 import RegularizationFormModal from './RegularizationFormModal';
 import MyRegularizationsList from './MyRegularizationsList';
 import RegularizationStats from './RegularizationStats';
@@ -25,6 +26,7 @@ interface Props {
 }
 
 export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
+  const wide = useWideScreen();
   const [rules, setRules] = useState<AttendanceRules | null>(null);
   const [todayRow, setTodayRow] = useState<AttendanceDayRow | undefined>(undefined);
   const [shift, setShift] = useState<ShiftAssignmentView | undefined>(undefined);
@@ -226,10 +228,17 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
           }
         >
           {monthTab === 'calendar' ? (
-            <MyMonthCalendar
-              refreshKey={refreshKey}
-              onDayClick={(row, date) => { setDetailRow(row); setDetailDate(date); }}
-            />
+            <div className={wide && detailDate ? 'grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start' : ''}>
+              <MyMonthCalendar
+                refreshKey={refreshKey}
+                onDayClick={(row, date) => { setDetailRow(row); setDetailDate(date); }}
+              />
+              {wide && detailDate && (
+                <DayDetailPopover inline date={detailDate} row={detailRow} userId={actor.id}
+                  onClose={() => setDetailDate(null)}
+                  onRequestRegularization={(date) => { setDetailDate(null); setRegFormDate(date); }} />
+              )}
+            </div>
           ) : (
             <PunchLog />
           )}
@@ -266,7 +275,7 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
       />
 
       <DayDetailPopover
-        date={detailDate}
+        date={wide ? null : detailDate}
         row={detailRow}
         userId={actor.id}
         onClose={() => setDetailDate(null)}

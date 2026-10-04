@@ -18,12 +18,14 @@ interface Props {
   userId: string;
   onClose: () => void;
   onRequestRegularization: (date: string) => void;
+  /** Render as a card in the page (desktop side panel) instead of a modal. */
+  inline?: boolean;
 }
 
 // missed_punch: the whole point of the status is that the employee regularizes it.
 const REGULARIZABLE = new Set(['absent', 'not_marked', 'half_day', 'missed_punch']);
 
-export default function DayDetailPopover({ date, row, userId, onClose, onRequestRegularization }: Props) {
+export default function DayDetailPopover({ date, row, userId, onClose, onRequestRegularization, inline = false }: Props) {
   // null = still loading (or unavailable, which renders the same as no punches).
   const [events, setEvents] = useState<DayEventView[] | null>(null);
 
@@ -65,8 +67,7 @@ export default function DayDetailPopover({ date, row, userId, onClose, onRequest
     </div>
   );
 
-  return (
-    <Modal open onClose={onClose} title={formatDay(date)} maxWidth="max-w-sm" footer={footer}>
+  const body = (
       <div className="flex flex-col gap-4">
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-outline-variant bg-surface-container-low px-4 py-3 text-sm">
           <Row label="Status" value={row?.status_label ?? 'Not marked'} />
@@ -152,6 +153,28 @@ export default function DayDetailPopover({ date, row, userId, onClose, onRequest
         )}
 
       </div>
+  );
+
+  if (inline) {
+    return (
+      <aside aria-label={`Day breakdown for ${formatDay(date)}`} className="flex flex-col gap-4 rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-base font-semibold text-on-surface">{formatDay(date)}</h3>
+          <button type="button" onClick={onClose} aria-label="Close day breakdown" className="rounded-lg px-2 py-1 text-on-surface-variant hover:bg-surface-container-low">✕</button>
+        </div>
+        {body}
+        {canRegularize && (
+          <button type="button" onClick={() => onRequestRegularization(date)} className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary/90">
+            Request regularization
+          </button>
+        )}
+      </aside>
+    );
+  }
+
+  return (
+    <Modal open onClose={onClose} title={formatDay(date)} maxWidth="max-w-sm" footer={footer}>
+      {body}
     </Modal>
   );
 }

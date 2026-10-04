@@ -18,6 +18,8 @@ export const HR_NAV: readonly NavItem[] = [
   { id: 'leave',      label: 'Leave',      href: '/leave',      icon: 'plane', capability: CAPABILITY.HR_LEAVE },
   // Payslips: own-view OR payroll management opens it; `exact` because both are operations.
   { id: 'payroll',    label: 'Payroll',    href: '/payroll',    icon: 'file-text', capability: CAPABILITY.HR_EMPLOYEES_PAYSLIP_VIEW, exact: true },
+  // Own documents (upload + status) or HR review; both are operations, hence `exact`.
+  { id: 'documents',  label: 'Documents',  href: '/documents',  icon: 'folder-open', capability: CAPABILITY.HR_EMPLOYEES_DOCUMENTS_VIEW, exact: true },
   { id: 'employees',  label: 'Employees',  href: '/employees',  icon: 'id-card', capability: CAPABILITY.HR_EMPLOYEES },
   { id: 'reports',    label: 'Reports',    href: '/reports',    icon: 'chart-column', capability: CAPABILITY.HR_REPORTS },
   // An OPERATION, not a tool/page node, hence `exact`: holdsUsableNode() wants a granted descendant.
