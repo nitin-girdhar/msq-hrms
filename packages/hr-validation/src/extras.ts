@@ -38,7 +38,10 @@ export type AssignAssetInput = z.infer<typeof assignAssetSchema>;
 // ── Documents vault (schema 1.65.0) ─────────────────────────────────────────
 export const DOCUMENT_CATEGORIES = ['id_proof', 'address_proof', 'education', 'employment', 'tax_proof', 'medical', 'other'] as const;
 /** Largest file, in bytes. The CHECK on hr.employee_documents.size_bytes says the same. */
-export const DOCUMENT_MAX_BYTES = 3 * 1024 * 1024;
+export const DOCUMENT_MAX_BYTES = 3_670_016; // 3.5 MiB: its base64 (~4.9 MB) still fits the 5 MB request body
+/** What HR gets until they set their own limit. */
+export const DOCUMENT_DEFAULT_BYTES = 3 * 1024 * 1024;
+export const DOCUMENT_MIN_BYTES = 100 * 1024;
 
 export const uploadDocumentSchema = z.object({
   category: z.enum(DOCUMENT_CATEGORIES),
@@ -60,3 +63,44 @@ export const reviewDocumentSchema = z
 
 export type UploadDocumentInput = z.infer<typeof uploadDocumentSchema>;
 export type ReviewDocumentInput = z.infer<typeof reviewDocumentSchema>;
+
+// ── Document upload limit (schema 1.66.0) ───────────────────────────────────
+export const documentSettingsSchema = z.object({
+  max_bytes: z.number().int().min(DOCUMENT_MIN_BYTES, 'The limit cannot be below 100 KB').max(DOCUMENT_MAX_BYTES, 'The limit cannot be above 3.5 MB'),
+});
+export type DocumentSettingsInput = z.infer<typeof documentSettingsSchema>;
+
+// ── Roster planner (schema 1.66.0) ──────────────────────────────────────────
+const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
+
+export const plannerWeekQuerySchema = z.object({
+  from: isoDate.optional(),
+  q: z.string().trim().max(100).optional(),
+  department_id: z.string().uuid().optional(),
+});
+
+/** Make `shift_id` (or no shift, when null) the shift of every listed person for [from, to]. */
+export const applyShiftsSchema = z
+  .object({
+    user_ids: z.array(z.string().uuid()).min(1, 'Pick at least one person').max(200),
+    from: isoDate,
+    to: isoDate,
+    shift_id: z.string().uuid().nullable(),
+  })
+  .refine((v) => v.to >= v.from, { message: 'The end date is before the start date', path: ['to'] })
+  .refine((v) => daysBetween(v.from, v.to) <= 92, { message: 'Plan at most three months at a time', path: ['to'] });
+
+export const setRequirementSchema = z.object({
+  shift_id: z.string().uuid(),
+  required_headcount: z.number().int().min(0).max(5000),
+});
+
+export const publishRosterSchema = z.object({
+  week_start: isoDate,
+  note: z.string().trim().max(300).optional(),
+});
+
+export type PlannerWeekQuery = z.infer<typeof plannerWeekQuerySchema>;
+export type ApplyShiftsInput = z.infer<typeof applyShiftsSchema>;
+export type SetRequirementInput = z.infer<typeof setRequirementSchema>;
+export type PublishRosterInput = z.infer<typeof publishRosterSchema>;

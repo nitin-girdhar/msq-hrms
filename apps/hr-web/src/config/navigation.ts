@@ -15,6 +15,8 @@ export const HR_NAV: readonly NavItem[] = [
   { id: 'attendance', label: 'Attendance', href: '/attendance', icon: 'clock', capability: CAPABILITY.HR_ATTENDANCE },
   // An OPERATION (exact), like My profile below.
   { id: 'team',       label: 'My team',    href: '/team',       icon: 'users-round', capability: CAPABILITY.HR_ATTENDANCE_ROSTER_VIEW, exact: true },
+  // An OPERATION (exact): planning the roster is a different job from viewing it.
+  { id: 'planner',    label: 'Roster planner', href: '/planner', icon: 'calendar-days', capability: CAPABILITY.HR_ATTENDANCE_ROSTER_MANAGE, exact: true },
   { id: 'leave',      label: 'Leave',      href: '/leave',      icon: 'plane', capability: CAPABILITY.HR_LEAVE },
   // Payslips: own-view OR payroll management opens it; `exact` because both are operations.
   { id: 'payroll',    label: 'Payroll',    href: '/payroll',    icon: 'file-text', capability: CAPABILITY.HR_EMPLOYEES_PAYSLIP_VIEW, exact: true },

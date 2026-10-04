@@ -37,6 +37,12 @@ export interface EmployeeHeader {
   date_of_joining: string | null;
   date_of_exit: string | null;
   probation_end_date: string | null;
+  grade: string | null;
+  squad: string | null;
+  cost_center: string | null;
+  notice_period_days: number | null;
+  work_mode: 'office' | 'hybrid' | 'remote' | null;
+  seat_label: string | null;
   weekly_off_pattern: number[] | null;
   is_active: boolean;
   employment_type_label: string | null;
@@ -87,6 +93,7 @@ export interface PersonalForm {
 }
 
 // The fixed lists the database CHECK constraints allow (hr.employee_personal).
+export const WORK_MODE_OPTIONS = [['office', 'Office'], ['hybrid', 'Hybrid'], ['remote', 'Remote']] as const;
 export const GENDER_OPTIONS = [
   ['female', 'Female'], ['male', 'Male'], ['other', 'Other'], ['undisclosed', 'Prefer not to say'],
 ] as const;

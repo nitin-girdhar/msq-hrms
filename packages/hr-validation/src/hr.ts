@@ -1,5 +1,17 @@
 import { z } from 'zod';
 
+export const WORK_MODES = ['office', 'hybrid', 'remote'] as const;
+
+// Org-chart facts (schema 1.66.0). All optional; null clears.
+const orgFacts = {
+  grade: z.string().trim().max(40).nullable().optional(),
+  squad: z.string().trim().max(100).nullable().optional(),
+  cost_center: z.string().trim().max(60).nullable().optional(),
+  notice_period_days: z.number().int().min(0).max(365).nullable().optional(),
+  work_mode: z.enum(WORK_MODES).nullable().optional(),
+  seat_label: z.string().trim().max(60).nullable().optional(),
+};
+
 export const createEmployeeProfileSchema = z.object({
   user_id: z.string().uuid(),
   employee_code: z.string().max(50).optional(),
@@ -10,6 +22,7 @@ export const createEmployeeProfileSchema = z.object({
   designation_name: z.string().optional(),
   probation_end_date: z.string().optional(),
   weekly_off_pattern: z.array(z.number().int().min(0).max(6)).optional(),
+  ...orgFacts,
 });
 
 export const updateEmployeeProfileSchema = z.object({
@@ -22,6 +35,7 @@ export const updateEmployeeProfileSchema = z.object({
   probation_end_date: z.string().nullable().optional(),
   weekly_off_pattern: z.array(z.number().int().min(0).max(6)).optional(),
   is_active: z.boolean().optional(),
+  ...orgFacts,
 });
 
 export const listEmployeeProfilesSchema = z.object({

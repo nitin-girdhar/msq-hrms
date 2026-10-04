@@ -72,6 +72,7 @@ const HEADER_COLUMNS = sql`
   ep.user_id::text, u.full_name, u.email, u.mobile, ep.employee_code,
   ep.date_of_joining::text AS date_of_joining, ep.date_of_exit::text AS date_of_exit,
   ep.probation_end_date::text AS probation_end_date, ep.weekly_off_pattern, ep.is_active,
+  ep.grade, ep.squad, ep.cost_center, ep.notice_period_days, ep.work_mode, ep.seat_label,
   et.label AS employment_type_label, d.name AS department_name, ds.name AS designation_name,
   ur.name AS role_name, mgr.id::text AS manager_id, mgr.full_name AS manager_name`;
 const HEADER_JOINS = sql`
@@ -233,6 +234,7 @@ export async function getEmployee360(ctx: RoleTxContext, userId: string, include
       SELECT ep.user_id::text, u.full_name, u.email, u.mobile, ep.employee_code,
              ep.date_of_joining::text AS date_of_joining, ep.date_of_exit::text AS date_of_exit,
              ep.probation_end_date::text AS probation_end_date, ep.weekly_off_pattern, ep.is_active,
+             ep.grade, ep.squad, ep.cost_center, ep.notice_period_days, ep.work_mode, ep.seat_label,
              et.label AS employment_type_label, d.name AS department_name, ds.name AS designation_name,
              ur.name AS role_name, mgr.id::text AS manager_id, mgr.full_name AS manager_name
       FROM hr.employee_profiles ep

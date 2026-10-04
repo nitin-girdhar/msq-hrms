@@ -15,6 +15,7 @@ export { default as EmployeeDashboardShell } from './components/dashboard/Employ
 export { default as OrgChartShell } from './components/employees/OrgChartShell';
 export { default as PayrollShell } from './components/payroll/PayrollShell';
 export { default as DocumentsShell } from './components/documents/DocumentsShell';
+export { default as PlannerShell } from './components/planner/PlannerShell';
 export { default as TeamRosterShell } from './components/team/TeamRosterShell';
 export { default as MyProfileShell } from './components/profile/MyProfileShell';
 export { default as Employee360Shell } from './components/profile/Employee360Shell';

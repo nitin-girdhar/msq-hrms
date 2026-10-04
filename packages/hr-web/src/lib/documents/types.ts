@@ -14,8 +14,11 @@ export const DOCUMENT_CATEGORY_LABEL: Record<string, string> = {
   other: 'Other',
 };
 
-/** Largest file the server accepts (it re-checks; this only saves a round trip). */
-export const DOCUMENT_MAX_BYTES = 3 * 1024 * 1024;
+/** The ceiling HR can raise the limit to (3.5 MiB: its base64 still fits the 5 MB request). */
+export const DOCUMENT_MAX_BYTES = 3_670_016;
+export const DOCUMENT_MIN_BYTES = 100 * 1024;
+/** What applies until HR sets a limit. */
+export const DOCUMENT_DEFAULT_BYTES = 3 * 1024 * 1024;
 export const DOCUMENT_ACCEPT = 'application/pdf,image/jpeg,image/png,image/webp';
 
 export interface EmployeeDocument {

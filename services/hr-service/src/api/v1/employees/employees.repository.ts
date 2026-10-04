@@ -12,6 +12,7 @@ import type {
 const SELECT_FIELDS = sql`
   ep.user_id, ep.org_id, ep.employee_code, ep.date_of_joining, ep.date_of_exit,
   ep.probation_end_date, ep.weekly_off_pattern, ep.is_active, ep.created_at, ep.updated_at,
+  ep.grade, ep.squad, ep.cost_center, ep.notice_period_days, ep.work_mode, ep.seat_label,
   u.full_name, u.email, u.mobile, ur.name AS role_name,
   et.name AS employment_type_name,
   d.id AS department_id, d.name AS department_name,
@@ -143,6 +144,12 @@ export async function createEmployee(ctx: RoleTxContext, data: CreateEmployeePro
         designationId,
         probationEndDate: data.probation_end_date ?? null,
         weeklyOffPattern: data.weekly_off_pattern ?? [0, 6],
+        grade: data.grade ?? null,
+        squad: data.squad ?? null,
+        costCenter: data.cost_center ?? null,
+        noticePeriodDays: data.notice_period_days ?? null,
+        workMode: data.work_mode ?? null,
+        seatLabel: data.seat_label ?? null,
         createdBy: ctx.user_id,
       })
       .returning({ userId: employeeProfilesTable.userId });
@@ -161,6 +168,14 @@ export async function updateEmployee(ctx: RoleTxContext, userId: string, data: U
     if (data.probation_end_date !== undefined) updateData['probationEndDate'] = data.probation_end_date;
     if (data.weekly_off_pattern !== undefined) updateData['weeklyOffPattern'] = data.weekly_off_pattern;
     if (data.is_active !== undefined) updateData['isActive'] = data.is_active;
+    // Org-chart facts: '' and null both clear the value.
+    const blank = (v: string | null | undefined) => (v === undefined ? undefined : (v ?? '').trim() === '' ? null : (v as string).trim());
+    if (data.grade !== undefined) updateData['grade'] = blank(data.grade);
+    if (data.squad !== undefined) updateData['squad'] = blank(data.squad);
+    if (data.cost_center !== undefined) updateData['costCenter'] = blank(data.cost_center);
+    if (data.notice_period_days !== undefined) updateData['noticePeriodDays'] = data.notice_period_days;
+    if (data.work_mode !== undefined) updateData['workMode'] = data.work_mode;
+    if (data.seat_label !== undefined) updateData['seatLabel'] = blank(data.seat_label);
 
     if (data.employment_type_name !== undefined) {
       updateData['employmentTypeId'] = data.employment_type_name

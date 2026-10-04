@@ -13,9 +13,11 @@ import { sniffDocument } from '../../../lib/documents/sniff.js';
 import {
   uploadDocumentSchema,
   reviewDocumentSchema,
-  DOCUMENT_MAX_BYTES,
+  documentSettingsSchema,
+  DOCUMENT_DEFAULT_BYTES,
   type UploadDocumentInput,
   type ReviewDocumentInput,
+  type DocumentSettingsInput,
 } from '@hr/validation';
 
 // Documents & compliance vault (schema 1.65.0). Identity paperwork: no org-wide policy, so
@@ -38,11 +40,43 @@ const COLUMNS = sql`
   d.review_note, d.reviewed_at::text AS reviewed_at, d.expires_on::text AS expires_on,
   d.tax_section, d.amount::float8 AS amount, d.created_at::text AS created_at`;
 
+/** The upload limit for an org: what HR set (100 KB..3.5 MB), else the 3 MB default. */
+async function limitFor(orgId: string): Promise<number> {
+  const rows = await withServiceTx(async (tx) =>
+    (await tx.execute(sql`
+      SELECT max_bytes FROM hr.document_settings WHERE org_id = ${orgId} AND NOT is_deleted`)) as unknown as Array<{ max_bytes: number }>);
+  return rows[0]?.max_bytes ?? DOCUMENT_DEFAULT_BYTES;
+}
+
 type DocRow = { id: string; user_id: string; file_key: string; file_name: string; mime_type: string; status: string };
 
 export async function documentsRouter(app: FastifyInstance) {
   const view = requireCapability(CAPABILITY.HR_EMPLOYEES_DOCUMENTS_VIEW);
   const manage = requireCapability(CAPABILITY.HR_EMPLOYEES_DOCUMENTS_MANAGE, 'You do not have permission to review documents');
+
+  // The upload limit the caller's branch allows. Anyone who can use the vault may read it (the upload form shows it).
+  app.get('/documents/settings', { preHandler: [authenticate] }, async (request, reply) => {
+    if (!can(request.auth, CAPABILITY.HR_EMPLOYEES_DOCUMENTS_VIEW) && !can(request.auth, CAPABILITY.HR_EMPLOYEES_DOCUMENTS_MANAGE)) {
+      throw new ForbiddenError('You do not have permission to use documents');
+    }
+    return reply.send({ success: true, data: { max_bytes: await limitFor(request.auth.org_id) } });
+  });
+
+  app.put('/documents/settings', { preHandler: [authenticate, manage, validate({ body: documentSettingsSchema })] }, async (request, reply) => {
+    const { org_id, user_id } = request.auth;
+    const { max_bytes } = request.body as DocumentSettingsInput;
+    await withServiceTx(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.current_user_id', ${user_id}, true)`);
+      await tx.execute(sql`SELECT set_config('app.current_org_id', ${org_id}, true)`);
+      const upd = (await tx.execute(sql`
+        UPDATE hr.document_settings SET max_bytes = ${max_bytes} WHERE org_id = ${org_id} AND NOT is_deleted RETURNING 1`)) as unknown as unknown[];
+      if (upd.length === 0) {
+        await tx.execute(sql`INSERT INTO hr.document_settings (org_id, max_bytes, created_by) VALUES (${org_id}, ${max_bytes}, ${user_id})`);
+      }
+    });
+    void logActivity({ action_type: 'document_limit_set', performed_by: user_id, subject_user_id: user_id, org_id, new_value: { max_bytes } });
+    return reply.status(204).send();
+  });
 
   // Own documents. The id comes from request.auth, never from the request.
   app.get('/documents/mine', { preHandler: [authenticate, view] }, async (request, reply) => {
@@ -61,7 +95,8 @@ export async function documentsRouter(app: FastifyInstance) {
     const b = request.body as UploadDocumentInput;
     const bytes = Buffer.from(b.data_base64, 'base64');
     if (bytes.length === 0) throw new BadRequestError('That file is empty');
-    if (bytes.length > DOCUMENT_MAX_BYTES) throw new BadRequestError('That file is over 3 MB');
+    const limit = await limitFor(org_id);
+    if (bytes.length > limit) throw new BadRequestError(`That file is over the ${(limit / (1024 * 1024)).toFixed(1).replace(/\.0$/, '')} MB limit`);
     // The type comes from the bytes, not the client's say-so: only PDF and common images are kept.
     const kind = sniffDocument(bytes);
     if (!kind) throw new BadRequestError('Only PDF, JPG, PNG or WebP files can be uploaded');

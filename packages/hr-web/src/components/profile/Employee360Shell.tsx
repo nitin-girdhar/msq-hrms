@@ -10,6 +10,7 @@ import {
   GENDER_OPTIONS,
   MARITAL_OPTIONS,
   NOTE_KIND_OPTIONS,
+  WORK_MODE_OPTIONS,
   optionLabel,
   type Employee360,
 } from '../../lib/profile/types';
@@ -113,6 +114,8 @@ export default function Employee360Shell({ actor, userId }: Props) {
                 <Chip>{h.employee_code ?? 'No employee code'}</Chip>
                 <Chip>{h.date_of_joining ? `Joined ${formatDay(h.date_of_joining)} (${tenure(h.date_of_joining)})` : 'Joining date not set'}</Chip>
                 {h.employment_type_label && <Chip>{h.employment_type_label}</Chip>}
+                {h.grade && <Chip>{h.grade}</Chip>}
+                {h.work_mode && <Chip>{optionLabel(WORK_MODE_OPTIONS, h.work_mode)}</Chip>}
                 {weeklyOff && <Chip>Weekly off {weeklyOff}</Chip>}
               </div>
               <p className="text-sm text-on-surface-variant">{h.email}{h.mobile ? ` · ${h.mobile}` : ''}</p>
@@ -156,6 +159,12 @@ export default function Employee360Shell({ actor, userId }: Props) {
                   <Tile label="Probation ends" value={h.probation_end_date ? formatDay(h.probation_end_date) : null} />
                   <Tile label="Last working day" value={h.date_of_exit ? formatDay(h.date_of_exit) : null} />
                   <Tile label="Weekly off" value={weeklyOff || null} />
+                  <Tile label="Grade / level" value={h.grade} />
+                  <Tile label="Squad" value={h.squad} />
+                  <Tile label="Cost centre" value={h.cost_center} />
+                  <Tile label="Notice period" value={h.notice_period_days != null ? `${h.notice_period_days} days` : null} />
+                  <Tile label="Work mode" value={h.work_mode ? optionLabel(WORK_MODE_OPTIONS, h.work_mode) : null} />
+                  <Tile label="Seat" value={h.seat_label} />
                 </div>
                 <div className="mt-4">
                   <p className="mb-2 text-label-sm font-semibold uppercase tracking-wide text-on-surface-variant">Direct reporting chain</p>

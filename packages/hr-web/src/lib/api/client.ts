@@ -27,6 +27,7 @@ import type {
   OrgChartPerson, PolicySummaryRow, PunchLogRow, StatutoryForm, StatutoryView, StatutoryValues,
 } from '../h7/types';
 import type { EmployeeDocument, PendingDocument, UploadDocumentBody } from '../documents/types';
+import type { ApplyShiftsBody, ApplyShiftsOutcome, PlannerWeek } from '../planner/types';
 import type { PayrollOverview, PayrollReadiness, PayslipDetail, PayslipSummary } from '../payroll/types';
 import type {
   Employee360,
@@ -302,7 +303,20 @@ export const assets = {
 };
 
 // ── Documents vault (schema 1.65.0) ───────────────────────────────────────────
+// ── Roster planner (schema 1.66.0) ────────────────────────────────────────────
+export const planner = {
+  week: (params: { from?: string; q?: string }) => request<Envelope<PlannerWeek>>(`/hr/attendance/planner/week${qs(params)}`),
+  apply: (body: ApplyShiftsBody) =>
+    request<Envelope<ApplyShiftsOutcome>>('/hr/attendance/planner/cells', { method: 'PUT', body: JSON.stringify(body) }),
+  setRequirement: (shift_id: string, required_headcount: number) =>
+    request<void>('/hr/attendance/planner/requirements', { method: 'PUT', body: JSON.stringify({ shift_id, required_headcount }) }),
+  publish: (week_start: string, note?: string) =>
+    request<Envelope<{ published_at: string }>>('/hr/attendance/planner/publish', { method: 'POST', body: JSON.stringify({ week_start, ...(note ? { note } : {}) }) }),
+};
+
 export const documents = {
+  settings: () => request<Envelope<{ max_bytes: number }>>('/hr/documents/settings'),
+  saveSettings: (max_bytes: number) => request<void>('/hr/documents/settings', { method: 'PUT', body: JSON.stringify({ max_bytes }) }),
   mine: () => request<Envelope<EmployeeDocument[]>>('/hr/documents/mine'),
   upload: (body: UploadDocumentBody) =>
     request<Envelope<{ id: string }>>('/hr/documents/mine', { method: 'POST', body: JSON.stringify(body) }),

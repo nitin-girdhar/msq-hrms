@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button, Modal } from '@platform/ui-kit';
 import { documents } from '../../lib/api/client';
 import {
-  DOCUMENT_ACCEPT, DOCUMENT_CATEGORIES, DOCUMENT_CATEGORY_LABEL, DOCUMENT_MAX_BYTES,
+  DOCUMENT_ACCEPT, DOCUMENT_CATEGORIES, DOCUMENT_CATEGORY_LABEL, DOCUMENT_DEFAULT_BYTES, DOCUMENT_MAX_BYTES, DOCUMENT_MIN_BYTES,
   expiryState, fileToBase64, formatBytes,
   type DocumentCategory, type EmployeeDocument, type PendingDocument,
 } from '../../lib/documents/types';
@@ -68,6 +68,8 @@ export function MyDocumentsPanel({ onError, onNotice }: { onError: (m: string) =
   const [items, setItems] = useState<EmployeeDocument[] | null>(null);
   const [uploading, setUploading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [limit, setLimit] = useState(DOCUMENT_DEFAULT_BYTES);
+  useEffect(() => { documents.settings().then((r) => setLimit(r.data.max_bytes)).catch(() => undefined); }, []);
 
   const load = useCallback(() => {
     documents.mine().then((r) => setItems(r.data)).catch((e) => { setItems([]); onError(e instanceof Error ? e.message : 'Failed to load your documents.'); });
@@ -83,7 +85,7 @@ export function MyDocumentsPanel({ onError, onNotice }: { onError: (m: string) =
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-on-surface-variant">PDF, JPG, PNG or WebP, up to 3 MB each. HR reviews what you upload.</p>
+        <p className="text-xs text-on-surface-variant">PDF, JPG, PNG or WebP, up to {formatBytes(limit)} each. HR reviews what you upload.</p>
         <Button variant="primary" onClick={() => setUploading(true)}>Upload a document</Button>
       </div>
       {items === null ? <div className={stateBlockCls}>Loading…</div> : items.length === 0 ? (
@@ -97,7 +99,7 @@ export function MyDocumentsPanel({ onError, onNotice }: { onError: (m: string) =
           ))}
         </ul>
       )}
-      {uploading && <UploadModal onClose={() => setUploading(false)} onUploaded={() => { setUploading(false); onNotice('Uploaded. HR will review it.'); load(); }} />}
+      {uploading && <UploadModal limit={limit} onClose={() => setUploading(false)} onUploaded={() => { setUploading(false); onNotice('Uploaded. HR will review it.'); load(); }} />}
     </div>
   );
 }
@@ -195,7 +197,7 @@ function ReviewModal({ doc, onClose, onDone }: { doc: EmployeeDocument; onClose:
   );
 }
 
-function UploadModal({ onClose, onUploaded }: { onClose: () => void; onUploaded: () => void }) {
+function UploadModal({ limit, onClose, onUploaded }: { limit: number; onClose: () => void; onUploaded: () => void }) {
   const [category, setCategory] = useState<DocumentCategory>('id_proof');
   const [title, setTitle] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -207,7 +209,7 @@ function UploadModal({ onClose, onUploaded }: { onClose: () => void; onUploaded:
 
   const pick = (f: File | null) => {
     setError(null);
-    if (f && f.size > DOCUMENT_MAX_BYTES) { setError(`That file is ${formatBytes(f.size)}; the limit is 3 MB.`); setFile(null); return; }
+    if (f && f.size > limit) { setError(`That file is ${formatBytes(f.size)}; the limit is ${formatBytes(limit)}.`); setFile(null); return; }
     setFile(f);
     if (f && !title) setTitle(f.name.replace(/\.[^.]+$/, ''));
   };
@@ -248,7 +250,7 @@ function UploadModal({ onClose, onUploaded }: { onClose: () => void; onUploaded:
           </select>
         </div>
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="du-file" className={fieldLabelCls}>File (PDF, JPG, PNG or WebP, up to 3 MB)</label>
+          <label htmlFor="du-file" className={fieldLabelCls}>File (PDF, JPG, PNG or WebP, up to {formatBytes(limit)})</label>
           <input id="du-file" type="file" accept={DOCUMENT_ACCEPT} onChange={(e) => pick(e.target.files?.[0] ?? null)} className="text-sm text-on-surface file:mr-3 file:rounded-lg file:border-0 file:bg-primary-fixed file:px-3 file:py-2 file:text-sm file:font-semibold file:text-on-primary-fixed" disabled={busy} />
         </div>
         <div className="flex flex-col gap-1.5">
@@ -267,5 +269,32 @@ function UploadModal({ onClose, onUploaded }: { onClose: () => void; onUploaded:
         )}
       </div>
     </Modal>
+  );
+}
+
+/** HR sets the largest file people may upload, between 100 KB and 3.5 MB. */
+export function UploadLimitCard({ onError, onNotice }: { onError: (m: string) => void; onNotice: (m: string) => void }) {
+  const [mb, setMb] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { documents.settings().then((r) => setMb(String(Math.round((r.data.max_bytes / (1024 * 1024)) * 100) / 100))).catch(() => undefined); }, []);
+
+  const save = async () => {
+    const bytes = Math.round(Number(mb) * 1024 * 1024);
+    if (!Number.isFinite(bytes) || bytes < DOCUMENT_MIN_BYTES || bytes > DOCUMENT_MAX_BYTES) {
+      onError(`Enter a size between ${formatBytes(DOCUMENT_MIN_BYTES)} and ${formatBytes(DOCUMENT_MAX_BYTES)}.`);
+      return;
+    }
+    setBusy(true);
+    try { await documents.saveSettings(bytes); onNotice('Upload limit saved.'); } catch (e) { onError(e instanceof Error ? e.message : 'Could not save the limit.'); } finally { setBusy(false); }
+  };
+  return (
+    <div className="flex flex-wrap items-end gap-3 rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm">
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="ul-mb" className={fieldLabelCls}>Largest upload (MB)</label>
+        <input id="ul-mb" inputMode="decimal" value={mb} onChange={(e) => setMb(e.target.value)} className={`${fieldInputCls} w-32`} disabled={busy} />
+      </div>
+      <Button variant="secondary" onClick={() => void save()} disabled={busy}>{busy ? 'Saving…' : 'Save limit'}</Button>
+      <p className="text-xs text-on-surface-variant">Between 0.1 and 3.5 MB. Files travel inside the request, so 3.5 MB is the most the platform accepts.</p>
+    </div>
   );
 }

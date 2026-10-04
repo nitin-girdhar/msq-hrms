@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import type { SessionUser } from '@platform/types';
 import { can, CAPABILITY } from '@platform/rbac';
 import { Alert, PageBody, PageHeader, PageSection } from '@platform/ui-kit';
-import { MyDocumentsPanel, ReviewQueue } from './DocumentsPanels';
+import { MyDocumentsPanel, ReviewQueue, UploadLimitCard } from './DocumentsPanels';
 
 interface Props {
   actor: SessionUser;
@@ -33,6 +33,11 @@ export default function DocumentsShell({ actor }: Props) {
         {canReview && (
           <PageSection title="Waiting for review">
             <ReviewQueue onError={onError} onNotice={onNotice} />
+          </PageSection>
+        )}
+        {canReview && (
+          <PageSection title="Upload limit">
+            <UploadLimitCard onError={onError} onNotice={onNotice} />
           </PageSection>
         )}
         {canKeep && (

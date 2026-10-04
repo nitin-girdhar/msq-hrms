@@ -156,6 +156,12 @@ export interface EmployeeProfileView {
   designation_id: string | null;
   designation_name: string | null;
   weekly_off_pattern: number[] | null;
+  grade?: string | null;
+  squad?: string | null;
+  cost_center?: string | null;
+  notice_period_days?: number | null;
+  work_mode?: 'office' | 'hybrid' | 'remote' | null;
+  seat_label?: string | null;
 }
 
 export interface HrLookupOption {

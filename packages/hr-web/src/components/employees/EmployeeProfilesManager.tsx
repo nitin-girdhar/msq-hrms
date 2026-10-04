@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Button, Modal, exportRows } from '@platform/ui-kit';
 import { hrEmployees } from '../../lib/api/client';
 import type { EmployeeProfileView, HrLookupOption } from '../../lib/leave/types';
+import { WORK_MODE_OPTIONS } from '../../lib/profile/types';
 import { emptyBlockCls, fieldInputCls, stateBlockCls } from '../../lib/ui';
 
 interface Props {
@@ -255,6 +256,12 @@ function EmployeeEditModal({ profile, departments, designations, onClose, onSave
   const [department, setDepartment] = useState(profile.department_name ?? '');
   const [designation, setDesignation] = useState(profile.designation_name ?? '');
   const [weeklyOff, setWeeklyOff] = useState<number[]>(profile.weekly_off_pattern ?? [0, 6]);
+  const [grade, setGrade] = useState(profile.grade ?? '');
+  const [squad, setSquad] = useState(profile.squad ?? '');
+  const [costCenter, setCostCenter] = useState(profile.cost_center ?? '');
+  const [notice, setNotice] = useState(profile.notice_period_days != null ? String(profile.notice_period_days) : '');
+  const [workMode, setWorkMode] = useState<string>(profile.work_mode ?? '');
+  const [seat, setSeat] = useState(profile.seat_label ?? '');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -265,6 +272,8 @@ function EmployeeEditModal({ profile, departments, designations, onClose, onSave
   const save = async () => {
     setError(null);
     if (!joining) { setError('Joining date is required.'); return; }
+    const noticeDays = notice.trim() === '' ? null : Number(notice);
+    if (noticeDays !== null && (!Number.isInteger(noticeDays) || noticeDays < 0 || noticeDays > 365)) { setError('Notice period is a whole number of days, 0 to 365.'); return; }
     setSubmitting(true);
     try {
       await hrEmployees.update(profile.user_id, {
@@ -273,6 +282,13 @@ function EmployeeEditModal({ profile, departments, designations, onClose, onSave
         department_name: department.trim() || undefined,
         designation_name: designation.trim() || undefined,
         weekly_off_pattern: weeklyOff,
+        // Empty clears the value (null), unlike the fields above.
+        grade: grade.trim() || null,
+        squad: squad.trim() || null,
+        cost_center: costCenter.trim() || null,
+        notice_period_days: noticeDays,
+        work_mode: (workMode || null) as 'office' | 'hybrid' | 'remote' | null,
+        seat_label: seat.trim() || null,
       });
       onSaved('Employee profile updated.');
       onClose();
@@ -319,6 +335,33 @@ function EmployeeEditModal({ profile, departments, designations, onClose, onSave
             <label htmlFor="ee-desig" className={labelCls}>Designation</label>
             <input id="ee-desig" list="ee-desig-list" value={designation} onChange={(e) => setDesignation(e.target.value)} disabled={submitting} className={inputCls} />
             <datalist id="ee-desig-list">{designations.map((d) => <option key={d.id} value={d.name} />)}</datalist>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="ee-grade" className={labelCls}>Grade / level</label>
+            <input id="ee-grade" value={grade} onChange={(e) => setGrade(e.target.value)} maxLength={40} placeholder="e.g. L4" disabled={submitting} className={inputCls} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="ee-squad" className={labelCls}>Squad</label>
+            <input id="ee-squad" value={squad} onChange={(e) => setSquad(e.target.value)} maxLength={100} disabled={submitting} className={inputCls} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="ee-cc" className={labelCls}>Cost centre</label>
+            <input id="ee-cc" value={costCenter} onChange={(e) => setCostCenter(e.target.value)} maxLength={60} disabled={submitting} className={inputCls} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="ee-notice" className={labelCls}>Notice period (days)</label>
+            <input id="ee-notice" inputMode="numeric" value={notice} onChange={(e) => setNotice(e.target.value)} disabled={submitting} className={inputCls} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="ee-mode" className={labelCls}>Work mode</label>
+            <select id="ee-mode" value={workMode} onChange={(e) => setWorkMode(e.target.value)} disabled={submitting} className={inputCls}>
+              <option value="">—</option>
+              {WORK_MODE_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="ee-seat" className={labelCls}>Seat</label>
+            <input id="ee-seat" value={seat} onChange={(e) => setSeat(e.target.value)} maxLength={60} placeholder="e.g. Floor 4, Desk 412" disabled={submitting} className={inputCls} />
           </div>
         </div>
 
