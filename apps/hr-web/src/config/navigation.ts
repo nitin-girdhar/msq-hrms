@@ -14,3 +14,17 @@ export const HR_NAV: readonly NavItem[] = [
   { id: 'employees',  label: 'Employees',  href: '/employees',  icon: 'id-card', capability: CAPABILITY.HR_EMPLOYEES },
   { id: 'reports',    label: 'Reports',    href: '/reports',    icon: 'chart-column', capability: CAPABILITY.HR_REPORTS },
 ] as const;
+
+// Phone bottom tab bar (AppShell `mobileTabs`): one entry per tab, each a list of
+// nav item ids in preference order — the first one the actor may open wins, none
+// drops the tab, and a trailing "More" opens the drawer. Ids only, so a tenant
+// rename or an unlicensed tool needs no change here. Stitch's dock is
+// Home / Attendance / Leaves / Payroll / Team; Home, Payroll and Team join this
+// list in the phases that build those pages (H2, H5, H4) — a tab must never lead
+// to a route that does not exist.
+export const HR_MOBILE_TABS: readonly (readonly string[])[] = [
+  ['attendance'],
+  ['leave'],
+  ['employees'],
+  ['reports'],
+];

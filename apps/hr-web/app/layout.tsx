@@ -1,13 +1,13 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
 import { ServiceWorkerRegistrar, pwaViewport, pwaAppleWebApp, pwaIcons, pwaAppleCapableMeta, pwaManifest } from '@platform/ui-kit';
+import { brandedMetadata, getEffectiveBranding } from '@platform/ui-kit/server';
+import { BrandingProvider } from '@platform/ui-kit/branding';
+import { ThemeStyle, themeHtmlProps } from '@platform/ui-kit/theme';
 import './globals.css';
-
-const inter = Inter({ subsets: ['latin'] });
 
 export const viewport = pwaViewport;
 
-export const metadata: Metadata = {
+const baseMetadata: Metadata = {
   title: 'FitClass · People & Attendance',
   description: 'Leave and attendance for FitClass teams',
   appleWebApp: pwaAppleWebApp,
@@ -16,12 +16,24 @@ export const metadata: Metadata = {
   other: pwaAppleCapableMeta,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+// Session tenant's tab title / favicon / app icon / manifest over the defaults.
+export async function generateMetadata(): Promise<Metadata> {
+  return brandedMetadata(baseMetadata, 'hr');
+}
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Tenant brand / user appearance → CSS variables (skills/react-typescript §6).
+  // Dark mode stays off for this app until every screen is on theme tokens.
+  const branding = await getEffectiveBranding();
+  const theme = branding.theme;
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.className} dashboard-shell bg-[#F8FAFC]`} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning {...themeHtmlProps(theme)}>
+      <head>
+        <ThemeStyle theme={theme} />
+      </head>
+      <body className="dashboard-shell bg-background font-sans text-on-surface" suppressHydrationWarning>
         <ServiceWorkerRegistrar />
-        {children}
+        <BrandingProvider value={branding}>{children}</BrandingProvider>
       </body>
     </html>
   );

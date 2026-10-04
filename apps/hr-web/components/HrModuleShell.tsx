@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation';
 import { NotificationProvider, productOrigins, authOrigin, adminWebOrigin, adminOrigin, usableProducts, landingFor } from '@platform/ui-kit';
-import { AppNavbar, AppSidebar, MobileSidebar } from '@platform/ui-kit/shell';
+import { AppShell } from '@platform/ui-kit/shell';
 import { requireSession, getEnabledModules, type PlatformModule } from '@platform/ui-kit/server';
-import { HR_NAV } from '@/src/config/navigation';
+import { HR_NAV, HR_MOBILE_TABS } from '@/src/config/navigation';
 
 type HrModule = Extract<PlatformModule, 'leave' | 'attendance'>;
 
@@ -39,25 +39,22 @@ export default async function HrModuleShell({ module, children }: Props) {
 
   return (
     <NotificationProvider>
-      <div className="flex min-h-screen w-full flex-col bg-[#F8FAFC] lg:h-full lg:min-h-0 lg:overflow-hidden">
-        <AppNavbar
-          user={session}
-          licensedProducts={licensedProducts}
-          productOrigins={origins}
-          activeProduct="hr"
-          homeHref="/attendance"
-          title="Fitclass - People & Attendance"
-          adminWebUrl={adminWebOrigin()}
-          lookupAdminUrl={adminOrigin()}
-        />
-        <MobileSidebar actor={session} items={HR_NAV} />
-        <div className="flex w-full flex-1 lg:min-h-0 lg:overflow-hidden">
-          <AppSidebar actor={session} items={HR_NAV} />
-          <main className="flex w-full min-w-0 flex-1 flex-col lg:overflow-y-auto">
-            {children}
-          </main>
-        </div>
-      </div>
+      <AppShell
+        nav={HR_NAV}
+        mobileTabs={HR_MOBILE_TABS}
+        productLine="People & Attendance"
+        productKey="hr"
+        user={session}
+        licensedProducts={licensedProducts}
+        productOrigins={origins}
+        activeProduct="hr"
+        homeHref="/attendance"
+        title="Fitclass - People & Attendance"
+        adminWebUrl={adminWebOrigin()}
+        lookupAdminUrl={adminOrigin()}
+      >
+        {children}
+      </AppShell>
     </NotificationProvider>
   );
 }

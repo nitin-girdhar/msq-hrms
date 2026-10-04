@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Design tokens (colour roles, type scale, fonts) — skills/react-typescript §6. */
+@import "@platform/ui-kit/theme.css";
 
 /* @platform/ui-kit's shell components (navbar, sidebar, product switcher, ...)
    live outside this app's own tree in packages/ui/src. Tailwind v4's default
@@ -17,8 +19,8 @@
 html, body {
   margin: 0;
   padding: 0;
-  background: #F8FAFC;
-  color: #0F172A;
+  background: var(--color-background);
+  color: var(--color-on-surface);
   -webkit-font-smoothing: antialiased;
 }
 
