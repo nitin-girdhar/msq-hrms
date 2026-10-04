@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { SessionUser } from '@platform/types';
-import { Alert, PageBody, PageHeader, PageSection, PhotoUploadModal, users as usersApi } from '@platform/ui-kit';
+import { Alert, Button, PageBody, PageHeader, PageSection, PhotoUploadModal, users as usersApi } from '@platform/ui-kit';
 import { attendance as attendanceApi, shiftAssignments as shiftAssignmentsApi } from '../../lib/api/client';
 import type { AttendanceDayRow, AttendanceRules, DayEventView, FaceSelfContext, PunchResult, RegularizationView, ShiftAssignmentView, TodayPunchState } from '../../lib/attendance/types';
 import { todayIso } from '../../lib/attendance/format';
@@ -198,6 +198,7 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
         title="My Attendance"
         subtitle="Check in/out, your monthly calendar, and regularization requests."
         tabs={<AttendanceTabs hrRank={hrRank} actor={actor} />}
+        actions={<Button variant="secondary" onClick={() => { setNotice(null); setRegFormDate(todayIso(orgTz)); }}>Regularize a missed punch</Button>}
       />
 
       <PageBody>
@@ -206,7 +207,10 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
 
         <NudgeBanner />
 
-        <TodayCard todayRow={todayRow} shift={shift} punchState={punchState} todayEvents={todayEvents} onPunch={startPunch} busy={punchMode !== null || gateBusy} />
+        <TodayCard todayRow={todayRow} shift={shift} punchState={punchState} todayEvents={todayEvents} onPunch={startPunch} busy={punchMode !== null || gateBusy} rules={rules} timezone={orgTz} />
+
+        {/* Quick standing, straight under the hero (Stitch): what is waiting, and what was fixed. */}
+        {!regLoading && <RegularizationStats items={regularizations} today={todayIso(orgTz)} />}
 
         <PageSection
           title="My month"
@@ -232,7 +236,6 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
         </PageSection>
 
         <PageSection title="My regularizations">
-          {!regLoading && <RegularizationStats items={regularizations} today={todayIso(orgTz)} />}
           <MyRegularizationsList
             items={regularizations}
             loading={regLoading}

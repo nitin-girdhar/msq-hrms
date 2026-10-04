@@ -49,8 +49,8 @@ function Stat({ label, value, hint, tone }: { label: string; value: number; hint
         {value}
       </span>
       <div className="min-w-0">
-        <p className="truncate text-label-md font-semibold text-on-surface">{label}</p>
-        <p className="truncate text-label-sm text-on-surface-variant">{hint}</p>
+        <p className="text-label-md font-semibold leading-tight text-on-surface">{label}</p>
+        <p className="text-label-sm leading-tight text-on-surface-variant">{hint}</p>
       </div>
     </div>
   );

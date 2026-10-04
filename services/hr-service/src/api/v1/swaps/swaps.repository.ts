@@ -101,6 +101,11 @@ export interface RosterDay {
   start: string | null;
   end: string | null;
 }
+export interface RosterSupervisor {
+  user_id: string;
+  full_name: string;
+  designation_name: string | null;
+}
 export interface RosterPerson {
   user_id: string;
   full_name: string;
@@ -132,8 +137,18 @@ export async function getRoster(ctx: SwapCtx, from: string | undefined, seeAllOr
       ORDER BY (u.id = ${ctx.user_id}) DESC, u.full_name
       LIMIT 200
     `)) as unknown as Array<{ user_id: string; full_name: string; wo: number[] | null }>;
+    // The caller's own manager, for the "Supervisor" card. Name and title only.
+    const sup = (await tx.execute(sql`
+      SELECT m.id::text AS user_id, m.full_name, ds.name AS designation_name
+      FROM iam.users u
+      JOIN iam.users m ON m.id = u.manager_id AND m.is_active
+      LEFT JOIN hr.employee_profiles mp ON mp.user_id = m.id AND NOT mp.is_deleted
+      LEFT JOIN hr.designations ds ON ds.id = mp.designation_id
+      WHERE u.id = ${ctx.user_id}
+    `)) as unknown as RosterSupervisor[];
+    const supervisor = sup[0] ?? null;
     const ids = people.map((p) => p.user_id);
-    if (ids.length === 0) return { week_start: start, week_end: end, people: [] as RosterPerson[] };
+    if (ids.length === 0) return { week_start: start, week_end: end, supervisor, people: [] as RosterPerson[] };
 
     const idList = sql.join(ids.map((i) => sql`${i}::uuid`), sql`, `);
     const assigns = (await tx.execute(sql`
@@ -172,7 +187,7 @@ export async function getRoster(ctx: SwapCtx, from: string | undefined, seeAllOr
           : { ...blank, kind: 'none' };
       }),
     }));
-    return { week_start: start, week_end: end, people: out };
+    return { week_start: start, week_end: end, supervisor, people: out };
   });
 }
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { AttendanceDayRow, DayEventView, ShiftAssignmentView, TodayPunchState } from '../../lib/attendance/types';
+import type { AttendanceDayRow, AttendanceRules, DayEventView, ShiftAssignmentView, TodayPunchState } from '../../lib/attendance/types';
 import { formatClockTime, formatWorkedMinutes } from '../../lib/attendance/format';
 import { formatSlotWindow, sessionMinutes, toSessions, toSlotRows } from '../../lib/attendance/sessions';
 
@@ -14,6 +14,10 @@ interface Props {
   todayEvents: DayEventView[];
   onPunch: (mode: 'check_in' | 'check_out') => void;
   busy: boolean;
+  /** The org's rules, for the geofence badge. Omit to hide it (e.g. the Home dashboard). */
+  rules?: AttendanceRules | null;
+  /** Org timezone, so the clock shows workplace time. */
+  timezone?: string | undefined;
 }
 
 /**
@@ -69,7 +73,25 @@ function liveWorkedMinutes(events: DayEventView[], now: number): number | null {
   return total;
 }
 
-export default function TodayCard({ todayRow, shift, punchState, todayEvents, onPunch, busy }: Props) {
+/** Ticking workplace clock (Stitch punch screen). Re-renders once a second, so it lives in its own component. */
+function LiveClock({ timezone }: { timezone?: string | undefined }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  const opts = timezone ? { timeZone: timezone } : {};
+  return (
+    <div className="text-right" aria-live="off">
+      <p className="font-mono text-headline-lg font-bold tabular-nums text-on-primary">
+        {now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true, ...opts })}
+      </p>
+      <p className="text-label-sm opacity-80">{now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', ...opts })}</p>
+    </div>
+  );
+}
+
+export default function TodayCard({ todayRow, shift, punchState, todayEvents, onPunch, busy, rules, timezone }: Props) {
   const hasCheckedIn = !!todayRow?.first_in;
   const { label, mode, disabled } = describe(punchState, hasCheckedIn);
 
@@ -132,12 +154,10 @@ export default function TodayCard({ todayRow, shift, punchState, todayEvents, on
                 </div>
               </>
             )}
-            {shift && (
-              <div>
-                <p className="text-label-sm opacity-80">Shift</p>
-                <p className="text-headline-sm font-semibold text-on-primary">{shift.shift_name}</p>
-              </div>
-            )}
+            <div>
+              <p className="text-label-sm opacity-80">Shift</p>
+              <p className="text-headline-sm font-semibold text-on-primary">{shift ? shift.shift_name : 'None assigned'}</p>
+            </div>
             {showSlots && (
               <div>
                 <p className="text-label-sm opacity-80">Slots</p>
@@ -190,6 +210,14 @@ export default function TodayCard({ todayRow, shift, punchState, todayEvents, on
           )}
         </div>
 
+        <div className="flex shrink-0 flex-col items-stretch gap-3 lg:items-end">
+          <LiveClock timezone={timezone} />
+          {rules && (
+            <p className="text-label-sm opacity-90 lg:text-right">
+              {rules.geofence_enabled ? `Geofence ${rules.geofence_radius_meters} m` : 'No geofence'}
+              {rules.require_photo ? ' · selfie' : ''}{rules.require_face_match ? ' · face check' : ''}
+            </p>
+          )}
         <button
           type="button"
           onClick={() => onPunch(mode)}
@@ -198,6 +226,7 @@ export default function TodayCard({ todayRow, shift, punchState, todayEvents, on
         >
           {label}
         </button>
+        </div>
       </div>
     </section>
   );

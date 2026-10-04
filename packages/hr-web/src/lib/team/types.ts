@@ -15,9 +15,17 @@ export interface RosterPerson {
   days: RosterDay[];
 }
 
+export interface RosterSupervisor {
+  user_id: string;
+  full_name: string;
+  designation_name: string | null;
+}
+
 export interface Roster {
   week_start: string;
   week_end: string;
+  /** The caller's manager, when they have one. */
+  supervisor: RosterSupervisor | null;
   people: RosterPerson[];
 }
 
