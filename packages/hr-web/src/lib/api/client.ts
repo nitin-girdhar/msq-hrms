@@ -27,7 +27,7 @@ import type {
   OrgChartPerson, PolicySummaryRow, PunchLogRow, StatutoryForm, StatutoryView, StatutoryValues,
 } from '../h7/types';
 import type { EmployeeDocument, PendingDocument, UploadDocumentBody } from '../documents/types';
-import type { ApplyShiftsBody, ApplyShiftsOutcome, PlannerWeek } from '../planner/types';
+import type { ApplyShiftsBody, ApplyShiftsOutcome, PlannerWeek, ReallocateBody } from '../planner/types';
 import type { PayrollOverview, PayrollReadiness, PayslipDetail, PayslipSummary } from '../payroll/types';
 import type {
   Employee360,
@@ -305,9 +305,11 @@ export const assets = {
 // ── Documents vault (schema 1.65.0) ───────────────────────────────────────────
 // ── Roster planner (schema 1.66.0) ────────────────────────────────────────────
 export const planner = {
-  week: (params: { from?: string; q?: string }) => request<Envelope<PlannerWeek>>(`/hr/attendance/planner/week${qs(params)}`),
+  week: (params: { view?: string; from?: string; q?: string }) => request<Envelope<PlannerWeek>>(`/hr/attendance/planner/week${qs(params)}`),
   apply: (body: ApplyShiftsBody) =>
     request<Envelope<ApplyShiftsOutcome>>('/hr/attendance/planner/cells', { method: 'PUT', body: JSON.stringify(body) }),
+  reallocate: (body: ReallocateBody) =>
+    request<Envelope<ApplyShiftsOutcome>>('/hr/attendance/planner/reallocate', { method: 'POST', body: JSON.stringify(body) }),
   setRequirement: (shift_id: string, required_headcount: number) =>
     request<void>('/hr/attendance/planner/requirements', { method: 'PUT', body: JSON.stringify({ shift_id, required_headcount }) }),
   publish: (week_start: string, note?: string) =>

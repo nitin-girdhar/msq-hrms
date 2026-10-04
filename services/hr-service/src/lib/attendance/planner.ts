@@ -102,6 +102,35 @@ export function restProblems(
   return problems.filter((p, i) => problems.findIndex((q) => q.date === p.date) === i);
 }
 
+export type PlannerView = 'day' | 'week' | 'month';
+
+/** The dates a planner view covers: one day, the Monday-to-Sunday week, or the calendar month. */
+export function rangeFor(view: PlannerView, from: string): { start: string; end: string } {
+  if (view === 'day') return { start: from, end: from };
+  if (view === 'week') {
+    const start = mondayOf(from);
+    return { start, end: addDays(start, 6) };
+  }
+  const start = `${from.slice(0, 7)}-01`;
+  const next = new Date(Date.UTC(Number(start.slice(0, 4)), Number(start.slice(5, 7)), 1)).toISOString().slice(0, 10);
+  return { start, end: addDays(next, -1) };
+}
+
+/**
+ * The sub-ranges of [from, to] on which a person is on `shiftId`, from their assignment rows. Used by
+ * "reallocate": move everyone from one shift to another without touching the days they were not on it.
+ */
+export function overlapsOnShift(windows: Window[], shiftId: string, from: string, to: string): Array<{ from: string; to: string }> {
+  const out: Array<{ from: string; to: string }> = [];
+  for (const w of windows) {
+    if (w.shiftId !== shiftId) continue;
+    const lo = w.from > from ? w.from : from;
+    const hi = w.to === null || w.to > to ? to : w.to;
+    if (lo <= hi) out.push({ from: lo, to: hi });
+  }
+  return out.sort((a, b) => (a.from < b.from ? -1 : 1));
+}
+
 /** Monday of the week containing `iso`. */
 export function mondayOf(iso: string): string {
   const dow = new Date(`${iso}T00:00:00Z`).getUTCDay();

@@ -11,5 +11,5 @@ export default async function PlannerPage() {
   if (!result) redirect(buildLoginUrl());
   // hr.attendance.roster.manage is what every /attendance/planner endpoint requires.
   if (!can(result.session, CAPABILITY.HR_ATTENDANCE_ROSTER_MANAGE)) redirect('/dashboard');
-  return <PlannerShell />;
+  return <PlannerShell actor={result.session} />;
 }

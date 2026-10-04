@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { planRange, shiftOnAfter, restProblems, eachDate, mondayOf, type Window } from '../planner.js';
+import { planRange, shiftOnAfter, restProblems, eachDate, mondayOf, rangeFor, overlapsOnShift, type Window } from '../planner.js';
 import type { ShiftTimes } from '../swap.js';
 
 const day: ShiftTimes = { id: 'day', start: '09:00', end: '17:00', isNight: false };
@@ -93,5 +93,25 @@ describe('dates', () => {
     expect(mondayOf('2026-10-04')).toBe('2026-09-28'); // Sunday
     expect(mondayOf('2026-10-05')).toBe('2026-10-05'); // Monday
     expect(mondayOf('2026-10-08')).toBe('2026-10-05');
+  });
+});
+
+describe('rangeFor', () => {
+  it('a day is itself', () => expect(rangeFor('day', '2026-10-07')).toEqual({ start: '2026-10-07', end: '2026-10-07' }));
+  it('a week runs Monday to Sunday', () => expect(rangeFor('week', '2026-10-07')).toEqual({ start: '2026-10-05', end: '2026-10-11' }));
+  it('a month runs from the 1st to its last day, including February in a leap year and December', () => {
+    expect(rangeFor('month', '2026-10-15')).toEqual({ start: '2026-10-01', end: '2026-10-31' });
+    expect(rangeFor('month', '2028-02-10')).toEqual({ start: '2028-02-01', end: '2028-02-29' });
+    expect(rangeFor('month', '2026-12-31')).toEqual({ start: '2026-12-01', end: '2026-12-31' });
+  });
+});
+
+describe('overlapsOnShift', () => {
+  const rows: Window[] = [w('a', 'S1', '2026-10-01', '2026-10-10'), w('b', 'S2', '2026-10-11', '2026-10-20'), w('c', 'S1', '2026-10-21', null)];
+  it('clips each matching row to the range and ignores other shifts', () => {
+    expect(overlapsOnShift(rows, 'S1', '2026-10-08', '2026-10-25')).toEqual([{ from: '2026-10-08', to: '2026-10-10' }, { from: '2026-10-21', to: '2026-10-25' }]);
+  });
+  it('returns nothing when the person was never on that shift in the range', () => {
+    expect(overlapsOnShift(rows, 'S2', '2026-10-01', '2026-10-05')).toEqual([]);
   });
 });

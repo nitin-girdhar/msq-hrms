@@ -74,6 +74,7 @@ export type DocumentSettingsInput = z.infer<typeof documentSettingsSchema>;
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
 
 export const plannerWeekQuerySchema = z.object({
+  view: z.enum(['day', 'week', 'month']).default('week'),
   from: isoDate.optional(),
   q: z.string().trim().max(100).optional(),
   department_id: z.string().uuid().optional(),
@@ -90,6 +91,19 @@ export const applyShiftsSchema = z
   .refine((v) => v.to >= v.from, { message: 'The end date is before the start date', path: ['to'] })
   .refine((v) => daysBetween(v.from, v.to) <= 92, { message: 'Plan at most three months at a time', path: ['to'] });
 
+/** Move people from one shift to another over a date range (everyone on it, or just the listed people). */
+export const reallocateShiftsSchema = z
+  .object({
+    from_shift_id: z.string().uuid(),
+    to_shift_id: z.string().uuid(),
+    from: isoDate,
+    to: isoDate,
+    user_ids: z.array(z.string().uuid()).max(300).optional(),
+  })
+  .refine((v) => v.from_shift_id !== v.to_shift_id, { message: 'Choose two different shifts', path: ['to_shift_id'] })
+  .refine((v) => v.to >= v.from, { message: 'The end date is before the start date', path: ['to'] })
+  .refine((v) => daysBetween(v.from, v.to) <= 92, { message: 'Plan at most three months at a time', path: ['to'] });
+
 export const setRequirementSchema = z.object({
   shift_id: z.string().uuid(),
   required_headcount: z.number().int().min(0).max(5000),
@@ -102,5 +116,6 @@ export const publishRosterSchema = z.object({
 
 export type PlannerWeekQuery = z.infer<typeof plannerWeekQuerySchema>;
 export type ApplyShiftsInput = z.infer<typeof applyShiftsSchema>;
+export type ReallocateShiftsInput = z.infer<typeof reallocateShiftsSchema>;
 export type SetRequirementInput = z.infer<typeof setRequirementSchema>;
 export type PublishRosterInput = z.infer<typeof publishRosterSchema>;

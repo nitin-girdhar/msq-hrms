@@ -1,15 +1,20 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { SessionUser } from '@platform/types';
+import { can, CAPABILITY } from '@platform/rbac';
 import { Alert, Button, Modal, PageBody, PageHeader } from '@platform/ui-kit';
-import { planner } from '../../lib/api/client';
+import { planner, swaps } from '../../lib/api/client';
+import type { ShiftSwap } from '../../lib/team/types';
 import {
   SHIFT_STYLE,
   addDaysIso,
   type ApplyShiftsOutcome,
   type PlannerPerson,
   type PlannerShift,
+  type PlannerView,
   type PlannerWeek,
+  stepStart,
 } from '../../lib/planner/types';
 import { formatDateTime } from '../../lib/attendance/format';
 import { emptyBlockCls, fieldInputCls, fieldLabelCls, stateBlockCls } from '../../lib/ui';
@@ -34,8 +39,10 @@ type Edit = { person: PlannerPerson; date: string };
  * swap and weekly-off desk, the capacity chart, bulk reallocation, day/month views and notifying
  * people on publish.
  */
-export default function PlannerShell() {
+export default function PlannerShell({ actor }: { actor: SessionUser }) {
+  const [view, setView] = useState<PlannerView>('week');
   const [from, setFrom] = useState<string | undefined>(undefined);
+  const [reallocating, setReallocating] = useState(false);
   const [query, setQuery] = useState('');
   const [week, setWeek] = useState<PlannerWeek | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -49,10 +56,10 @@ export default function PlannerShell() {
 
   const load = useCallback(() => {
     planner
-      .week({ ...(from ? { from } : {}), ...(query.trim() ? { q: query.trim() } : {}) })
+      .week({ view, ...(from ? { from } : {}), ...(query.trim() ? { q: query.trim() } : {}) })
       .then((r) => { setWeek(r.data); setError(null); })
       .catch((e) => { setWeek(null); setError(e instanceof Error ? e.message : 'Failed to load the planner.'); });
-  }, [from, query]);
+  }, [view, from, query]);
 
   useEffect(() => {
     const t = setTimeout(load, query ? 250 : 0);
@@ -66,9 +73,12 @@ export default function PlannerShell() {
   const shiftById = useMemo(() => new Map((week?.shifts ?? []).map((s) => [s.id, s])), [week]);
 
   const today = todayIso();
-  const dates = week ? Array.from({ length: 7 }, (_, i) => addDaysIso(week.week_start, i)) : [];
-  // The day the capacity cards describe: today when it is in this week, otherwise Monday.
+  const dates = week ? Array.from({ length: Math.round((Date.parse(`${week.week_end}T00:00:00Z`) - Date.parse(`${week.week_start}T00:00:00Z`)) / 86_400_000) + 1 }, (_, i) => addDaysIso(week.week_start, i)) : [];
+  // The day the capacity cards describe: today when it is in view, otherwise the first day.
   const focusIdx = week && today >= week.week_start && today <= week.week_end ? dates.indexOf(today) : 0;
+  const compact = view === 'month';
+  const dow = (iso: string) => DOW[(new Date(`${iso}T00:00:00Z`).getUTCDay() + 6) % 7]!;
+  const rangeLabel = !week ? '…' : view === 'day' ? new Date(`${week.week_start}T00:00:00Z`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : view === 'month' ? new Date(`${week.week_start}T00:00:00Z`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : `${monthShort(week.week_start)} – ${monthShort(week.week_end)} ${week.week_end.slice(0, 4)}`;
 
   const toggle = (id: string) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const allShown = week ? week.people.length > 0 && week.people.every((p) => selected.has(p.user_id)) : false;
@@ -83,7 +93,7 @@ export default function PlannerShell() {
   const exportCsv = () => {
     if (!week) return;
     const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
-    const head = ['Name', 'Code', ...dates.map((d) => `${DOW[dates.indexOf(d)]} ${d}`)];
+    const head = ['Name', 'Code', ...dates.map((d) => `${dow(d)} ${d}`)];
     const rows = week.people.map((p) => [
       p.full_name, p.employee_code ?? '',
       ...p.days.map((d) => (d.kind === 'shift' ? (shiftById.get(d.shift_id!)?.name ?? '') : d.kind === 'off' || d.kind === 'holiday' || d.kind === 'leave' ? NON_SHIFT[d.kind][0] : '')),
@@ -91,7 +101,7 @@ export default function PlannerShell() {
     const csv = [head, ...rows].map((r) => r.map(esc).join(',')).join('\r\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `roster-${week.week_start}.csv`;
+    a.download = `roster-${view}-${week.week_start}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -104,8 +114,9 @@ export default function PlannerShell() {
         actions={
           <>
             <Button variant="secondary" onClick={exportCsv} disabled={!week || week.people.length === 0}>Export</Button>
+            <Button variant="secondary" onClick={() => setReallocating(true)} disabled={!week || week.shifts.length < 2}>Bulk reallocate</Button>
             <Button variant="secondary" onClick={() => setPattern(true)} disabled={selected.size === 0}>Assign shift pattern{selected.size ? ` (${selected.size})` : ''}</Button>
-            <Button variant="primary" onClick={() => setPublishing(true)} disabled={!week}>Publish roster</Button>
+            {view === 'week' && <Button variant="primary" onClick={() => setPublishing(true)} disabled={!week}>Publish roster</Button>}
           </>
         }
       />
@@ -120,14 +131,20 @@ export default function PlannerShell() {
         )}
 
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-outline-variant bg-surface-container-lowest p-3 shadow-sm">
+          <div className="flex gap-1 rounded-lg border border-outline-variant bg-surface-container-low p-1" role="tablist" aria-label="Roster view">
+            {(['day', 'week', 'month'] as const).map((v) => (
+              <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => { setView(v); setFrom(week?.week_start); }}
+                className={`rounded-md px-3 py-1 text-xs font-semibold capitalize ${view === v ? 'bg-surface-container-lowest text-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}>{v}</button>
+            ))}
+          </div>
           <div className="flex items-center gap-1 rounded-lg border border-outline-variant bg-surface-container-low px-1 py-1">
-            <button type="button" aria-label="Previous week" onClick={() => week && setFrom(addDaysIso(week.week_start, -7))} className="rounded px-2 py-1 text-on-surface-variant hover:bg-surface-container">‹</button>
-            <span className="min-w-44 text-center text-sm font-semibold text-on-surface">{week ? `${monthShort(week.week_start)} – ${monthShort(week.week_end)} ${week.week_end.slice(0, 4)}` : '…'}</span>
-            <button type="button" aria-label="Next week" onClick={() => week && setFrom(addDaysIso(week.week_start, 7))} className="rounded px-2 py-1 text-on-surface-variant hover:bg-surface-container">›</button>
+            <button type="button" aria-label={`Previous ${view}`} onClick={() => week && setFrom(stepStart(view, week.week_start, -1))} className="rounded px-2 py-1 text-on-surface-variant hover:bg-surface-container">‹</button>
+            <span className="min-w-44 text-center text-sm font-semibold text-on-surface">{rangeLabel}</span>
+            <button type="button" aria-label={`Next ${view}`} onClick={() => week && setFrom(stepStart(view, week.week_start, 1))} className="rounded px-2 py-1 text-on-surface-variant hover:bg-surface-container">›</button>
           </div>
           <Button variant="secondary" onClick={() => setFrom(undefined)}>Today</Button>
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, email or code" aria-label="Search people" className={`${fieldInputCls} w-64`} />
-          {week && (
+          {week && view === 'week' && (
             <span className={`ml-auto rounded-full px-3 py-1 text-label-sm font-semibold ${week.published ? (week.changes_since_publish > 0 ? 'bg-status-due-container text-on-status-due-container' : 'bg-status-success-container text-on-status-success-container') : 'bg-surface-container text-on-surface-variant'}`}>
               {week.published
                 ? `Published ${formatDateTime(week.published.published_at)}${week.published.published_by_name ? ` by ${week.published.published_by_name}` : ''}${week.changes_since_publish > 0 ? ` · ${week.changes_since_publish} change${week.changes_since_publish === 1 ? '' : 's'} since` : ''}`
@@ -143,7 +160,7 @@ export default function PlannerShell() {
                 <p className="text-label-sm font-semibold uppercase tracking-wide text-on-surface-variant">Headcount pool</p>
                 <p className="mt-1 font-mono text-headline-lg font-bold tabular-nums text-on-surface">{week.headcount}</p>
                 <p className="text-label-sm text-on-surface-variant">
-                  {Object.values(week.assigned).reduce((n, d) => n + (d[focusIdx] ?? 0), 0)} on a shift {dates[focusIdx] === today ? 'today' : `on ${monthShort(dates[focusIdx]!)}`}
+                  {Object.values(week.assigned).reduce((n, d) => n + (d[focusIdx] ?? 0), 0)} on a shift {dates[focusIdx] === today ? 'today' : `on ${monthShort(dates[focusIdx] ?? week.week_start)}`}
                 </p>
               </div>
               {week.shifts.map((s) => {
@@ -170,27 +187,28 @@ export default function PlannerShell() {
 
             {week.shifts.length === 0 && <p className={emptyBlockCls}>No shifts are defined for this branch yet. Add them under Attendance admin → Shifts, then plan them here.</p>}
 
-            <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
-              <table className="w-full min-w-[56rem] border-collapse text-sm">
+            {view === 'day' && <DayLanes week={week} shiftStyle={shiftStyle} onPick={(p) => setEdit({ person: p, date: week.week_start })} />}
+            {view !== 'day' && <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
+              <table className={`w-full border-collapse text-sm ${compact ? 'min-w-[72rem]' : 'min-w-[56rem]'}`}>
                 <thead>
                   <tr className="border-b border-outline-variant bg-surface-container-low text-left text-label-sm uppercase tracking-wide text-on-surface-variant">
-                    <th className="w-72 px-3 py-2">
+                    <th className={`${compact ? 'w-56' : 'w-72'} px-3 py-2`}>
                       <label className="flex items-center gap-2">
                         <input type="checkbox" checked={allShown} onChange={() => setSelected(allShown ? new Set() : new Set(week.people.map((p) => p.user_id)))} aria-label="Select everyone shown" />
                         Staff
                       </label>
                     </th>
-                    {dates.map((d, i) => (
-                      <th key={d} className={`px-2 py-2 text-center ${d === today ? 'bg-primary-fixed text-on-primary-fixed' : ''}`}>
-                        {DOW[i]} <span className="block font-mono text-sm normal-case text-on-surface">{dayNum(d)}</span>
-                        {d === today && <span className="text-[10px] normal-case">Today</span>}
+                    {dates.map((d) => (
+                      <th key={d} className={`${compact ? 'px-0.5' : 'px-2'} py-2 text-center ${d === today ? 'bg-primary-fixed text-on-primary-fixed' : ''}`}>
+                        {compact ? dow(d).slice(0, 1) : dow(d)} <span className="block font-mono text-sm normal-case text-on-surface">{dayNum(d)}</span>
+                        {d === today && !compact && <span className="text-[10px] normal-case">Today</span>}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {week.people.length === 0 && (
-                    <tr><td colSpan={8} className="px-4 py-8 text-center text-on-surface-variant">No one matches.</td></tr>
+                    <tr><td colSpan={dates.length + 1} className="px-4 py-8 text-center text-on-surface-variant">No one matches.</td></tr>
                   )}
                   {week.people.map((p) => (
                     <tr key={p.user_id} className="border-b border-outline-variant/50 last:border-0">
@@ -207,7 +225,7 @@ export default function PlannerShell() {
                         const editable = d.date >= today;
                         const s = d.shift_id ? shiftById.get(d.shift_id) : null;
                         return (
-                          <td key={d.date} className={`px-1 py-1 text-center ${d.date === today ? 'bg-primary-fixed/30' : ''}`}>
+                          <td key={d.date} className={`${compact ? 'px-0.5' : 'px-1'} py-1 text-center ${d.date === today ? 'bg-primary-fixed/30' : ''}`}>
                             <button
                               type="button"
                               disabled={!editable}
@@ -215,7 +233,11 @@ export default function PlannerShell() {
                               title={editable ? 'Change this day' : 'Past days are already resolved into attendance'}
                               className="w-full rounded-lg px-1 py-1 text-label-sm transition-opacity enabled:hover:ring-2 enabled:hover:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                              {d.kind === 'shift' && s ? (
+                              {compact ? (
+                                <span title={s ? `${s.name} ${s.start}–${s.end}` : d.kind} className={`block rounded px-0.5 py-1 text-[10px] font-semibold ${s && d.kind === 'shift' ? shiftStyle(s.id).chip : d.kind === 'none' ? 'border border-dashed border-outline-variant text-outline' : d.kind === 'off' || d.kind === 'holiday' || d.kind === 'leave' ? NON_SHIFT[d.kind][1] : ''}`}>
+                                  {s && d.kind === 'shift' ? s.name.slice(0, 2) : d.kind === 'none' ? '+' : d.kind === 'off' || d.kind === 'holiday' || d.kind === 'leave' ? NON_SHIFT[d.kind][0].slice(0, 1) : ''}
+                                </span>
+                              ) : d.kind === 'shift' && s ? (
                                 <span className={`block rounded-lg px-1.5 py-1 ${shiftStyle(s.id).chip}`}>
                                   <span className="block truncate font-semibold">{s.name}</span>
                                   <span className="block tabular-nums opacity-80">{s.start}–{s.end}</span>
@@ -233,6 +255,10 @@ export default function PlannerShell() {
                   ))}
                 </tbody>
               </table>
+            </div>}
+            <div className="grid gap-4 lg:grid-cols-2">
+              <CapacityDonut week={week} dayIdx={focusIdx} date={dates[focusIdx] ?? week.week_start} shiftStyle={shiftStyle} />
+              {can(actor, CAPABILITY.HR_ATTENDANCE_SWAP_APPROVE) && <SwapDesk onChanged={load} />}
             </div>
             <p className="text-label-sm text-on-surface-variant">
               A shift set on a weekly off or holiday is kept but shows as off. Every change is checked against the 11-hour rest rule and recorded in the audit log.
@@ -258,6 +284,9 @@ export default function PlannerShell() {
       )}
       {needs && (
         <NeedsModal shift={needs} onClose={() => setNeeds(null)} onSaved={() => { setNeeds(null); setNotice('Saved.'); load(); }} />
+      )}
+      {reallocating && week && (
+        <ReallocateModal week={week} selected={[...selected]} onClose={() => setReallocating(false)} onDone={(o) => { setReallocating(false); afterApply(o); }} />
       )}
       {publishing && week && (
         <PublishModal week={week} onClose={() => setPublishing(false)} onDone={() => { setPublishing(false); setNotice('Roster published.'); load(); }} />
@@ -425,6 +454,201 @@ function PublishModal({ week, onClose, onDone }: { week: PlannerWeek; onClose: (
           <label htmlFor="pb-note" className={fieldLabelCls}>Note (optional)</label>
           <textarea id="pb-note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} rows={2} className={`${fieldInputCls} h-auto py-2`} disabled={busy} />
         </div>
+      </div>
+    </Modal>
+  );
+}
+
+/** Day view: one lane per shift listing who is on it, then everyone with no shift, off or on leave. */
+function DayLanes({ week, shiftStyle, onPick }: {
+  week: PlannerWeek; shiftStyle: (id: string) => (typeof SHIFT_STYLE)[number]; onPick: (p: PlannerPerson) => void;
+}) {
+  const dayOf = (p: PlannerPerson) => p.days[0]!;
+  const lanes = week.shifts.map((s) => ({ shift: s, people: week.people.filter((p) => dayOf(p).shift_id === s.id) }));
+  const unassigned = week.people.filter((p) => dayOf(p).kind === 'none');
+  const away = week.people.filter((p) => ['off', 'holiday', 'leave'].includes(dayOf(p).kind));
+  const lane = (title: string, sub: string, dot: string | null, people: PlannerPerson[], key: string) => (
+    <section key={key} className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm">
+      <h3 className="flex items-center gap-2 text-sm font-semibold text-on-surface">
+        {dot && <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: dot }} aria-hidden="true" />}{title}
+        <span className="ml-auto font-mono text-xs font-bold text-on-surface-variant">{people.length}</span>
+      </h3>
+      <p className="mb-2 text-label-sm text-on-surface-variant">{sub}</p>
+      {people.length === 0 ? <p className="text-sm text-outline">No one.</p> : (
+        <ul className="flex flex-wrap gap-1.5">
+          {people.map((p) => (
+            <li key={p.user_id}>
+              <button type="button" onClick={() => onPick(p)} title="Change this day" className="rounded-full border border-outline-variant bg-surface-container-low px-3 py-1 text-xs font-medium text-on-surface hover:border-primary">
+                {p.full_name}{dayOf(p).kind === 'off' ? ' · off' : dayOf(p).kind === 'holiday' ? ' · holiday' : dayOf(p).kind === 'leave' ? ' · leave' : ''}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+  return (
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {lanes.map(({ shift, people }) => lane(shift.name, `${shift.start}–${shift.end}${shift.is_night ? ' (+1 day)' : ''}${shift.required !== null ? ` · needs ${shift.required}` : ''}`, shiftStyle(shift.id).dot, people, shift.id))}
+      {lane('No shift yet', 'Working day with nothing assigned', null, unassigned, 'none')}
+      {lane('Off, holiday or leave', 'Not planned', null, away, 'away')}
+    </div>
+  );
+}
+
+/** Who is on which shift on the focus day, as a donut, with the people still unassigned in the middle of the story. */
+function CapacityDonut({ week, dayIdx, date, shiftStyle }: {
+  week: PlannerWeek; dayIdx: number; date: string; shiftStyle: (id: string) => (typeof SHIFT_STYLE)[number];
+}) {
+  const parts = week.shifts.map((s) => ({ s, n: week.assigned[s.id]?.[dayIdx] ?? 0 })).filter((x) => x.n > 0);
+  const onShift = parts.reduce((n, x) => n + x.n, 0);
+  const unassigned = week.people.filter((p) => p.days[dayIdx]?.kind === 'none').length;
+  const total = onShift + unassigned;
+  const r = 38;
+  const c = 2 * Math.PI * r;
+  let offset = 0;
+  return (
+    <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm">
+      <h3 className="text-base font-semibold text-on-surface">Capacity distribution</h3>
+      <p className="mb-3 text-xs text-on-surface-variant">{monthShort(date)}: working people by shift</p>
+      {total === 0 ? <p className="text-sm text-on-surface-variant">No one is planned to work that day.</p> : (
+        <div className="flex items-center gap-4">
+          <svg width="104" height="104" viewBox="0 0 104 104" role="img" aria-label={`${onShift} of ${total} working people have a shift`} className="shrink-0">
+            <circle cx="52" cy="52" r={r} fill="none" strokeWidth="14" className="stroke-surface-container-high" />
+            {parts.map(({ s, n }) => {
+              const len = (n / total) * c;
+              const el = <circle key={s.id} cx="52" cy="52" r={r} fill="none" strokeWidth="14" stroke={shiftStyle(s.id).dot} strokeDasharray={`${len} ${c - len}`} strokeDashoffset={-offset} transform="rotate(-90 52 52)" />;
+              offset += len;
+              return el;
+            })}
+            <text x="52" y="50" textAnchor="middle" className="fill-on-surface text-[20px] font-bold">{total}</text>
+            <text x="52" y="65" textAnchor="middle" className="fill-on-surface-variant text-[9px]">working</text>
+          </svg>
+          <ul className="min-w-0 flex-1 space-y-1 text-sm">
+            {parts.map(({ s, n }) => (
+              <li key={s.id} className="flex items-center justify-between gap-2">
+                <span className="flex min-w-0 items-center gap-2 text-on-surface-variant"><span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: shiftStyle(s.id).dot }} aria-hidden="true" /><span className="truncate">{s.name}</span></span>
+                <span className="font-mono font-semibold tabular-nums text-on-surface">{n}</span>
+              </li>
+            ))}
+            {unassigned > 0 && <li className="flex items-center justify-between gap-2 text-status-due"><span>No shift yet</span><span className="font-mono font-semibold tabular-nums">{unassigned}</span></li>}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** Pending shift swaps waiting for an approver (the same approval the team page offers), without leaving the planner. */
+function SwapDesk({ onChanged }: { onChanged: () => void }) {
+  const [items, setItems] = useState<ShiftSwap[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [declining, setDeclining] = useState<string | null>(null);
+  const [comment, setComment] = useState('');
+
+  const load = useCallback(() => {
+    swaps.queue().then((r) => setItems(r.data.filter((s) => s.status === 'pending_manager'))).catch((e) => { setItems([]); setError(e instanceof Error ? e.message : 'Failed to load swaps.'); });
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const decide = async (id: string, approve: boolean) => {
+    setError(null);
+    if (!approve && !comment.trim()) { setError('Say why it is being declined.'); return; }
+    setBusy(id);
+    try {
+      if (approve) await swaps.approve(id); else await swaps.reject(id, comment.trim());
+      setDeclining(null); setComment(''); load(); onChanged();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not save the decision.'); } finally { setBusy(null); }
+  };
+
+  return (
+    <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm">
+      <h3 className="flex items-center gap-2 text-base font-semibold text-on-surface">
+        Swap requests
+        {items && items.length > 0 && <span className="rounded-full bg-status-overdue px-2 py-0.5 text-label-sm font-bold text-on-status-overdue">{items.length}</span>}
+      </h3>
+      <p className="mb-3 text-xs text-on-surface-variant">Two people agreed to trade a day; approving changes both rosters.</p>
+      {error && <div role="alert" className="mb-2 rounded-lg border border-status-overdue/30 bg-status-overdue-container px-3 py-2 text-xs text-on-status-overdue-container">{error}</div>}
+      {items === null ? <p className="text-sm text-on-surface-variant">Loading…</p> : items.length === 0 ? (
+        <p className="text-sm text-on-surface-variant">Nothing waiting for you.</p>
+      ) : (
+        <ul className="space-y-2">
+          {items.map((s) => (
+            <li key={s.id} className="rounded-lg border border-outline-variant/60 bg-surface-container-low p-3">
+              <p className="text-sm font-semibold text-on-surface">{s.requester_name} <span className="font-normal text-on-surface-variant">({s.requester_shift})</span> ⇄ {s.peer_name} <span className="font-normal text-on-surface-variant">({s.peer_shift})</span></p>
+              <p className="text-xs text-on-surface-variant">{monthShort(s.swap_date)} · “{s.reason}”</p>
+              {declining === s.id ? (
+                <div className="mt-2 flex flex-col gap-2">
+                  <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={2} maxLength={300} placeholder="Reason for declining" aria-label="Reason for declining" className={`${fieldInputCls} h-auto py-2`} />
+                  <div className="flex gap-2">
+                    <Button variant="danger" disabled={busy === s.id} onClick={() => void decide(s.id, false)}>Decline</Button>
+                    <Button variant="secondary" onClick={() => { setDeclining(null); setComment(''); }}>Back</Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-2 flex gap-2">
+                  <Button variant="primary" disabled={busy === s.id} onClick={() => void decide(s.id, true)}>Approve swap</Button>
+                  <Button variant="secondary" disabled={busy === s.id} onClick={() => setDeclining(s.id)}>Decline</Button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function ReallocateModal({ week, selected, onClose, onDone }: {
+  week: PlannerWeek; selected: string[]; onClose: () => void; onDone: (o: ApplyShiftsOutcome) => void;
+}) {
+  const today = todayIso();
+  const [fromShift, setFromShift] = useState(week.shifts[0]?.id ?? '');
+  const [toShift, setToShift] = useState(week.shifts[1]?.id ?? '');
+  const [from, setFrom] = useState(week.week_start < today ? today : week.week_start);
+  const [to, setTo] = useState(week.week_end < today ? today : week.week_end);
+  const [onlySelected, setOnlySelected] = useState(selected.length > 0);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const save = async () => {
+    setErr(null);
+    if (fromShift === toShift) { setErr('Choose two different shifts.'); return; }
+    if (from < today) { setErr('Plan from today onwards.'); return; }
+    if (to < from) { setErr('The end date is before the start date.'); return; }
+    setBusy(true);
+    try {
+      const r = await planner.reallocate({ from_shift_id: fromShift, to_shift_id: toShift, from, to, ...(onlySelected && selected.length ? { user_ids: selected } : {}) });
+      onDone(r.data);
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Could not reallocate.'); } finally { setBusy(false); }
+  };
+  const footer = (
+    <div className="flex justify-end gap-2">
+      <button type="button" onClick={onClose} disabled={busy} className={`${footerBtn} border border-outline-variant bg-surface-container-lowest text-on-surface-variant`}>Cancel</button>
+      <button type="button" onClick={() => void save()} disabled={busy} className={`${footerBtn} bg-primary text-on-primary`}>{busy ? 'Moving…' : 'Reallocate'}</button>
+    </div>
+  );
+  return (
+    <Modal open onClose={onClose} title="Bulk reallocate" locked={busy} maxWidth="max-w-md" footer={footer}>
+      <div className="flex flex-col gap-3">
+        {err && <div role="alert" className="rounded-xl border border-status-overdue/30 bg-status-overdue-container px-3 py-2 text-xs text-on-status-overdue-container">{err}</div>}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="ra-from" className={fieldLabelCls}>Move people off</label>
+            <select id="ra-from" value={fromShift} onChange={(e) => setFromShift(e.target.value)} className={fieldInputCls} disabled={busy}>{week.shifts.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="ra-to" className={fieldLabelCls}>…onto</label>
+            <select id="ra-to" value={toShift} onChange={(e) => setToShift(e.target.value)} className={fieldInputCls} disabled={busy}>{week.shifts.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+          </div>
+          <div className="flex flex-col gap-1.5"><label htmlFor="ra-d1" className={fieldLabelCls}>From</label><input id="ra-d1" type="date" min={today} value={from} onChange={(e) => setFrom(e.target.value)} className={fieldInputCls} disabled={busy} /></div>
+          <div className="flex flex-col gap-1.5"><label htmlFor="ra-d2" className={fieldLabelCls}>To</label><input id="ra-d2" type="date" min={from} value={to} onChange={(e) => setTo(e.target.value)} className={fieldInputCls} disabled={busy} /></div>
+        </div>
+        {selected.length > 0 && (
+          <label className="flex items-center gap-2 text-sm text-on-surface"><input type="checkbox" checked={onlySelected} onChange={(e) => setOnlySelected(e.target.checked)} disabled={busy} /> Only the {selected.length} ticked {selected.length === 1 ? 'person' : 'people'}</label>
+        )}
+        <p className="text-xs text-on-surface-variant">Only days someone is on the first shift change. Anyone whose rest between shifts would fall under 11 hours is skipped and listed.</p>
       </div>
     </Modal>
   );

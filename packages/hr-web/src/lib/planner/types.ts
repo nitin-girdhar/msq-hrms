@@ -26,14 +26,18 @@ export interface PlannerPerson {
   days: PlannerDay[];
 }
 
+export type PlannerView = 'day' | 'week' | 'month';
+
 export interface PlannerWeek {
+  view: PlannerView;
+  /** First and last date of the view (a day, a week or a calendar month). */
   week_start: string;
   week_end: string;
   published: { published_at: string; published_by_name: string | null; note: string | null } | null;
   /** Assignment rows changed after the week was published. */
   changes_since_publish: number;
   shifts: PlannerShift[];
-  /** assigned[shiftId][dayIndex 0=Mon]: people on that shift that day. */
+  /** assigned[shiftId][dayIndex]: people on that shift that day. */
   assigned: Record<string, number[]>;
   headcount: number;
   people: PlannerPerson[];
@@ -62,6 +66,22 @@ export const SHIFT_STYLE = [
   { chip: 'bg-cat-cyan-container text-on-cat-cyan-container', dot: 'var(--color-cat-cyan)' },
   { chip: 'bg-cat-pink-container text-on-cat-pink-container', dot: 'var(--color-cat-pink)' },
 ] as const;
+
+export interface ReallocateBody {
+  from_shift_id: string;
+  to_shift_id: string;
+  from: string;
+  to: string;
+  user_ids?: string[];
+}
+
+/** One step back or forward in the given view: a day, seven days, or a calendar month. */
+export function stepStart(view: PlannerView, start: string, dir: -1 | 1): string {
+  if (view === 'day') return addDaysIso(start, dir);
+  if (view === 'week') return addDaysIso(start, 7 * dir);
+  const d = new Date(Date.UTC(Number(start.slice(0, 4)), Number(start.slice(5, 7)) - 1 + dir, 1));
+  return d.toISOString().slice(0, 10);
+}
 
 export const addDaysIso = (iso: string, days: number): string =>
   new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
