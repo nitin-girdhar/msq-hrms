@@ -339,6 +339,8 @@ export const documents = {
   remove: (id: string) => request<void>(`/hr/documents/${id}`, { method: 'DELETE' }),
   /** Authenticated, same-origin; opened in a new tab. */
   fileUrl: (id: string) => `/api/hr/documents/${id}/file`,
+  /** The whole folder as a ZIP: the caller's own, or (documents.manage) one employee's. */
+  dossierUrl: (userId?: string) => (userId ? `/api/hr/documents/employee/${userId}/dossier` : '/api/hr/documents/mine/dossier'),
 };
 
 // ── Payroll viewer + month lock (schema 1.62.0) ───────────────────────────────

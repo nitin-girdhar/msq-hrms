@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { sql } from 'drizzle-orm';
 import { withServiceTx } from '@platform/db';
 import { logActivity } from '@platform/audit-log';
@@ -11,6 +11,7 @@ import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '.
 import { getPhotoStorage } from '../../../lib/storage/photo-storage.js';
 import { sniffDocument } from '../../../lib/documents/sniff.js';
 import { documentLimitFor } from '../../../lib/documents/limit.js';
+import { buildZip, uniqueNames } from '../../../lib/documents/zip.js';
 import {
   uploadDocumentSchema,
   reviewDocumentSchema,
@@ -133,6 +134,52 @@ export async function documentsRouter(app: FastifyInstance) {
     );
     audit(request, 'documents_listed', userId, userId);
     return reply.send({ success: true, data });
+  });
+
+  // The whole folder as one ZIP ("dossier"): verified and pending files, not rejected ones. The size is
+  // capped so one request cannot pull the blob store into memory. HR's download of someone else's is audited.
+  const DOSSIER_MAX_BYTES = 25 * 1024 * 1024;
+  const sendDossier = async (request: FastifyRequest, reply: FastifyReply, subjectId: string, own: boolean) => {
+    const { org_id } = request.auth;
+    const { name, rows } = await withServiceTx(async (tx) => {
+      const who = (await tx.execute(sql`
+        SELECT u.full_name FROM iam.users u JOIN hr.employee_profiles p ON p.user_id = u.id
+        WHERE u.id = ${subjectId} AND p.org_id = ${org_id} LIMIT 1`)) as unknown as Array<{ full_name: string }>;
+      const docs = (await tx.execute(sql`
+        SELECT d.title, d.category, d.file_key, d.file_name, d.size_bytes, d.created_at::text AS created_at
+        FROM hr.employee_documents d
+        WHERE d.user_id = ${subjectId} AND d.org_id = ${org_id} AND NOT d.is_deleted AND d.status <> 'rejected'
+        ORDER BY d.category, d.created_at`)) as unknown as Array<{ title: string; category: string; file_key: string; file_name: string; size_bytes: number; created_at: string }>;
+      return { name: who[0]?.full_name, rows: docs };
+    });
+    if (!name) throw new NotFoundError('Employee not found');
+    if (rows.length === 0) throw new NotFoundError('There are no documents to download');
+    if (rows.reduce((t, r) => t + r.size_bytes, 0) > DOSSIER_MAX_BYTES) throw new BadRequestError('The folder is too large to download at once; open the files one by one');
+    const storage = getPhotoStorage();
+    const files: Array<{ row: (typeof rows)[number]; data: Buffer }> = [];
+    for (const r of rows) {
+      const data = await storage.get(r.file_key);
+      if (data) files.push({ row: r, data });
+    }
+    if (files.length === 0) throw new NotFoundError('There are no documents to download');
+    const names = uniqueNames(files.map(({ row }) => `${row.category}_${row.title}${row.file_name.includes('.') ? row.file_name.slice(row.file_name.lastIndexOf('.')) : ''}`));
+    const zip = buildZip(files.map(({ row, data }, i) => ({ name: names[i]!, data, date: new Date(row.created_at) })));
+    if (!own) audit(request, 'document_dossier_downloaded', subjectId, subjectId, { count: files.length });
+    const safe = name.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_').slice(0, 60) || 'documents';
+    return reply
+      .header('Content-Type', 'application/zip')
+      .header('Content-Disposition', `attachment; filename="${safe}_documents.zip"`)
+      .header('X-Content-Type-Options', 'nosniff')
+      .header('Cache-Control', 'private, no-store')
+      .send(zip);
+  };
+
+  app.get('/documents/mine/dossier', { preHandler: [authenticate, view] }, async (request, reply) =>
+    sendDossier(request, reply, request.auth.user_id, true));
+
+  app.get('/documents/employee/:userId/dossier', { preHandler: [authenticate, manage] }, async (request, reply) => {
+    const { userId } = request.params as { userId: string };
+    return sendDossier(request, reply, userId, false);
   });
 
   // HR: what is waiting for review, oldest first.

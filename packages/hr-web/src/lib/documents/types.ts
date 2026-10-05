@@ -21,6 +21,26 @@ export const DOCUMENT_MIN_BYTES = 100 * 1024;
 export const DOCUMENT_DEFAULT_BYTES = 3 * 1024 * 1024;
 export const DOCUMENT_ACCEPT = 'application/pdf,image/jpeg,image/png,image/webp';
 
+export type VaultTab = 'all' | 'identity' | 'work' | 'tax' | 'other';
+export const VAULT_TABS: Array<{ id: VaultTab; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'identity', label: 'ID & address' },
+  { id: 'work', label: 'Education & employment' },
+  { id: 'tax', label: 'Tax proofs' },
+  { id: 'other', label: 'Medical & other' },
+];
+export const TAB_OF_CATEGORY: Record<string, VaultTab> = {
+  id_proof: 'identity', address_proof: 'identity', education: 'work', employment: 'work', tax_proof: 'tax', medical: 'other', other: 'other',
+};
+
+/** The Indian financial year (April to March) an ISO timestamp falls in, e.g. "2026-27". */
+export function financialYearOf(iso: string): string {
+  const y = Number(iso.slice(0, 4));
+  const m = Number(iso.slice(5, 7));
+  const start = m >= 4 ? y : y - 1;
+  return `${start}-${String((start + 1) % 100).padStart(2, '0')}`;
+}
+
 export interface EmployeeDocument {
   id: string;
   user_id: string;

@@ -9,6 +9,7 @@ import {
   type DocumentCategory, type EmployeeDocument, type PendingDocument,
 } from '../../lib/documents/types';
 import { formatDay } from '../../lib/attendance/format';
+import DocumentsVault from './DocumentsVault';
 import { emptyBlockCls, fieldInputCls, fieldLabelCls, stateBlockCls } from '../../lib/ui';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -88,16 +89,17 @@ export function MyDocumentsPanel({ onError, onNotice }: { onError: (m: string) =
         <p className="text-xs text-on-surface-variant">PDF, JPG, PNG or WebP, up to {formatBytes(limit)} each. HR reviews what you upload.</p>
         <Button variant="primary" onClick={() => setUploading(true)}>Upload a document</Button>
       </div>
-      {items === null ? <div className={stateBlockCls}>Loading…</div> : items.length === 0 ? (
-        <p className={emptyBlockCls}>You have not uploaded anything yet.</p>
-      ) : (
-        <ul className={listCls}>
-          {items.map((d) => (
-            <DocumentRow key={d.id} doc={d} actions={
+      {items === null ? <div className={stateBlockCls}>Loading…</div> : (
+        <DocumentsVault
+          items={items}
+          today={today()}
+          dossierHref={documents.dossierUrl()}
+          renderRow={(d) => (
+            <DocumentRow doc={d} actions={
               d.status !== 'verified' && <Button variant="danger" disabled={busyId === d.id} onClick={() => void remove(d)}>Remove</Button>
             } />
-          ))}
-        </ul>
+          )}
+        />
       )}
       {uploading && <UploadModal limit={limit} onClose={() => setUploading(false)} onUploaded={() => { setUploading(false); onNotice('Uploaded. HR will review it.'); load(); }} />}
     </div>
@@ -125,14 +127,17 @@ export function EmployeeDocumentsPanel({ userId, onError }: { userId: string; on
   if (items.length === 0) return <p className={emptyBlockCls}>This person has not uploaded any documents.</p>;
   return (
     <>
-      <ul className={listCls}>
-        {items.map((d) => (
-          <DocumentRow key={d.id} doc={d} actions={<>
+      <DocumentsVault
+        items={items}
+        today={today()}
+        dossierHref={documents.dossierUrl(userId)}
+        renderRow={(d) => (
+          <DocumentRow doc={d} actions={<>
             {d.status === 'pending' && <Button variant="primary" onClick={() => setReviewing(d)}>Review</Button>}
             <Button variant="secondary" disabled={busyId === d.id} onClick={() => void remove(d)}>Remove</Button>
           </>} />
-        ))}
-      </ul>
+        )}
+      />
       {reviewing && <ReviewModal doc={reviewing} onClose={() => setReviewing(null)} onDone={() => { setReviewing(null); load(); }} />}
     </>
   );

@@ -39,8 +39,7 @@ export const HR_MOBILE_TABS: readonly (readonly string[])[] = [
   ['dashboard'],
   ['attendance'],
   ['leave'],
-  ['payroll'],
-  ['team'],
-  ['employees'],
-  ['reports'],
+  // Four tabs plus "More" is what fits a 390px phone (seven overflowed it). Payroll is the
+  // Stitch dock's fourth tab; a person without payslips gets My team (or Employees) there instead.
+  ['payroll', 'team', 'employees'],
 ];
