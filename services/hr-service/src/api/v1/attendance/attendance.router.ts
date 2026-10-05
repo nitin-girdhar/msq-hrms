@@ -28,6 +28,7 @@ import {
   reportsDetailQuerySchema,
   reportsMusterQuerySchema,
   dayEventsQuerySchema,
+  myShiftQuerySchema,
   faceEnrollSchema,
   faceReviewsQuerySchema,
 } from './attendance.schema.js';
@@ -52,6 +53,7 @@ export async function attendanceRouter(app: FastifyInstance) {
   app.get('/attendance/me', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_VIEW), validate({ query: attendanceMeQuerySchema })] }, ctrl.me);
   // Self-scoped: what the caller's next punch may be today. Same capability as
   // /attendance/me because it exposes nothing beyond the caller's own day.
+  app.get('/attendance/me/shift', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_VIEW), validate({ query: myShiftQuerySchema })] }, ctrl.myShift);
   app.get('/attendance/today-state', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_VIEW)] }, ctrl.todayState);
   app.get('/attendance/team', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_VIEW_TEAM, 'You do not have permission to view team attendance'), validate({ query: attendanceTeamQuerySchema })] }, ctrl.team);
   // Counts-only form of /attendance/team, for the cross-product "my day" tiles.

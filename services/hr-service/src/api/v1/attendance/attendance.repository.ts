@@ -839,6 +839,22 @@ export async function recomputeAttendance(
  * and gated by the SAME punchEligibility rule, so the button the dashboard
  * renders always matches what checkIn/checkOut would actually accept.
  */
+/** The caller's own shift on a date, with its slots. Pinned to ctx.user_id, never a parameter. */
+export async function getMyShiftFor(ctx: AttendanceCtx, date: string) {
+  return serviceTxWithContext(ctx, async (tx) => {
+    const shift = await currentShift(tx, ctx.org_id, ctx.user_id, date);
+    if (!shift) return null;
+    return {
+      shift_id: shift.id,
+      shift_name: shift.name,
+      start_time: shift.start_time,
+      end_time: shift.end_time,
+      is_split: shift.is_split,
+      segments: await loadSegments(tx, shift.id),
+    };
+  });
+}
+
 export async function getTodayPunchState(ctx: AttendanceCtx) {
   return serviceTxWithContext(ctx, async (tx) => {
     const org = await loadOrg(tx, ctx.org_id);

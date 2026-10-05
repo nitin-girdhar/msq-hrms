@@ -7,6 +7,23 @@
 // slots instead, and must agree on how punches pair up — hence one helper.
 
 import type { DayEventView, ShiftSegmentView } from './types';
+import type { PunchLogRow } from '../h7/types';
+
+/**
+ * The caller's OWN punches of one org-local date, in the DayEventView shape the slot helpers take. The punch-log read
+ * (attendance.view) carries everything slot pairing needs, so the slot views do not depend on the photo-view
+ * capability that the per-day events read (which can return anyone's selfies) is gated behind.
+ */
+export function ownPunchesOnDate(rows: PunchLogRow[], date: string, timezone?: string): DayEventView[] {
+  return rows
+    .filter((r) => new Date(r.occurred_at).toLocaleDateString('en-CA', timezone ? { timeZone: timezone } : undefined) === date)
+    .map((r) => ({
+      event_id: r.id, event_type: r.event_type, occurred_at: r.occurred_at,
+      face_match_score: r.face_match_score, face_match_passed: r.face_match_passed, face_review_status: r.face_review_status as DayEventView['face_review_status'],
+      is_off_segment: r.is_off_segment, is_within_geofence: r.is_within_geofence, distance_from_org_m: r.distance_from_org_m,
+      geo_lat: null, geo_lng: null, is_wfh: r.is_wfh, geo_exception_type: r.geo_exception_type as DayEventView['geo_exception_type'], has_photo: false,
+    }));
+}
 
 export interface Session {
   in: DayEventView | null;

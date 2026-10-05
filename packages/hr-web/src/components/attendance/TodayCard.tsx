@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { AttendanceDayRow, AttendanceRules, DayEventView, ShiftAssignmentView, TodayPunchState } from '../../lib/attendance/types';
+import type { AttendanceDayRow, AttendanceRules, DayEventView, TodayPunchState } from '../../lib/attendance/types';
 import { formatClockTime, formatWorkedMinutes } from '../../lib/attendance/format';
 import { formatSlotWindow, sessionMinutes, toSessions, toSlotRows } from '../../lib/attendance/sessions';
 
 interface Props {
   todayRow: AttendanceDayRow | undefined;
-  shift: ShiftAssignmentView | undefined;
+  shift: { shift_name: string } | undefined;
   /** Server's answer to "what may I punch now?". Undefined only while loading. */
   punchState: TodayPunchState | undefined;
   /** Today's individual punches, so a split shift can show each slot separately. */

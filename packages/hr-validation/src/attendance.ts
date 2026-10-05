@@ -384,6 +384,10 @@ export const reportsMusterQuerySchema = z.object({
 // Every punch of one employee's work date. A split shift has 4+ punches, but the
 // team view only ever exposes the first check-in and last check-out, so without
 // this the middle punches' selfies are stored yet unreachable.
+/** The caller's own shift (and its slots) on one date. */
+export const myShiftQuerySchema = z.object({ date: dateString });
+export type MyShiftQueryInput = z.infer<typeof myShiftQuerySchema>;
+
 export const dayEventsQuerySchema = z.object({
   user_id: z.string().uuid(),
   date: dateString,

@@ -157,6 +157,10 @@ export async function getMyMonth(ctx: AttendanceCtx, month: string) {
 
 // Self-scoped, like getMyMonth: it reports only the caller's own punch state,
 // so it carries no authority beyond HR_ATTENDANCE_VIEW.
+export async function getMyShiftFor(ctx: AttendanceCtx, date: string) {
+  return repo.getMyShiftFor(ctx, date);
+}
+
 export async function getTodayPunchState(ctx: AttendanceCtx) {
   return repo.getTodayPunchState(ctx);
 }

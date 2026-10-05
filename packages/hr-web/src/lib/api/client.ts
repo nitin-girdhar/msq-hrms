@@ -375,6 +375,12 @@ export const swaps = {
 };
 
 // ── My profile + Employee 360 (schema 1.60.0) ────────────────────────────────
+/** The caller's own recent activity for the dashboard (own rows only; the server gates each source by capability). */
+export interface ActivityItem { kind: 'punch' | 'regularization' | 'leave' | 'payslip' | 'document'; title: string; detail: string | null; at: string; href: string }
+export const myActivity = {
+  list: () => request<Envelope<ActivityItem[]>>('/hr/me/activity'),
+};
+
 export const profile = {
   /** The caller's own personal details and emergency contacts. */
   mine: () => request<Envelope<MyProfile>>('/hr/profile/me'),
@@ -567,6 +573,10 @@ export const attendance = {
   // Every punch of one employee's work date. The team view carries only the
   // day's first check-in and last check-out, so this is the only way to reach a
   // split shift's middle punches — and their selfies.
+  /** The caller's own shift and its slots on a date (null when none). */
+  myShift: (date: string) =>
+    request<Envelope<{ shift_id: string; shift_name: string; start_time: string; end_time: string; is_split: boolean; segments: ShiftSegmentView[] } | null>>(`/hr/attendance/me/shift${qs({ date })}`),
+
   dayEvents: (params: { user_id: string; date: string }) =>
     request<Envelope<DayEventView[]>>(`/hr/attendance/events${qs(params)}`),
 

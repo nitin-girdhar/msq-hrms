@@ -21,6 +21,7 @@ export { default as MyProfileShell } from './components/profile/MyProfileShell';
 export { default as Employee360Shell } from './components/profile/Employee360Shell';
 export { default as HrHeaderSearch } from './components/layout/HrHeaderSearch';
 export { default as HrAttentionBell } from './components/layout/HrAttentionBell';
+export { default as HrWorkCards } from './components/layout/HrWorkCards';
 
 export { canDecideLeave, canManageLeaveAdmin, canApplyLeave } from './lib/leave/format';
 export { canManageAttendanceAdmin } from './lib/attendance/format';

@@ -24,6 +24,7 @@ import type {
   AttendanceMeQueryInput,
   AttendanceTeamQueryInput,
   DayEventsQueryInput,
+  MyShiftQueryInput,
   ReportsSummaryQueryInput,
   ReportsDetailQueryInput,
   ReportsMusterQueryInput,
@@ -85,6 +86,12 @@ export class AttendanceController {
   me = async (request: FastifyRequest, reply: FastifyReply) => {
     const { month } = request.query as AttendanceMeQueryInput;
     const data = await service.getMyMonth(ctxOf(request), month ?? currentMonth());
+    return reply.send({ success: true, data });
+  };
+
+  myShift = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { date } = request.query as MyShiftQueryInput;
+    const data = await service.getMyShiftFor(ctxOf(request), date);
     return reply.send({ success: true, data });
   };
 

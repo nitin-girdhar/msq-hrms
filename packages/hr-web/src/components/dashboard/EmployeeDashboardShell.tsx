@@ -17,6 +17,8 @@ import MonthSummaryStrip from '../attendance/MonthSummaryStrip';
 import { Avatar, LeaveBalanceCard } from '../profile/ProfileParts';
 import StatCard from '../common/StatCard';
 import AnnouncementsPanel from './AnnouncementsPanel';
+import ActivityPanel from './ActivityPanel';
+import SlotLog from '../attendance/SlotLog';
 import NudgeBanner from '../attendance/NudgeBanner';
 import { emptyBlockCls } from '../../lib/ui';
 
@@ -179,6 +181,13 @@ export default function EmployeeDashboardShell({ actor }: Props) {
           )}
         </div>
 
+        {/* A split shift already lists its slots inside the Today card; this section is for every other shift. */}
+        {showAttendance && today.todayEvents.length > 0 && !today.punchState?.is_split && (
+          <PageSection title="Today's slots">
+            <SlotLog segments={today.punchState?.segments ?? []} events={today.todayEvents} />
+          </PageSection>
+        )}
+
         {showAttendance && today.monthDays.length > 0 && (
           <PageSection title="This month">
             <MonthSummaryStrip days={today.monthDays} />
@@ -240,6 +249,8 @@ export default function EmployeeDashboardShell({ actor }: Props) {
             </section>
           </div>
         )}
+
+        <ActivityPanel />
 
         {can(actor, CAPABILITY.HR_EMPLOYEES_ANNOUNCEMENTS_VIEW) && <AnnouncementsPanel actor={actor} onError={setError} />}
       </PageBody>

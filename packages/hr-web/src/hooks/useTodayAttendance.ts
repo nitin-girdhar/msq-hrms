@@ -1,15 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { attendance as attendanceApi, shiftAssignments as shiftAssignmentsApi } from '../lib/api/client';
-import type { AttendanceDayRow, DayEventView, ShiftAssignmentView, TodayPunchState } from '../lib/attendance/types';
+import { attendance as attendanceApi, attendanceTools } from '../lib/api/client';
+import type { AttendanceDayRow, DayEventView, TodayPunchState } from '../lib/attendance/types';
+import { ownPunchesOnDate } from '../lib/attendance/sessions';
 import { todayIso } from '../lib/attendance/format';
 
 interface UseTodayAttendanceReturn {
   todayRow: AttendanceDayRow | undefined;
   punchState: TodayPunchState | undefined;
   todayEvents: DayEventView[];
-  shift: ShiftAssignmentView | undefined;
+  shift: { shift_name: string } | undefined;
   /** The current month's day rows — drives the month summary strip. */
   monthDays: AttendanceDayRow[];
   loading: boolean;
@@ -31,7 +32,7 @@ export function useTodayAttendance(userId: string, enabled: boolean): UseTodayAt
   const [monthDays, setMonthDays] = useState<AttendanceDayRow[]>([]);
   const [punchState, setPunchState] = useState<TodayPunchState | undefined>(undefined);
   const [todayEvents, setTodayEvents] = useState<DayEventView[]>([]);
-  const [shift, setShift] = useState<ShiftAssignmentView | undefined>(undefined);
+  const [shift, setShift] = useState<{ shift_name: string } | undefined>(undefined);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,7 +43,8 @@ export function useTodayAttendance(userId: string, enabled: boolean): UseTodayAt
         attendanceApi.me(),
         attendanceApi.todayState(),
         attendanceApi.dayEvents({ user_id: userId, date: today }),
-        shiftAssignmentsApi.list({ userId }),
+        // The caller's own shift for today (attendance.view), so a role that cannot list assignments still sees it.
+        attendanceApi.myShift(today),
       ]);
       if (me.status === 'fulfilled') {
         setMonthDays(me.value.data.days);
@@ -51,14 +53,14 @@ export function useTodayAttendance(userId: string, enabled: boolean): UseTodayAt
         setError(me.reason instanceof Error ? me.reason.message : 'Failed to load today’s attendance.');
       }
       setPunchState(state.status === 'fulfilled' ? state.value.data : undefined);
-      setTodayEvents(events.status === 'fulfilled' ? events.value.data : []);
-      if (assignments.status === 'fulfilled') {
-        setShift(
-          assignments.value.data.find(
-            (a) => a.is_active && a.effective_from <= today && (!a.effective_to || a.effective_to >= today),
-          ),
-        );
+      if (events.status === 'fulfilled') {
+        setTodayEvents(events.value.data);
+      } else {
+        // No photo-view capability: fall back to the caller's own punch log, which needs only attendance.view.
+        const own = await attendanceTools.punches(today.slice(0, 7)).then((r) => ownPunchesOnDate(r.data, today, timezone)).catch(() => []);
+        setTodayEvents(own);
       }
+      setShift(assignments.status === 'fulfilled' && assignments.value.data ? { shift_name: assignments.value.data.shift_name } : undefined);
     },
     [userId],
   );

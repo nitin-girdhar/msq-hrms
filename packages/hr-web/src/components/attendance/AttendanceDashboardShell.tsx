@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { SessionUser } from '@platform/types';
 import { Alert, Button, PageBody, PageHeader, PageSection, PhotoUploadModal, users as usersApi } from '@platform/ui-kit';
-import { attendance as attendanceApi, shiftAssignments as shiftAssignmentsApi } from '../../lib/api/client';
-import type { AttendanceDayRow, AttendanceRules, DayEventView, FaceSelfContext, PunchResult, RegularizationView, ShiftAssignmentView, TodayPunchState } from '../../lib/attendance/types';
+import { attendance as attendanceApi, attendanceTools } from '../../lib/api/client';
+import { ownPunchesOnDate } from '../../lib/attendance/sessions';
+import type { AttendanceDayRow, AttendanceRules, DayEventView, FaceSelfContext, PunchResult, RegularizationView, TodayPunchState } from '../../lib/attendance/types';
 import { todayIso } from '../../lib/attendance/format';
 import type { HrRank } from '../../lib/hr-rank';
 import AttendanceTabs from './AttendanceTabs';
@@ -15,6 +16,7 @@ import DayDetailPopover from './DayDetailPopover';
 import { useWideScreen } from '../../hooks/useWideScreen';
 import RegularizationFormModal from './RegularizationFormModal';
 import MyRegularizationsList from './MyRegularizationsList';
+import { SlotLogTab, ShiftRegularizationTab } from './TimesheetSlotTabs';
 import RegularizationStats from './RegularizationStats';
 import PunchLog from './PunchLog';
 import NudgeBanner from './NudgeBanner';
@@ -29,7 +31,7 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
   const wide = useWideScreen();
   const [rules, setRules] = useState<AttendanceRules | null>(null);
   const [todayRow, setTodayRow] = useState<AttendanceDayRow | undefined>(undefined);
-  const [shift, setShift] = useState<ShiftAssignmentView | undefined>(undefined);
+  const [shift, setShift] = useState<{ shift_name: string } | undefined>(undefined);
   const [punchState, setPunchState] = useState<TodayPunchState | undefined>(undefined);
   // Today's individual punches. The day row only carries first_in/last_out, which
   // on a split shift describe no single slot — the Today card pairs these instead.
@@ -39,7 +41,7 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [monthTab, setMonthTab] = useState<'calendar' | 'log'>('calendar');
+  const [monthTab, setMonthTab] = useState<'calendar' | 'log' | 'slots' | 'shiftreg'>('calendar');
 
   const [punchMode, setPunchMode] = useState<'check_in' | 'check_out' | null>(null);
   const [faceCtx, setFaceCtx] = useState<FaceSelfContext | null>(null);
@@ -77,19 +79,15 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
     attendanceApi
       .dayEvents({ user_id: actor.id, date: todayIso(orgTz) })
       .then((res) => setTodayEvents(res.data))
-      .catch(() => setTodayEvents([]));
+      .catch(() =>
+        // No photo-view capability: the caller's own punch log (attendance.view) carries the same times.
+        attendanceTools.punches(todayIso(orgTz).slice(0, 7)).then((r) => setTodayEvents(ownPunchesOnDate(r.data, todayIso(orgTz), orgTz))).catch(() => setTodayEvents([])));
   }, [actor.id, orgTz]);
 
   const loadShift = useCallback(() => {
-    shiftAssignmentsApi
-      .list({ userId: actor.id })
-      .then((res) => {
-        const today = todayIso(orgTz);
-        const current = res.data.find(
-          (a) => a.is_active && a.effective_from <= today && (!a.effective_to || a.effective_to >= today),
-        );
-        setShift(current);
-      })
+    attendanceApi
+      .myShift(todayIso(orgTz))
+      .then((res) => setShift(res.data ? { shift_name: res.data.shift_name } : undefined))
       .catch(() => setShift(undefined));
   }, [actor.id, orgTz]);
 
@@ -227,7 +225,7 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
           title="My month"
           action={
             <div className="flex gap-1" role="tablist" aria-label="Month view">
-              {([['calendar', 'Calendar'], ['log', 'Punch log']] as const).map(([key, label]) => (
+              {([['calendar', 'Calendar'], ['log', 'Punch log'], ['slots', 'Slot log'], ['shiftreg', 'Shift regularization']] as const).map(([key, label]) => (
                 <button key={key} type="button" role="tab" aria-selected={monthTab === key} onClick={() => setMonthTab(key)}
                   className={`rounded-full border px-3 py-0.5 text-xs font-semibold transition-colors ${monthTab === key ? 'border-primary bg-primary-fixed text-on-primary-fixed' : 'border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low'}`}>
                   {label}
@@ -250,8 +248,12 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
                   onRequestRegularization={(date) => { setDetailDate(null); setRegFormDate(date); }} />
               )}
             </div>
-          ) : (
+          ) : monthTab === 'log' ? (
             <PunchLog />
+          ) : monthTab === 'slots' ? (
+            <SlotLogTab today={todayIso(orgTz)} timezone={orgTz} />
+          ) : (
+            <ShiftRegularizationTab items={regularizations} onNew={() => { setNotice(null); setRegFormDate(todayIso(orgTz)); document.getElementById('regularization-inline')?.scrollIntoView({ behavior: 'smooth' }); }} />
           )}
         </PageSection>
 
