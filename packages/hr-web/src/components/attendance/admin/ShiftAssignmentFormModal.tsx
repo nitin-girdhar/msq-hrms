@@ -132,12 +132,12 @@ export default function ShiftAssignmentFormModal({ open, assignment, onClose, on
             {employees.map((e) => <option key={e.user_id} value={e.user_id}>{e.full_name} ({e.email})</option>)}
           </select>
           {isEdit && (
-            <p className="text-[11px] text-on-surface-variant">
+            <p className="text-[0.6875rem] text-on-surface-variant">
               The employee cannot be changed. End this assignment and create a new one instead.
             </p>
           )}
           {!isEdit && !loadingLookups && !error && employees.length === 0 && (
-            <p className="text-[11px] text-on-status-due-container">
+            <p className="text-[0.6875rem] text-on-status-due-container">
               No employee profiles in this branch yet — add them under Leave → Admin → Employees before assigning shifts.
             </p>
           )}
@@ -150,7 +150,7 @@ export default function ShiftAssignmentFormModal({ open, assignment, onClose, on
             {shiftOptions.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.start_time.slice(0, 5)}–{s.end_time.slice(0, 5)})</option>)}
           </select>
           {!loadingLookups && !error && shiftOptions.length === 0 && (
-            <p className="text-[11px] text-on-status-due-container">No active shifts — create one on the Shifts tab first.</p>
+            <p className="text-[0.6875rem] text-on-status-due-container">No active shifts — create one on the Shifts tab first.</p>
           )}
         </div>
 

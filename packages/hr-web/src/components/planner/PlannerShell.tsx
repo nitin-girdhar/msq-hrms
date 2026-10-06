@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SessionUser } from '@platform/types';
 import { can, CAPABILITY } from '@platform/rbac';
-import { Alert, Button, Modal, PageBody, PageHeader } from '@platform/ui-kit';
+import { Alert, Button, Modal, PageBody, PageHeader, useIsMobile } from '@platform/ui-kit';
 import { planner, swaps } from '../../lib/api/client';
 import type { ShiftSwap } from '../../lib/team/types';
 import {
@@ -18,6 +18,8 @@ import {
 } from '../../lib/planner/types';
 import { formatDateTime } from '../../lib/attendance/format';
 import { emptyBlockCls, fieldInputCls, fieldLabelCls, stateBlockCls } from '../../lib/ui';
+import PersonAvatar from '../common/PersonAvatar';
+import StatCard from '../common/StatCard';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -40,7 +42,10 @@ type Edit = { person: PlannerPerson; date: string };
  * people on publish.
  */
 export default function PlannerShell({ actor }: { actor: SessionUser }) {
+  const mobile = useIsMobile(767);
   const [view, setView] = useState<PlannerView>('week');
+  // Day picked in the phone day strip; null follows today (or the first day).
+  const [pickedDay, setPickedDay] = useState<number | null>(null);
   const [from, setFrom] = useState<string | undefined>(undefined);
   const [reallocating, setReallocating] = useState(false);
   const [query, setQuery] = useState('');
@@ -61,6 +66,8 @@ export default function PlannerShell({ actor }: { actor: SessionUser }) {
       .catch((e) => { setWeek(null); setError(e instanceof Error ? e.message : 'Failed to load the planner.'); });
   }, [view, from, query]);
 
+  useEffect(() => { setPickedDay(null); }, [view, from]);
+
   useEffect(() => {
     const t = setTimeout(load, query ? 250 : 0);
     return () => clearTimeout(t);
@@ -75,7 +82,8 @@ export default function PlannerShell({ actor }: { actor: SessionUser }) {
   const today = todayIso();
   const dates = week ? Array.from({ length: Math.round((Date.parse(`${week.week_end}T00:00:00Z`) - Date.parse(`${week.week_start}T00:00:00Z`)) / 86_400_000) + 1 }, (_, i) => addDaysIso(week.week_start, i)) : [];
   // The day the capacity cards describe: today when it is in view, otherwise the first day.
-  const focusIdx = week && today >= week.week_start && today <= week.week_end ? dates.indexOf(today) : 0;
+  const defaultIdx = week && today >= week.week_start && today <= week.week_end ? dates.indexOf(today) : 0;
+  const focusIdx = pickedDay !== null && pickedDay < dates.length ? pickedDay : defaultIdx;
   const compact = view === 'month';
   const dow = (iso: string) => DOW[(new Date(`${iso}T00:00:00Z`).getUTCDay() + 6) % 7]!;
   const rangeLabel = !week ? '…' : view === 'day' ? new Date(`${week.week_start}T00:00:00Z`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : view === 'month' ? new Date(`${week.week_start}T00:00:00Z`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : `${monthShort(week.week_start)} – ${monthShort(week.week_end)} ${week.week_end.slice(0, 4)}`;
@@ -113,10 +121,10 @@ export default function PlannerShell({ actor }: { actor: SessionUser }) {
         subtitle="Plan who works which shift. Click a day to change it; tick people to set a shift for a date range."
         actions={
           <>
-            <Button variant="secondary" onClick={exportCsv} disabled={!week || week.people.length === 0}>Export</Button>
-            <Button variant="secondary" onClick={() => setReallocating(true)} disabled={!week || week.shifts.length < 2}>Bulk reallocate</Button>
-            <Button variant="secondary" onClick={() => setPattern(true)} disabled={selected.size === 0}>Assign shift pattern{selected.size ? ` (${selected.size})` : ''}</Button>
-            {view === 'week' && <Button variant="primary" onClick={() => setPublishing(true)} disabled={!week}>Publish roster</Button>}
+            <Button variant="secondary" className="max-lg:min-h-11" onClick={exportCsv} disabled={!week || week.people.length === 0}>Export</Button>
+            <Button variant="secondary" className="max-lg:min-h-11" onClick={() => setReallocating(true)} disabled={!week || week.shifts.length < 2}>Bulk reallocate</Button>
+            <Button variant="secondary" className="max-lg:min-h-11" onClick={() => setPattern(true)} disabled={selected.size === 0}>Assign shift pattern{selected.size ? ` (${selected.size})` : ''}</Button>
+            {view === 'week' && <Button variant="primary" className="max-lg:min-h-11" onClick={() => setPublishing(true)} disabled={!week}>Publish roster</Button>}
           </>
         }
       />
@@ -134,16 +142,16 @@ export default function PlannerShell({ actor }: { actor: SessionUser }) {
           <div className="flex gap-1 rounded-lg border border-outline-variant bg-surface-container-low p-1" role="tablist" aria-label="Roster view">
             {(['day', 'week', 'month'] as const).map((v) => (
               <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => { setView(v); setFrom(week && today >= week.week_start && today <= week.week_end ? today : week?.week_start); }}
-                className={`rounded-md px-3 py-1 text-xs font-semibold capitalize ${view === v ? 'bg-surface-container-lowest text-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}>{v}</button>
+                className={`rounded-md px-3 py-1 text-xs font-semibold capitalize max-lg:min-h-11 ${view === v ? 'bg-surface-container-lowest text-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}>{v}</button>
             ))}
           </div>
           <div className="flex items-center gap-1 rounded-lg border border-outline-variant bg-surface-container-low px-1 py-1">
-            <button type="button" aria-label={`Previous ${view}`} onClick={() => week && setFrom(stepStart(view, week.week_start, -1))} className="rounded px-2 py-1 text-on-surface-variant hover:bg-surface-container">‹</button>
-            <span className="min-w-44 text-center text-sm font-semibold text-on-surface">{rangeLabel}</span>
-            <button type="button" aria-label={`Next ${view}`} onClick={() => week && setFrom(stepStart(view, week.week_start, 1))} className="rounded px-2 py-1 text-on-surface-variant hover:bg-surface-container">›</button>
+            <button type="button" aria-label={`Previous ${view}`} onClick={() => week && setFrom(stepStart(view, week.week_start, -1))} className="rounded px-2 py-1 text-on-surface-variant hover:bg-surface-container max-lg:h-11 max-lg:w-11">‹</button>
+            <span className="min-w-36 text-center text-sm font-semibold text-on-surface sm:min-w-44">{rangeLabel}</span>
+            <button type="button" aria-label={`Next ${view}`} onClick={() => week && setFrom(stepStart(view, week.week_start, 1))} className="rounded px-2 py-1 text-on-surface-variant hover:bg-surface-container max-lg:h-11 max-lg:w-11">›</button>
           </div>
-          <Button variant="secondary" onClick={() => setFrom(undefined)}>Today</Button>
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, email or code" aria-label="Search people" className={`${fieldInputCls} w-64`} />
+          <Button variant="secondary" className="max-lg:min-h-11" onClick={() => setFrom(undefined)}>Today</Button>
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, email or code" aria-label="Search people" className={`${fieldInputCls} h-11 w-full sm:h-10 sm:w-64`} />
           {week && view === 'week' && (
             <span className={`ml-auto rounded-full px-3 py-1 text-label-sm font-semibold ${week.published ? (week.changes_since_publish > 0 ? 'bg-status-due-container text-on-status-due-container' : 'bg-status-success-container text-on-status-success-container') : 'bg-surface-container text-on-surface-variant'}`}>
               {week.published
@@ -156,13 +164,10 @@ export default function PlannerShell({ actor }: { actor: SessionUser }) {
         {!week ? <div className={stateBlockCls}>{error ? '' : 'Loading…'}</div> : (
           <>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm">
-                <p className="text-label-sm font-semibold uppercase tracking-wide text-on-surface-variant">Headcount pool</p>
-                <p className="mt-1 font-mono text-headline-lg font-bold tabular-nums text-on-surface">{week.headcount}</p>
-                <p className="text-label-sm text-on-surface-variant">
-                  {Object.values(week.assigned).reduce((n, d) => n + (d[focusIdx] ?? 0), 0)} on a shift {dates[focusIdx] === today ? 'today' : `on ${monthShort(dates[focusIdx] ?? week.week_start)}`}
-                </p>
-              </div>
+              <StatCard
+                label="Headcount pool" value={week.headcount}
+                hint={`${Object.values(week.assigned).reduce((n, d) => n + (d[focusIdx] ?? 0), 0)} on a shift ${dates[focusIdx] === today ? 'today' : `on ${monthShort(dates[focusIdx] ?? week.week_start)}`}`}
+              />
               {week.shifts.map((s) => {
                 const have = week.assigned[s.id]?.[focusIdx] ?? 0;
                 const pct = s.required ? Math.min(100, Math.round((have / s.required) * 100)) : 0;
@@ -170,16 +175,19 @@ export default function PlannerShell({ actor }: { actor: SessionUser }) {
                 return (
                   <button key={s.id} type="button" onClick={() => setNeeds(s)} className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 text-left shadow-sm transition-colors hover:border-primary">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="flex items-center gap-1.5 text-label-sm font-semibold uppercase tracking-wide text-on-surface-variant">
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: shiftStyle(s.id).dot }} aria-hidden="true" />{s.name}
+                      <p className="flex min-w-0 items-center gap-1.5 text-label-sm font-semibold uppercase tracking-wide text-on-surface-variant">
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: shiftStyle(s.id).dot }} aria-hidden="true" /><span className="truncate">{s.name}</span>
+                      </p>
+                      <span className="shrink-0 font-mono text-label-sm tabular-nums text-on-surface-variant">{s.start}–{s.end}</span>
+                    </div>
+                    <div className="mt-1 flex items-center gap-2">
+                      <p className="font-mono text-headline-lg font-bold tabular-nums text-on-surface">
+                        {have}<span className="text-base font-medium text-on-surface-variant"> / {s.required ?? '—'}</span>
                       </p>
                       {state && <span className={`rounded-full px-2 py-0.5 text-label-sm font-semibold ${state === 'Short' ? 'bg-status-overdue-container text-on-status-overdue-container' : state === 'Full' ? 'bg-status-success-container text-on-status-success-container' : 'bg-status-due-container text-on-status-due-container'}`}>{state}</span>}
                     </div>
-                    <p className="mt-1 font-mono text-headline-lg font-bold tabular-nums text-on-surface">
-                      {have}<span className="text-base font-medium text-on-surface-variant"> / {s.required ?? '—'}</span>
-                    </p>
                     <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-container" aria-hidden="true"><div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: shiftStyle(s.id).dot }} /></div>
-                    <p className="mt-1 text-label-sm text-on-surface-variant">{s.start}–{s.end}{s.required === null ? ' · click to set the number needed' : ''}</p>
+                    <p className="mt-1.5 text-label-sm font-medium text-primary">{s.required === null ? 'Click to set number needed' : 'Click to change number needed'}</p>
                   </button>
                 );
               })}
@@ -188,7 +196,15 @@ export default function PlannerShell({ actor }: { actor: SessionUser }) {
             {week.shifts.length === 0 && <p className={emptyBlockCls}>No shifts are defined for this branch yet. Add them under Attendance admin → Shifts, then plan them here.</p>}
 
             {view === 'day' && <DayLanes week={week} shiftStyle={shiftStyle} onPick={(p) => setEdit({ person: p, date: week.week_start })} />}
-            {view !== 'day' && <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
+            {view === 'week' && mobile && (
+              <MobileRoster
+                week={week} dates={dates} dayIdx={focusIdx} today={today} dow={dow} shiftStyle={shiftStyle} shiftById={shiftById}
+                selected={selected} onToggle={toggle} allShown={allShown}
+                onToggleAll={() => setSelected(allShown ? new Set() : new Set(week.people.map((p) => p.user_id)))}
+                onPickDay={setPickedDay} onEdit={(p, d) => setEdit({ person: p, date: d })}
+              />
+            )}
+            {view !== 'day' && !(mobile && view === 'week') && <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
               <table className={`w-full border-collapse text-sm ${compact ? 'min-w-[72rem]' : 'min-w-[56rem]'}`}>
                 <thead>
                   <tr className="border-b border-outline-variant bg-surface-container-low text-left text-label-sm uppercase tracking-wide text-on-surface-variant">
@@ -201,7 +217,7 @@ export default function PlannerShell({ actor }: { actor: SessionUser }) {
                     {dates.map((d) => (
                       <th key={d} className={`${compact ? 'px-0.5' : 'px-2'} py-2 text-center ${d === today ? 'bg-primary-fixed text-on-primary-fixed' : ''}`}>
                         {compact ? dow(d).slice(0, 1) : dow(d)} <span className="block font-mono text-sm normal-case text-on-surface">{dayNum(d)}</span>
-                        {d === today && !compact && <span className="text-[10px] normal-case">Today</span>}
+                        {d === today && !compact && <span className="text-[0.625rem] normal-case">Today</span>}
                       </th>
                     ))}
                   </tr>
@@ -215,6 +231,7 @@ export default function PlannerShell({ actor }: { actor: SessionUser }) {
                       <td className="px-3 py-1.5">
                         <label className="flex items-center gap-2">
                           <input type="checkbox" checked={selected.has(p.user_id)} onChange={() => toggle(p.user_id)} aria-label={`Select ${p.full_name}`} />
+                          {!compact && <PersonAvatar name={p.full_name} userId={p.user_id} size="sm" />}
                           <span className="min-w-0">
                             <span className="block truncate font-semibold text-on-surface">{p.full_name}</span>
                             <span className="block truncate text-label-sm text-on-surface-variant">{[p.employee_code, p.designation_name].filter(Boolean).join(' · ') || '—'}</span>
@@ -234,7 +251,7 @@ export default function PlannerShell({ actor }: { actor: SessionUser }) {
                               className="w-full rounded-lg px-1 py-1 text-label-sm transition-opacity enabled:hover:ring-2 enabled:hover:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               {compact ? (
-                                <span title={s ? `${s.name} ${s.start}–${s.end}` : d.kind} className={`block rounded px-0.5 py-1 text-[10px] font-semibold ${s && d.kind === 'shift' ? shiftStyle(s.id).chip : d.kind === 'none' ? 'border border-dashed border-outline-variant text-outline' : d.kind === 'off' || d.kind === 'holiday' || d.kind === 'leave' ? NON_SHIFT[d.kind][1] : ''}`}>
+                                <span title={s ? `${s.name} ${s.start}–${s.end}` : d.kind} className={`block rounded px-0.5 py-1 text-[0.625rem] font-semibold ${s && d.kind === 'shift' ? shiftStyle(s.id).chip : d.kind === 'none' ? 'border border-dashed border-outline-variant text-outline' : d.kind === 'off' || d.kind === 'holiday' || d.kind === 'leave' ? NON_SHIFT[d.kind][1] : ''}`}>
                                   {s && d.kind === 'shift' ? s.name.slice(0, 2) : d.kind === 'none' ? '+' : d.kind === 'off' || d.kind === 'holiday' || d.kind === 'leave' ? NON_SHIFT[d.kind][0].slice(0, 1) : ''}
                                 </span>
                               ) : d.kind === 'shift' && s ? (
@@ -255,6 +272,9 @@ export default function PlannerShell({ actor }: { actor: SessionUser }) {
                   ))}
                 </tbody>
               </table>
+              <p className="border-t border-outline-variant px-3 py-2 text-label-sm text-on-surface-variant">
+                Showing {week.people.length} staff {week.people.length === 1 ? 'member' : 'members'}
+              </p>
             </div>}
             <div className="grid gap-4 lg:grid-cols-2">
               <CapacityDonut week={week} dayIdx={focusIdx} date={dates[focusIdx] ?? week.week_start} shiftStyle={shiftStyle} />
@@ -295,7 +315,7 @@ export default function PlannerShell({ actor }: { actor: SessionUser }) {
   );
 }
 
-const footerBtn = 'rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-60';
+const footerBtn = 'rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-60 max-lg:min-h-11';
 
 function CellModal({ edit, week, shiftStyle, onClose, onDone, onError }: {
   edit: Edit; week: PlannerWeek; shiftStyle: (id: string) => (typeof SHIFT_STYLE)[number];
@@ -459,6 +479,81 @@ function PublishModal({ week, onClose, onDone }: { week: PlannerWeek; onClose: (
   );
 }
 
+/** Phone week view: a day strip, then everyone's assignment for the picked day as a tappable list. */
+function MobileRoster({ week, dates, dayIdx, today, dow, shiftStyle, shiftById, selected, onToggle, allShown, onToggleAll, onPickDay, onEdit }: {
+  week: PlannerWeek; dates: string[]; dayIdx: number; today: string; dow: (iso: string) => string;
+  shiftStyle: (id: string) => (typeof SHIFT_STYLE)[number]; shiftById: Map<string, PlannerShift>;
+  selected: Set<string>; onToggle: (id: string) => void; allShown: boolean; onToggleAll: () => void;
+  onPickDay: (i: number) => void; onEdit: (p: PlannerPerson, date: string) => void;
+}) {
+  const date = dates[dayIdx] ?? week.week_start;
+  const editable = date >= today;
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label="Day of the week">
+        {dates.map((d, i) => {
+          const working = week.people.some((p) => p.days[i]?.kind === 'shift');
+          return (
+            <button
+              key={d} type="button" onClick={() => onPickDay(i)} aria-pressed={i === dayIdx}
+              className={`flex min-h-16 min-w-12 shrink-0 flex-col items-center justify-center rounded-xl border px-2 py-1 ${i === dayIdx ? 'border-primary bg-primary text-on-primary' : 'border-outline-variant bg-surface-container-lowest text-on-surface'}`}
+            >
+              <span className="text-label-sm uppercase">{dow(d)}</span>
+              <span className="font-mono text-base font-bold">{dayNum(d)}</span>
+              <span className="text-label-sm">{d === today ? 'Today' : working ? '•' : ''}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
+        <div className="flex items-center justify-between gap-2 border-b border-outline-variant px-3 py-1">
+          <h3 className="text-sm font-semibold text-on-surface">Scheduled staff <span className="ml-1 rounded-full bg-surface-container px-2 py-0.5 text-label-sm font-medium text-on-surface-variant">{week.people.length}</span></h3>
+          <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs font-semibold text-primary">
+            <input type="checkbox" checked={allShown} onChange={onToggleAll} aria-label="Select everyone shown" />
+            Select all
+          </label>
+        </div>
+        {week.people.length === 0 ? <p className="px-4 py-8 text-center text-sm text-on-surface-variant">No one matches.</p> : (
+          <ul>
+            {week.people.map((p) => {
+              const d = p.days[dayIdx];
+              const s = d?.shift_id ? shiftById.get(d.shift_id) : null;
+              const away = d && (d.kind === 'off' || d.kind === 'holiday' || d.kind === 'leave') ? NON_SHIFT[d.kind] : null;
+              return (
+                <li key={p.user_id} className="flex items-center gap-1 border-b border-outline-variant/50 px-1 last:border-0">
+                  <label className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center">
+                    <input type="checkbox" checked={selected.has(p.user_id)} onChange={() => onToggle(p.user_id)} aria-label={`Select ${p.full_name}`} />
+                  </label>
+                  <button
+                    type="button" disabled={!editable} onClick={() => onEdit(p, date)} title={editable ? 'Change this day' : 'Past days are already resolved into attendance'}
+                    className="flex min-h-14 min-w-0 flex-1 items-center gap-2.5 rounded-lg py-1.5 pr-2 text-left disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <PersonAvatar name={p.full_name} userId={p.user_id} size="sm" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-on-surface">{p.full_name}</span>
+                      <span className="block truncate text-label-sm text-on-surface-variant">{[p.employee_code, p.designation_name].filter(Boolean).join(' · ') || '—'}</span>
+                    </span>
+                    {d?.kind === 'shift' && s ? (
+                      <span className={`shrink-0 rounded-lg px-2 py-1 text-label-sm ${shiftStyle(s.id).chip}`}>
+                        <span className="block max-w-28 truncate font-semibold">{s.name}</span>
+                        <span className="block font-mono tabular-nums opacity-80">{s.start}–{s.end}</span>
+                      </span>
+                    ) : away ? (
+                      <span className={`shrink-0 rounded-lg px-2 py-1 text-label-sm font-medium ${away[1]}`}>{away[0]}</span>
+                    ) : (
+                      <span className="shrink-0 rounded-lg border border-dashed border-outline-variant px-2 py-1 text-label-sm text-outline">+ Assign</span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
+
 /** Day view: one lane per shift listing who is on it, then everyone with no shift, off or on leave. */
 function DayLanes({ week, shiftStyle, onPick }: {
   week: PlannerWeek; shiftStyle: (id: string) => (typeof SHIFT_STYLE)[number]; onPick: (p: PlannerPerson) => void;
@@ -521,14 +616,14 @@ function CapacityDonut({ week, dayIdx, date, shiftStyle }: {
               offset += len;
               return el;
             })}
-            <text x="52" y="50" textAnchor="middle" className="fill-on-surface text-[20px] font-bold">{total}</text>
-            <text x="52" y="65" textAnchor="middle" className="fill-on-surface-variant text-[9px]">working</text>
+            <text x="52" y="50" textAnchor="middle" className="fill-on-surface text-[1.25rem] font-bold">{total}</text>
+            <text x="52" y="65" textAnchor="middle" className="fill-on-surface-variant text-[0.5625rem]">working</text>
           </svg>
           <ul className="min-w-0 flex-1 space-y-1 text-sm">
             {parts.map(({ s, n }) => (
               <li key={s.id} className="flex items-center justify-between gap-2">
                 <span className="flex min-w-0 items-center gap-2 text-on-surface-variant"><span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: shiftStyle(s.id).dot }} aria-hidden="true" /><span className="truncate">{s.name}</span></span>
-                <span className="font-mono font-semibold tabular-nums text-on-surface">{n}</span>
+                <span className="font-mono font-semibold tabular-nums text-on-surface">{n} <span className="font-normal text-on-surface-variant">({Math.round((n / total) * 100)}%)</span></span>
               </li>
             ))}
             {unassigned > 0 && <li className="flex items-center justify-between gap-2 text-status-due"><span>No shift yet</span><span className="font-mono font-semibold tabular-nums">{unassigned}</span></li>}
@@ -582,14 +677,14 @@ function SwapDesk({ onChanged }: { onChanged: () => void }) {
                 <div className="mt-2 flex flex-col gap-2">
                   <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={2} maxLength={300} placeholder="Reason for declining" aria-label="Reason for declining" className={`${fieldInputCls} h-auto py-2`} />
                   <div className="flex gap-2">
-                    <Button variant="danger" disabled={busy === s.id} onClick={() => void decide(s.id, false)}>Decline</Button>
-                    <Button variant="secondary" onClick={() => { setDeclining(null); setComment(''); }}>Back</Button>
+                    <Button variant="danger" className="max-lg:min-h-11" disabled={busy === s.id} onClick={() => void decide(s.id, false)}>Decline</Button>
+                    <Button variant="secondary" className="max-lg:min-h-11" onClick={() => { setDeclining(null); setComment(''); }}>Back</Button>
                   </div>
                 </div>
               ) : (
                 <div className="mt-2 flex gap-2">
-                  <Button variant="primary" disabled={busy === s.id} onClick={() => void decide(s.id, true)}>Approve swap</Button>
-                  <Button variant="secondary" disabled={busy === s.id} onClick={() => setDeclining(s.id)}>Decline</Button>
+                  <Button variant="primary" className="max-lg:min-h-11" disabled={busy === s.id} onClick={() => void decide(s.id, true)}>Approve swap</Button>
+                  <Button variant="secondary" className="max-lg:min-h-11" disabled={busy === s.id} onClick={() => setDeclining(s.id)}>Decline</Button>
                 </div>
               )}
             </li>

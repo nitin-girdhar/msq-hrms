@@ -387,6 +387,10 @@ export async function listRegularizations(ctx: AttendanceCtx, filters: ListRegul
   return repo.listRegularizations(ctx, filters, seeAllOrg);
 }
 
+export async function getRegularizationApprovals(ctx: AttendanceCtx, id: string) {
+  return repo.getRegularizationApprovals(ctx, id, canManageAttendance(ctx), canOverrideAttendanceApproval(ctx));
+}
+
 export async function getOwnRegularizationDetail(ctx: AttendanceCtx, id: string) {
   return repo.getOwnRegularizationDetail(ctx, id);
 }

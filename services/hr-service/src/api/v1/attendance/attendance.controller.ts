@@ -2,7 +2,7 @@ import type { FastifyRequest, FastifyReply } from 'fastify';
 import { can, CAPABILITY } from '@platform/rbac';
 import * as service from './attendance.service.js';
 import type { AttendanceCtx } from './attendance.repository.js';
-import { getPhotoStorage, contentTypeForKey } from '../../../lib/storage/photo-storage.js';
+import { assertOwnKey, getPhotoStorage, contentTypeForKey } from '../../../lib/storage/photo-storage.js';
 import { SUMMARY_COLUMNS, numericSummaryRows, toCsv, detailCsv, detailXlsx, musterXlsx } from '../../../lib/attendance/report-export.js';
 import type {
   CheckInInput,
@@ -121,8 +121,10 @@ export class AttendanceController {
   // ── Photo (authenticated) ─────────────────────────────────────────────────────
   photo = async (request: FastifyRequest, reply: FastifyReply) => {
     const { id } = request.params as { id: string };
-    const key = await service.getPhotoKey(ctxOf(request), id);
+    const ctx = ctxOf(request);
+    const key = await service.getPhotoKey(ctx, id);
     if (!key) return reply.status(404).send({ success: false, error: 'Photo not found' });
+    assertOwnKey(ctx.tenant_id, key);
     const bytes = await getPhotoStorage().get(key);
     if (!bytes) return reply.status(404).send({ success: false, error: 'Photo not found' });
     return reply.header('Content-Type', contentTypeForKey(key)).header('Cache-Control', 'private, no-store').send(bytes);
@@ -195,6 +197,12 @@ export class AttendanceController {
     return reply.send({ success: true, ...result });
   };
 
+  getRegularizationApprovals = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = request.params as { id: string };
+    const result = await service.getRegularizationApprovals(ctxOf(request), id);
+    return reply.send({ success: true, data: result });
+  };
+
   getRegularization = async (request: FastifyRequest, reply: FastifyReply) => {
     const { id } = request.params as { id: string };
     const result = await service.getOwnRegularizationDetail(ctxOf(request), id);
@@ -253,8 +261,10 @@ export class AttendanceController {
 
   faceReference = async (request: FastifyRequest, reply: FastifyReply) => {
     const { userId } = request.params as { userId: string };
-    const key = await service.getReferencePhotoKey(ctxOf(request), userId);
+    const ctx = ctxOf(request);
+    const key = await service.getReferencePhotoKey(ctx, userId);
     if (!key) return reply.status(404).send({ success: false, error: 'Reference photo not found' });
+    assertOwnKey(ctx.tenant_id, key);
     const bytes = await getPhotoStorage().get(key);
     if (!bytes) return reply.status(404).send({ success: false, error: 'Reference photo not found' });
     return reply.header('Content-Type', contentTypeForKey(key)).header('Cache-Control', 'private, no-store').send(bytes);

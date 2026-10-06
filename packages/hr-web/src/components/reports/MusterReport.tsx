@@ -172,7 +172,7 @@ export default function MusterReport({ actor }: Props) {
         </div>
       )}
 
-      <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-[0.6875rem]">
         <span className="font-semibold text-on-surface-variant">Legend filter</span>
         <button type="button" onClick={() => { setCode(null); setPage(1); }} aria-pressed={code === null}
           className={`rounded-md border px-2 py-0.5 font-semibold ${code === null ? 'border-primary bg-primary text-on-primary' : 'border-outline-variant bg-surface-container-lowest text-on-surface-variant'}`}>All codes</button>
@@ -219,7 +219,7 @@ export default function MusterReport({ actor }: Props) {
                   <td className="sticky left-0 bg-surface-container-lowest px-2 py-1.5 text-outline">{r.sl_no}</td>
                   <td className="sticky left-8 min-w-[160px] bg-surface-container-lowest px-2 py-1.5">
                     <p className="font-medium text-on-surface">{r.name}</p>
-                    {r.employee_code && <p className="text-[10px] text-outline">{r.employee_code}</p>}
+                    {r.employee_code && <p className="text-[0.625rem] text-outline">{r.employee_code}</p>}
                   </td>
                   <td className="px-2 py-1.5 text-on-surface-variant">{r.designation ?? '—'}</td>
                   <td className="px-2 py-1.5 text-on-surface-variant">{r.department ?? '—'}</td>
@@ -242,7 +242,7 @@ export default function MusterReport({ actor }: Props) {
           <Pagination page={safePage} pageSize={pageSize} total={rows.length} onPage={setPage} onPageSize={(n) => { setPageSize(n); setPage(1); }} noun="employees" />
         </div>
       )}
-      <p className="mt-2 text-[11px] text-outline">
+      <p className="mt-2 text-[0.6875rem] text-outline">
         Half day counts as 0.5. Total paid = present + weekly offs + paid leave + holidays. The Excel download adds a blank Final Paid Days column for HR.
       </p>
     </PageSection>

@@ -8,7 +8,8 @@ import { authenticate } from '../../../middleware/auth.middleware.js';
 import { validate } from '../../../middleware/validate.middleware.js';
 import { requireCapability } from '../../../middleware/require-capability.middleware.js';
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../../lib/errors.js';
-import { getPhotoStorage } from '../../../lib/storage/photo-storage.js';
+import { blobKeys } from '@platform/blob-storage';
+import { assertOwnKey, getPhotoStorage } from '../../../lib/storage/photo-storage.js';
 import { sniffDocument } from '../../../lib/documents/sniff.js';
 import { documentLimitFor } from '../../../lib/documents/limit.js';
 import { buildZip, uniqueNames } from '../../../lib/documents/zip.js';
@@ -85,7 +86,7 @@ export async function documentsRouter(app: FastifyInstance) {
   });
 
   app.post('/documents/mine', { preHandler: [authenticate, view, validate({ body: uploadDocumentSchema })] }, async (request, reply) => {
-    const { org_id, user_id } = request.auth;
+    const { org_id, user_id, tenant_id } = request.auth;
     const b = request.body as UploadDocumentInput;
     const bytes = Buffer.from(b.data_base64, 'base64');
     if (bytes.length === 0) throw new BadRequestError('That file is empty');
@@ -95,7 +96,8 @@ export async function documentsRouter(app: FastifyInstance) {
     const kind = sniffDocument(bytes);
     if (!kind) throw new BadRequestError('Only PDF, JPG, PNG or WebP files can be uploaded');
 
-    const key = `documents/${org_id}/${user_id}/${randomUUID()}.${kind.ext}`;
+    // <tenant>/<branch>/<employee>/documents/<uuid>.<ext>; the DB column stays authoritative.
+    const key = blobKeys.document(tenant_id, org_id, user_id, randomUUID(), kind.ext);
     const storage = getPhotoStorage();
     await storage.putAt(key, bytes);
     try {
@@ -140,7 +142,7 @@ export async function documentsRouter(app: FastifyInstance) {
   // capped so one request cannot pull the blob store into memory. HR's download of someone else's is audited.
   const DOSSIER_MAX_BYTES = 25 * 1024 * 1024;
   const sendDossier = async (request: FastifyRequest, reply: FastifyReply, subjectId: string, own: boolean) => {
-    const { org_id } = request.auth;
+    const { org_id, tenant_id } = request.auth;
     const { name, rows } = await withServiceTx(async (tx) => {
       const who = (await tx.execute(sql`
         SELECT u.full_name FROM iam.users u JOIN hr.employee_profiles p ON p.user_id = u.id
@@ -158,6 +160,7 @@ export async function documentsRouter(app: FastifyInstance) {
     const storage = getPhotoStorage();
     const files: Array<{ row: (typeof rows)[number]; data: Buffer }> = [];
     for (const r of rows) {
+      assertOwnKey(tenant_id, r.file_key);
       const data = await storage.get(r.file_key);
       if (data) files.push({ row: r, data });
     }
@@ -198,7 +201,7 @@ export async function documentsRouter(app: FastifyInstance) {
   // The file itself. Owner (documents.view) or HR (documents.manage) in the same org; a
   // document that is not yours and not reviewable by you does not exist as far as you can tell.
   app.get('/documents/:id/file', { preHandler: [authenticate] }, async (request, reply) => {
-    const { org_id, user_id } = request.auth;
+    const { org_id, user_id, tenant_id } = request.auth;
     const { id } = request.params as { id: string };
     const row = await withServiceTx(async (tx) => {
       const r = (await tx.execute(sql`
@@ -209,6 +212,7 @@ export async function documentsRouter(app: FastifyInstance) {
     const mine = row?.user_id === user_id;
     const allowed = row && (mine ? can(request.auth, CAPABILITY.HR_EMPLOYEES_DOCUMENTS_VIEW) || can(request.auth, CAPABILITY.HR_EMPLOYEES_DOCUMENTS_MANAGE) : can(request.auth, CAPABILITY.HR_EMPLOYEES_DOCUMENTS_MANAGE));
     if (!row || !allowed) throw new NotFoundError('Document not found');
+    assertOwnKey(tenant_id, row.file_key);
     const bytes = await getPhotoStorage().get(row.file_key);
     if (!bytes) throw new NotFoundError('Document not found');
     if (!mine) audit(request, 'document_opened', row.user_id, row.id);
@@ -249,7 +253,7 @@ export async function documentsRouter(app: FastifyInstance) {
   // Remove a document: the owner while it is not verified, HR any time. A soft delete by UPDATE
   // (the DELETE trigger is only honoured for root_service), and the file itself is erased.
   app.delete('/documents/:id', { preHandler: [authenticate] }, async (request, reply) => {
-    const { org_id, user_id } = request.auth;
+    const { org_id, user_id, tenant_id } = request.auth;
     const { id } = request.params as { id: string };
     const isHr = can(request.auth, CAPABILITY.HR_EMPLOYEES_DOCUMENTS_MANAGE);
     const isOwnerCap = can(request.auth, CAPABILITY.HR_EMPLOYEES_DOCUMENTS_VIEW);
@@ -268,6 +272,7 @@ export async function documentsRouter(app: FastifyInstance) {
         WHERE id = ${id}`);
       return d;
     });
+    assertOwnKey(tenant_id, row.file_key);
     await getPhotoStorage().delete(row.file_key).catch(() => undefined);
     audit(request, 'document_removed', row.user_id, row.id);
     return reply.status(204).send();

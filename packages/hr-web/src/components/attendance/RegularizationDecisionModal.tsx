@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal, SpeechInputButton, appendDictation } from '@platform/ui-kit';
 import { attendance as attendanceApi } from '../../lib/api/client';
-import type { RegularizationView } from '../../lib/attendance/types';
+import type { RegularizationView, RegularizationApprovalReview } from '../../lib/attendance/types';
 import { formatDay, formatDateTime } from '../../lib/attendance/format';
+import ApprovalReviewPanel from '../shared/ApprovalReviewPanel';
 
 interface Props {
   request: RegularizationView | null;
@@ -16,8 +17,29 @@ export default function RegularizationDecisionModal({ request, onClose, onDecide
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [review, setReview] = useState<RegularizationApprovalReview | null>(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+
+  const requestId = request?.id ?? null;
+  useEffect(() => {
+    setReview(null);
+    setReviewError(null);
+    setError(null);
+    setComment('');
+    if (!requestId) return;
+    setReviewLoading(true);
+    attendanceApi.regularizations
+      .approvals(requestId)
+      .then((res) => setReview(res.data))
+      .catch((err) => setReviewError(err instanceof Error ? err.message : 'Failed to load.'))
+      .finally(() => setReviewLoading(false));
+  }, [requestId]);
 
   if (!request) return null;
+
+  // The server refuses a second approval from the same person; the dialog says so up front.
+  const cannotApprove = review !== null && !review.my_decision.can_decide;
 
   const decide = async (action: 'approve' | 'reject') => {
     setError(null);
@@ -55,7 +77,7 @@ export default function RegularizationDecisionModal({ request, onClose, onDecide
         className="rounded-xl border border-status-overdue/30 bg-surface-container-lowest px-4 py-2 text-sm font-semibold text-status-overdue hover:bg-status-overdue-container disabled:opacity-60">
         {busy === 'reject' ? 'Rejecting…' : 'Reject'}
       </button>
-      <button type="button" onClick={() => decide('approve')} disabled={busy !== null}
+      <button type="button" onClick={() => decide('approve')} disabled={busy !== null || cannotApprove}
         className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary/90 disabled:opacity-60">
         {busy === 'approve' ? 'Approving…' : 'Approve'}
       </button>
@@ -78,6 +100,8 @@ export default function RegularizationDecisionModal({ request, onClose, onDecide
           <Row label="Reason" value={request.reason} full />
         </dl>
 
+        <ApprovalReviewPanel review={review} loading={reviewLoading} error={reviewError} formatDateTime={formatDateTime} />
+
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between gap-2">
             <label htmlFor="rd-comment" className="text-xs font-semibold text-on-surface">
@@ -96,7 +120,7 @@ export default function RegularizationDecisionModal({ request, onClose, onDecide
 function Row({ label, value, full }: { label: string; value: string; full?: boolean }) {
   return (
     <div className={full ? 'col-span-2' : ''}>
-      <dt className="text-[11px] font-semibold uppercase tracking-wide text-outline">{label}</dt>
+      <dt className="text-[0.6875rem] font-semibold uppercase tracking-wide text-outline">{label}</dt>
       <dd className="text-on-surface">{value}</dd>
     </div>
   );

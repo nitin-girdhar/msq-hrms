@@ -71,7 +71,7 @@ export function UpcomingHolidaysCard() {
             return (
               <li key={h.id} className="flex items-center gap-3 rounded-lg border border-outline-variant/60 bg-surface-container-low px-3 py-2">
                 <span className="flex w-11 shrink-0 flex-col items-center rounded-lg bg-primary-fixed py-1 text-on-primary-fixed" aria-hidden="true">
-                  <span className="text-[10px] font-semibold uppercase">{new Date(`${h.holiday_date}T00:00:00Z`).toLocaleDateString('en-IN', { month: 'short', timeZone: 'UTC' })}</span>
+                  <span className="text-[0.625rem] font-semibold uppercase">{new Date(`${h.holiday_date}T00:00:00Z`).toLocaleDateString('en-IN', { month: 'short', timeZone: 'UTC' })}</span>
                   <span className="font-mono text-base font-bold leading-none">{h.holiday_date.slice(8, 10)}</span>
                 </span>
                 <span className="min-w-0 flex-1">

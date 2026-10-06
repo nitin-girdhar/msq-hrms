@@ -22,7 +22,7 @@ const STATUS_CLS: Record<string, string> = {
 const STATUS_LABEL: Record<string, string> = { verified: 'Verified', pending: 'Awaiting review', rejected: 'Rejected' };
 
 function StatusChip({ status }: { status: string }) {
-  return <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_CLS[status] ?? 'bg-surface-container text-on-surface-variant'}`}>{STATUS_LABEL[status] ?? status}</span>;
+  return <span className={`rounded-full px-2 py-0.5 text-[0.6875rem] font-medium ${STATUS_CLS[status] ?? 'bg-surface-container text-on-surface-variant'}`}>{STATUS_LABEL[status] ?? status}</span>;
 }
 
 function ExpiryNote({ expiresOn }: { expiresOn: string | null }) {

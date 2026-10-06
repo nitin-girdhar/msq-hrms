@@ -28,7 +28,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { sql } from 'drizzle-orm';
-import { hasCapability, type DrizzleTx } from '@platform/db';
+import { hasCapability, sqlTextArr, type DrizzleTx } from '@platform/db';
 import { CAPABILITY } from '@platform/rbac';
 
 export interface ApproverAssignment {
@@ -82,6 +82,27 @@ export function buildApproverChain(
   }
 
   return approvers;
+}
+
+/**
+ * Pure picker for the person who takes over a level its approver can no longer hold
+ * (they covered a lower level). Walks UP the reporting chain from `startUserId`, skipping
+ * anyone excluded (already in this request's chain, or the requester) and anyone inactive
+ * in the org. Returns null when the chain runs out, so the caller can escalate to admins.
+ */
+export function pickReplacementApprover(
+  startUserId: string,
+  excluded: ReadonlySet<string>,
+  graph: Pick<ApproverGraph, 'managerOf' | 'isActiveInOrg'>,
+): string | null {
+  const visited = new Set<string>([startUserId]);
+  let cursor = graph.managerOf(startUserId);
+  while (cursor && !visited.has(cursor)) {
+    visited.add(cursor);
+    if (!excluded.has(cursor) && graph.isActiveInOrg(cursor)) return cursor;
+    cursor = graph.managerOf(cursor);
+  }
+  return null;
 }
 
 /**
@@ -162,4 +183,70 @@ export async function resolveApprovers(
   };
 
   return buildApproverChain(requesterId, levels, graph);
+}
+
+export interface ReplacementApprover {
+  approverId: string;
+  // How they were found; stored on the chain so an escalation reads as one.
+  source: 'manager' | 'branch_admin' | 'tenant_admin';
+}
+
+/**
+ * Someone to take over a level whose approver covered a lower level and so cannot also
+ * approve their own. Order: the next manager up the reporting chain, then another
+ * hr_admin/org_admin of the org, then a tenant_admin. `excluded` holds everyone already
+ * in (or acting on) the request plus the requester. Null only when nobody qualifies; the
+ * level then stays with its old approver and an override must finish it.
+ */
+export async function resolveReplacementApprover(
+  tx: DrizzleTx,
+  orgId: string,
+  tenantId: string,
+  actorId: string,
+  excluded: ReadonlySet<string>,
+): Promise<ReplacementApprover | null> {
+  const reportingRows = (await tx.execute(sql`
+    SELECT user_id::text AS user_id, manager_id::text AS manager_id
+    FROM iam.reporting_lines
+    WHERE org_id = ${orgId} AND NOT is_deleted
+      AND effective_from <= CURRENT_DATE AND (effective_to IS NULL OR effective_to > CURRENT_DATE)
+  `)) as unknown as Array<{ user_id: string; manager_id: string }>;
+  const activeRows = (await tx.execute(sql`
+    SELECT u.id::text AS id
+    FROM iam.users u
+    JOIN iam.user_org_mapping uom ON uom.user_id = u.id AND uom.org_id = ${orgId} AND uom.is_active
+    WHERE u.is_active AND NOT u.is_deleted
+  `)) as unknown as Array<{ id: string }>;
+
+  const managerOf = new Map<string, string>(reportingRows.map((r) => [r.user_id, r.manager_id]));
+  const activeInOrg = new Set(activeRows.map((r) => r.id));
+
+  const manager = pickReplacementApprover(actorId, excluded, {
+    managerOf: (id) => managerOf.get(id) ?? null,
+    isActiveInOrg: (id) => activeInOrg.has(id),
+  });
+  if (manager) return { approverId: manager, source: 'manager' };
+
+  // Admins by role NAME are gated on CAPABILITY.HR_LEAVE like the apply-time fallback
+  // (roles are tenant-owned, so a name alone proves nothing). Lowest user id wins.
+  const pickAdmin = async (roleNames: string[]): Promise<string | null> => {
+    const candidates = (await tx.execute(sql`
+      SELECT uom.user_id::text AS user_id, ur.name AS role_name
+      FROM iam.user_org_mapping uom
+      JOIN iam.user_roles ur ON ur.id = uom.role_id
+      WHERE uom.org_id = ${orgId} AND uom.is_active AND ur.name = ANY(${sqlTextArr(roleNames)})
+      ORDER BY uom.user_id ASC
+    `)) as unknown as Array<{ user_id: string; role_name: string }>;
+    for (const c of candidates) {
+      if (excluded.has(c.user_id) || !activeInOrg.has(c.user_id)) continue;
+      if (await hasCapability(tenantId, c.role_name, CAPABILITY.HR_LEAVE)) return c.user_id;
+    }
+    return null;
+  };
+
+  const branchAdmin = await pickAdmin(['org_admin', 'hr_admin']);
+  if (branchAdmin) return { approverId: branchAdmin, source: 'branch_admin' };
+  const tenantAdmin = await pickAdmin(['tenant_admin']);
+  if (tenantAdmin) return { approverId: tenantAdmin, source: 'tenant_admin' };
+  return null;
 }

@@ -55,7 +55,8 @@ export default async function HrModuleShell({ module, children }: Props) {
         searchSlot={<HrHeaderSearch key="hr-search" actor={session} pages={HR_NAV.filter((n) => can(session, n.capability)).map((n) => ({ id: n.id, label: n.label, href: n.href }))} />}
         notificationSlot={<HrAttentionBell key="hr-bell" actor={session} />}
         sidebarFooter={<HrWorkCards key="hr-work-cards" actor={session} />}
-        title="Fitclass - People & Attendance"
+        title="People & Attendance"
+        titleWithBrand
         adminWebUrl={adminWebOrigin()}
         lookupAdminUrl={adminOrigin()}
       >

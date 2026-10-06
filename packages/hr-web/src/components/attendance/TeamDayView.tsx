@@ -311,7 +311,7 @@ function PresenceDonut({ onTime, late, notMarked, onLeave }: { onTime: number; l
           offset += len;
           return el;
         })}
-        <text x="42" y="47" textAnchor="middle" className="fill-on-surface text-[16px] font-bold">{met}%</text>
+        <text x="42" y="47" textAnchor="middle" className="fill-on-surface text-[1rem] font-bold">{met}%</text>
       </svg>
       <div>
         <h3 className="text-sm font-semibold text-on-surface">Presence compliance</h3>

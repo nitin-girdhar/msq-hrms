@@ -68,6 +68,14 @@ export interface LeaveRequestView {
   attachment_mime?: string | null;
   attachment_size?: number | null;
   latest_approver_name?: string | null;
+  /** Approval chain progress (list endpoints only). */
+  approval_levels_total?: number;
+  approval_levels_approved?: number;
+  pending_level?: number | null;
+  pending_approver_id?: string | null;
+  pending_approver_name?: string | null;
+  /** People who actually approved, in level order, each named once. */
+  approved_by_names?: string[];
 }
 
 export type ApprovalAction = 'pending' | 'approved' | 'rejected';
@@ -79,12 +87,24 @@ export interface LeaveApprovalStep {
   action: ApprovalAction;
   acted_at: string | null;
   comment: string | null;
+  /** Who actually decided; differs from approver_name when an admin overrode. */
+  acted_by_id?: string | null;
+  acted_by_name?: string | null;
+  /** Set when the level was handed on because its original approver covered a lower level. */
+  reassigned_from_name?: string | null;
 }
 
 export interface ApprovalPendingWith {
   level: number;
   approver_id: string;
   approver_name: string;
+}
+
+/** What the approver's Review dialog needs: the chain and whether this viewer may decide it now. */
+export interface ApprovalReview {
+  approval_chain: LeaveApprovalStep[];
+  pending_with: ApprovalPendingWith | null;
+  my_decision: { can_decide: boolean; covering: boolean; reason: string | null };
 }
 
 export interface LeaveRequestDetail extends LeaveRequestView {

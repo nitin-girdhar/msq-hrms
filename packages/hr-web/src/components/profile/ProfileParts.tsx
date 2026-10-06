@@ -46,7 +46,7 @@ export function CompletenessRing({ value }: { value: Completeness }) {
         <circle cx="32" cy="32" r={r} fill="none" strokeWidth="6" className="stroke-surface-container-high" />
         <circle cx="32" cy="32" r={r} fill="none" strokeWidth="6" strokeLinecap="round" className="stroke-status-success"
           strokeDasharray={`${(value.percent / 100) * c} ${c}`} transform="rotate(-90 32 32)" />
-        <text x="32" y="36" textAnchor="middle" className="fill-on-surface text-[13px] font-bold">{value.percent}%</text>
+        <text x="32" y="36" textAnchor="middle" className="fill-on-surface text-[0.8125rem] font-bold">{value.percent}%</text>
       </svg>
       <div className="min-w-0">
         <p className="text-sm font-semibold text-on-surface">Profile complete</p>

@@ -48,7 +48,7 @@ function PunchPhoto({ event }: { event: DayEventView }) {
 
       {/* Photos are only half the story — a punch can be flagged, thrown out, or
           made from the wrong place, and the reviewer needs that beside the face. */}
-      <div className="mb-1 flex flex-wrap gap-x-1.5 text-[10px] leading-tight">
+      <div className="mb-1 flex flex-wrap gap-x-1.5 text-[0.625rem] leading-tight">
         {event.face_match_score != null && (
           <span className={pending ? 'font-semibold text-on-status-due-container' : 'text-on-surface-variant'}>
             {Math.round(event.face_match_score)}%
@@ -73,13 +73,13 @@ function PunchPhoto({ event }: { event: DayEventView }) {
       </div>
 
       {!event.has_photo ? (
-        <p className="rounded-lg border border-dashed border-outline-variant py-5 text-center text-[11px] text-outline">
+        <p className="rounded-lg border border-dashed border-outline-variant py-5 text-center text-[0.6875rem] text-outline">
           No photo
         </p>
       ) : failed ? (
         // Retention deletes the blob but leaves photo_url set, so has_photo can
         // be true for an image that no longer exists.
-        <p className="rounded-lg border border-dashed border-outline-variant py-5 text-center text-[11px] text-outline">
+        <p className="rounded-lg border border-dashed border-outline-variant py-5 text-center text-[0.6875rem] text-outline">
           Photo unavailable
         </p>
       ) : show ? (
@@ -91,7 +91,7 @@ function PunchPhoto({ event }: { event: DayEventView }) {
             onError={() => setFailed(true)}
             className="w-full object-cover"
           />
-          <div className="absolute inset-x-0 bottom-0 bg-scrim px-2 py-1 text-[10px] leading-tight text-on-primary">
+          <div className="absolute inset-x-0 bottom-0 bg-scrim px-2 py-1 text-[0.625rem] leading-tight text-on-primary">
             <div>{formatClockTime(event.occurred_at)}</div>
             {loc && <div className="opacity-80">📍 {loc}</div>}
           </div>

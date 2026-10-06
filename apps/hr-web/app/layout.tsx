@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { ServiceWorkerRegistrar, pwaViewport, pwaAppleWebApp, pwaIcons, pwaAppleCapableMeta, pwaManifest } from '@platform/ui-kit';
-import { brandedMetadata, getEffectiveBranding } from '@platform/ui-kit/server';
+import { DEFAULT_BRAND, brandedMetadata, getEffectiveBranding } from '@platform/ui-kit/server';
 import { BrandingProvider } from '@platform/ui-kit/branding';
 import { ThemeStyle, themeHtmlProps } from '@platform/ui-kit/theme';
 import './globals.css';
@@ -8,8 +8,8 @@ import './globals.css';
 export const viewport = pwaViewport;
 
 const baseMetadata: Metadata = {
-  title: 'FitClass · People & Attendance',
-  description: 'Leave and attendance for FitClass teams',
+  title: `${DEFAULT_BRAND.name} · People & Attendance`,
+  description: `Leave and attendance for ${DEFAULT_BRAND.name} teams`,
   appleWebApp: pwaAppleWebApp,
   icons: pwaIcons,
   manifest: pwaManifest,

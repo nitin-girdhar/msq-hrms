@@ -9,6 +9,7 @@ import type {
   LeaveBalance,
   LeaveRequestView,
   LeaveRequestDetail,
+  ApprovalReview,
   LeavePreview,
   LeavePolicyView,
   HolidayView,
@@ -51,6 +52,7 @@ import type {
   FaceReviewView,
   RegularizationView,
   RegularizationDetail,
+  RegularizationApprovalReview,
   MonthlySummaryRow,
   MusterReport,
   MusterParams,
@@ -152,6 +154,9 @@ export const leave = {
     request<ListEnvelope<LeaveRequestView>>(`/hr/leave/requests${qs(params)}`),
 
   getById: (id: string) => request<Envelope<LeaveRequestDetail>>(`/hr/leave/requests/${id}`),
+
+  // Approver-side chain + whether the caller may decide it now.
+  approvals: (id: string) => request<Envelope<ApprovalReview>>(`/hr/leave/requests/${id}/approvals`),
 
   teamRequests: (params: ListRequestsParams = {}) =>
     request<ListEnvelope<LeaveRequestView>>(`/hr/leave/requests/team${qs(params)}`),
@@ -621,6 +626,9 @@ export const attendance = {
 
     getById: (id: string) =>
       request<Envelope<RegularizationDetail>>(`/hr/attendance/regularizations/${id}`),
+
+    approvals: (id: string) =>
+      request<Envelope<RegularizationApprovalReview>>(`/hr/attendance/regularizations/${id}/approvals`),
 
     // Requester-side, own pending request only (server enforces both).
     update: (id: string, body: UpdateRegularizationBody) =>

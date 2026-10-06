@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { RegularizationView } from '../../lib/attendance/types';
 import { REGULARIZATION_STATUS_STYLES, formatDay, formatDateTime } from '../../lib/attendance/format';
 import { emptyBlockCls, stateBlockCls } from '../../lib/ui';
+import ApprovalProgress from '../shared/ApprovalProgress';
 
 interface Props {
   items: RegularizationView[];
@@ -84,6 +85,7 @@ export default function MyRegularizationsList({ items, loading, onView, onEdit, 
                 <span className={`shrink-0 rounded-full px-2 py-0.5 text-label-sm font-medium capitalize ${style.bg} ${style.fg}`}>{r.status}</span>
               </div>
               <p className="mt-2 text-xs text-on-surface-variant">{r.reason}</p>
+              <div className="mt-2"><ApprovalProgress data={r} status={r.status} /></div>
               <div className="mt-2 flex items-center justify-between gap-2">
                 <span className="text-label-sm text-outline">{formatDateTime(r.created_at)}</span>
                 <div className="flex items-center gap-1">{actions(r)}</div>
@@ -94,13 +96,14 @@ export default function MyRegularizationsList({ items, loading, onView, onEdit, 
       </ul>
 
       <div className="hidden overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm md:block">
-        <table className="w-full min-w-[640px] text-sm">
+        <table className="w-full min-w-[760px] text-sm">
           <thead>
             <tr className="border-b border-outline-variant text-left text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
               <th className="px-4 py-3">Date</th>
               <th className="px-4 py-3">Requested</th>
               <th className="px-4 py-3">Reason</th>
               <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Approval</th>
               <th className="px-4 py-3">Submitted</th>
               <th className="px-4 py-3 text-right">Actions</th>
             </tr>
@@ -116,6 +119,7 @@ export default function MyRegularizationsList({ items, loading, onView, onEdit, 
                   <td className="px-4 py-3">
                     <span className={`rounded-full px-2 py-0.5 text-label-sm font-medium ${style.bg} ${style.fg}`}>{r.status}</span>
                   </td>
+                  <td className="px-4 py-3"><ApprovalProgress data={r} status={r.status} /></td>
                   <td className="px-4 py-3 text-label-sm text-outline">{formatDateTime(r.created_at)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">{actions(r)}</div>

@@ -46,14 +46,14 @@ export default function FaceReviewQueue({ items, loading, onReview }: Props) {
             <tr key={r.event_id} className="border-b border-outline-variant/50 last:border-0 hover:bg-surface-container-low">
               <td className="px-4 py-3 font-medium text-on-surface">{r.user_full_name ?? r.user_id}</td>
               <td className="px-4 py-3 text-on-surface-variant">{r.event_type === 'check_in' ? 'Check-in' : 'Check-out'}</td>
-              <td className="px-4 py-3 text-[11px] text-outline">{formatDateTime(r.occurred_at)}</td>
+              <td className="px-4 py-3 text-[0.6875rem] text-outline">{formatDateTime(r.occurred_at)}</td>
               <td className="px-4 py-3">
                 {r.face_match_score != null ? (
                   <span className="font-semibold text-on-status-due-container">{Math.round(r.face_match_score)}%</span>
                 ) : (
                   // Not enrolled, or the face service was unreachable. Nothing was
                   // compared at all, which is a different problem from a low score.
-                  <span className="text-[11px] text-outline">No score</span>
+                  <span className="text-[0.6875rem] text-outline">No score</span>
                 )}
               </td>
               <td className="px-4 py-3 text-right">

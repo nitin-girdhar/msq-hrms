@@ -4,6 +4,7 @@ import { formatDateRange, formatDays, formatDateTime, canCancelRequest, canEditR
 import { emptyBlockCls } from '../../lib/ui';
 import { leave as leaveApi } from '../../lib/api/client';
 import StatusChip from './StatusChip';
+import ApprovalProgress from '../shared/ApprovalProgress';
 
 interface Props {
   items: LeaveRequestView[];
@@ -59,6 +60,7 @@ export default function MyRequestsTable({ items, onView, onEdit, onCancel, busyI
             </div>
             {r.reason && <p className="mt-2 text-xs text-on-surface-variant">{r.reason}</p>}
             {infoNote(r)}
+            <div className="mt-2"><ApprovalProgress data={r} status={r.status_name} /></div>
             <p className="mt-1 text-label-sm text-outline">Applied {formatDateTime(r.created_at)}</p>
             <div className="mt-2 flex flex-wrap justify-end gap-2">{actions(r)}</div>
           </li>
@@ -73,7 +75,7 @@ export default function MyRequestsTable({ items, onView, onEdit, onCancel, busyI
               <th className="px-4 py-3">Type</th>
               <th className="px-4 py-3">Dates</th>
               <th className="px-4 py-3">Days</th>
-              <th className="px-4 py-3">Reviewer</th>
+              <th className="px-4 py-3">Approval</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Applied</th>
               <th className="px-4 py-3 text-right">Actions</th>
@@ -92,7 +94,9 @@ export default function MyRequestsTable({ items, onView, onEdit, onCancel, busyI
                   {infoNote(r)}
                 </td>
                 <td className="px-4 py-3 text-on-surface-variant">{formatDays(r.days_count)}</td>
-                <td className="px-4 py-3 text-xs text-on-surface-variant">{r.latest_approver_name ?? '—'}</td>
+                <td className="px-4 py-3 text-xs text-on-surface-variant">
+                  {(r.approval_levels_total ?? 0) > 0 ? <ApprovalProgress data={r} status={r.status_name} /> : (r.latest_approver_name ?? '—')}
+                </td>
                 <td className="px-4 py-3">
                   <StatusChip status={r.status_name} label={r.status_label} />
                 </td>

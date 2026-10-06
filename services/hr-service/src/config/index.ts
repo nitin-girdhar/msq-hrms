@@ -16,6 +16,9 @@ export const config = {
   // fallback for existing deployments.
   photoStorageDriver: process.env['BLOB_STORAGE_DRIVER'] ?? process.env['PHOTO_STORAGE_DRIVER'] ?? 'local',
   photoStorageDir: process.env['BLOB_STORAGE_DIR'] ?? process.env['PHOTO_STORAGE_DIR'] ?? '/data/blobs',
+  // Accept keys written before the tenant-first layout (`punch/…`, `documents/…`,
+  // `leave/…`, `avatar/…`). Set BLOB_ALLOW_LEGACY_KEYS=false once migrate-blob-layout has run.
+  blobAllowLegacyKeys: (process.env['BLOB_ALLOW_LEGACY_KEYS'] ?? 'true') !== 'false',
   photoMaxBytes: parseInt(process.env['PHOTO_MAX_BYTES'] ?? String(2 * 1024 * 1024), 10),
   // Face verification (see lib/face/). The driver is constructed lazily, so a
   // missing API key never blocks startup — it only matters once an org turns on

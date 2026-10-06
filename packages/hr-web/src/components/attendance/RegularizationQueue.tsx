@@ -2,6 +2,7 @@
 
 import type { RegularizationView } from '../../lib/attendance/types';
 import { formatDay, formatDateTime } from '../../lib/attendance/format';
+import ApprovalProgress from '../shared/ApprovalProgress';
 
 interface Props {
   items: RegularizationView[];
@@ -23,13 +24,14 @@ export default function RegularizationQueue({ items, loading, onReview }: Props)
 
   return (
     <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm">
-      <table className="w-full min-w-[760px] text-sm">
+      <table className="w-full min-w-[900px] text-sm">
         <thead>
           <tr className="border-b border-outline-variant text-left text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
             <th className="px-4 py-3">Requester</th>
             <th className="px-4 py-3">Date</th>
             <th className="px-4 py-3">Requested</th>
             <th className="px-4 py-3">Reason</th>
+            <th className="px-4 py-3">Approval</th>
             <th className="px-4 py-3">Submitted</th>
             <th className="px-4 py-3 text-right">Action</th>
           </tr>
@@ -41,7 +43,8 @@ export default function RegularizationQueue({ items, loading, onReview }: Props)
               <td className="px-4 py-3 text-on-surface-variant">{formatDay(r.work_date)}</td>
               <td className="px-4 py-3 text-on-surface-variant">{r.requested_status_name ?? '—'}</td>
               <td className="px-4 py-3 text-on-surface-variant">{r.reason}</td>
-              <td className="px-4 py-3 text-[11px] text-outline">{formatDateTime(r.created_at)}</td>
+              <td className="px-4 py-3"><ApprovalProgress data={r} status={r.status} /></td>
+              <td className="px-4 py-3 text-[0.6875rem] text-outline">{formatDateTime(r.created_at)}</td>
               <td className="px-4 py-3 text-right">
                 <button type="button" onClick={() => onReview(r)} className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-on-primary hover:bg-primary/90">
                   Review

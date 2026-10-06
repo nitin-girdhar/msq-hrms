@@ -46,10 +46,10 @@ export default function RegularizationDetailModal({ regularizationId, onClose }:
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-outline-variant bg-surface-container-low px-4 py-3 text-sm">
               <Row label="Date" value={formatDay(detail.work_date)} />
               <div>
-                <dt className="text-[11px] font-semibold uppercase tracking-wide text-outline">Status</dt>
+                <dt className="text-[0.6875rem] font-semibold uppercase tracking-wide text-outline">Status</dt>
                 <dd>
                   {style && (
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${style.bg} ${style.fg}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-[0.6875rem] font-medium ${style.bg} ${style.fg}`}>
                       {detail.status}
                     </span>
                   )}
@@ -81,7 +81,7 @@ export default function RegularizationDetailModal({ regularizationId, onClose }:
 function Row({ label, value, full }: { label: string; value: string; full?: boolean }) {
   return (
     <div className={full ? 'col-span-2' : ''}>
-      <dt className="text-[11px] font-semibold uppercase tracking-wide text-outline">{label}</dt>
+      <dt className="text-[0.6875rem] font-semibold uppercase tracking-wide text-outline">{label}</dt>
       <dd className="text-on-surface">{value}</dd>
     </div>
   );

@@ -45,7 +45,7 @@ export default function LeaveRequestDetailModal({ requestId, onClose }: Props) {
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-outline-variant bg-surface-container-low px-4 py-3 text-sm">
               <Row label="Type" value={detail.leave_type_label} />
               <div>
-                <dt className="text-[11px] font-semibold uppercase tracking-wide text-outline">Status</dt>
+                <dt className="text-[0.6875rem] font-semibold uppercase tracking-wide text-outline">Status</dt>
                 <dd><StatusChip status={detail.status_name} label={detail.status_label} /></dd>
               </div>
               <Row label="Dates" value={formatDateRange(detail.start_date, detail.end_date, detail.start_half, detail.end_half)} />
@@ -73,7 +73,7 @@ export default function LeaveRequestDetailModal({ requestId, onClose }: Props) {
 function Row({ label, value, full }: { label: string; value: string; full?: boolean }) {
   return (
     <div className={full ? 'col-span-2' : ''}>
-      <dt className="text-[11px] font-semibold uppercase tracking-wide text-outline">{label}</dt>
+      <dt className="text-[0.6875rem] font-semibold uppercase tracking-wide text-outline">{label}</dt>
       <dd className="text-on-surface">{value}</dd>
     </div>
   );

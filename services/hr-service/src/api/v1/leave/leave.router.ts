@@ -57,6 +57,10 @@ export async function leaveRouter(app: FastifyInstance) {
   // plus who it's currently pending with. Ownership is enforced in the repository
   // query, so this shares HR_LEAVE_VIEW rather than an approver capability.
   app.get('/leave/requests/:id', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_VIEW)] }, ctrl.getMine);
+  // Approver-side chain: who approved, who it is pending with, and whether the caller may
+  // decide it now. Scope (org admin / in the chain / manager of the requester) is enforced in
+  // the repository; unrelated callers get a 404.
+  app.get('/leave/requests/:id/approvals', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_APPROVE, 'You do not have permission to review leave')] }, ctrl.getApprovals);
   // Amending your own still-pending request. Gated on the same capability as
   // applying: whoever may raise a request may correct it before it is decided.
   app.patch('/leave/requests/:id', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_REQUEST_CREATE, 'You do not have permission to edit leave requests'), validate({ body: updateLeaveRequestSchema })] }, ctrl.update);

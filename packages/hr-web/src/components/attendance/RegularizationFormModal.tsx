@@ -184,15 +184,15 @@ export default function RegularizationFormModal({ open, date, item, rules, inlin
             className={inputCls}
           />
           {editing ? (
-            <p className="text-[11px] text-outline">
+            <p className="text-[0.6875rem] text-outline">
               To request a different date, cancel this request and file a new one.
             </p>
           ) : dateOutOfWindow ? (
-            <p role="alert" className="text-[11px] font-medium text-status-overdue">
+            <p role="alert" className="text-[0.6875rem] font-medium text-status-overdue">
               Pick a date between {earliestDate} and {latestDate}.
             </p>
           ) : earliestDate && latestDate ? (
-            <p className="text-[11px] text-outline">
+            <p className="text-[0.6875rem] text-outline">
               {earliestDate === latestDate
                 ? `Only today (${latestDate}) can be regularized.`
                 : `Dates from ${earliestDate} to ${latestDate} can be regularized.`}

@@ -79,7 +79,7 @@ export default function DocumentsVault({ items, renderRow, dossierHref, today }:
         <div role="tablist" aria-label="Document categories" className="flex max-w-full gap-2 overflow-x-auto pb-1">
           {VAULT_TABS.map((t) => (
             <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={chipCls(tab === t.id)}>
-              {t.label} <span className="ml-1 font-mono text-[11px] opacity-80">{counts[t.id]}</span>
+              {t.label} <span className="ml-1 font-mono text-[0.6875rem] opacity-80">{counts[t.id]}</span>
             </button>
           ))}
         </div>

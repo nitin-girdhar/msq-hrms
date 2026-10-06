@@ -22,10 +22,11 @@
 
 import { sql } from 'drizzle-orm';
 import { sniffDocument } from '../../../lib/documents/sniff.js';
-import { withRoleTx, withServiceTx, pgErrorCode, type RoleTxContext, type DrizzleTx } from '@platform/db';
+import { withRoleTx, withServiceTx, pgErrorCode, sqlUuidArr, type RoleTxContext, type DrizzleTx } from '@platform/db';
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../../lib/errors.js';
 import { computeLeaveDays, type HalfDay } from '../../../lib/leave/compute-leave-days.js';
-import { resolveApprovers } from '../../../lib/leave/resolve-approvers.js';
+import { resolveApprovers, resolveReplacementApprover } from '../../../lib/leave/resolve-approvers.js';
+import { decisionAuthority, rowsNeedingReplacement, type ChainRow } from '../../../lib/approvals/authority.js';
 import { resolveEffectivePolicy, resolveCycleStartMonth } from '../../../lib/leave/policy.js';
 import { checkEncashment, type EncashmentPolicy } from '../../../lib/leave/encashment.js';
 import { COMP_OFF_EXPIRY_DAYS, COMP_OFF_LEAVE_TYPE, addDaysIso, checkClaimDate } from '../../../lib/leave/comp-off.js';
@@ -265,7 +266,11 @@ async function assertHandover(tx: DrizzleTx, ctx: LeaveCtx, handoverId: string |
 async function resolveAttachment(ctx: LeaveCtx, data: ApplyLeaveRequestInput): Promise<AttachmentMeta | null> {
   const key = data.attachment_token;
   if (!key) return null;
-  if (!key.startsWith(`leave/${ctx.org_id}/${ctx.user_id}/`) || key.includes('..')) {
+  // The caller's own folder only: <tenant>/<org>/<user>/leave/…, or the pre-1.73.0 leave/<org>/<user>/…
+  // shape for an upload made just before the layout change (tokens are short-lived).
+  const own = `${ctx.tenant_id}/${ctx.org_id}/${ctx.user_id}/leave/`;
+  const legacyOwn = `leave/${ctx.org_id}/${ctx.user_id}/`;
+  if (!(key.startsWith(own) || key.startsWith(legacyOwn)) || key.includes('..')) {
     throw new BadRequestError('That attachment does not belong to you');
   }
   // Loaded on demand: the storage module reads its env config when imported, which would force every
@@ -445,7 +450,15 @@ interface RequestForAction {
   status_name: string;
 }
 
-async function loadRequestForAction(tx: DrizzleTx, id: string): Promise<RequestForAction | null> {
+/**
+ * `lock: true` is for every caller that goes on to decide / edit / cancel the
+ * request. Without it two concurrent decisions both read 'pending', both pass
+ * every check and both write: approve + approve inserted TWO 'consumption'
+ * ledger rows (balance debited twice). With the row lock the second transaction
+ * waits, re-reads the committed status and fails the 'pending' check with a
+ * 409. Read-only callers (getRequestApprovals) must not take the lock.
+ */
+async function loadRequestForAction(tx: DrizzleTx, id: string, opts: { lock?: boolean } = {}): Promise<RequestForAction | null> {
   const rows = (await tx.execute(sql`
     SELECT lr.id::text, lr.user_id::text, lr.org_id::text, lr.leave_type_id::text,
            lr.start_date::text, lr.end_date::text, lr.days_count::float8 AS days_count,
@@ -453,6 +466,7 @@ async function loadRequestForAction(tx: DrizzleTx, id: string): Promise<RequestF
     FROM hr.leave_requests lr
     JOIN hr.leave_request_statuses s ON s.id = lr.status_id
     WHERE lr.id = ${id} AND NOT lr.is_deleted
+    ${opts.lock ? sql`FOR UPDATE OF lr` : sql``}
   `)) as unknown as RequestForAction[];
   return rows[0] ?? null;
 }
@@ -492,6 +506,42 @@ async function canApproveLeave(tx: DrizzleTx, orgId: string, approverId: string,
   return rows[0]?.ok ?? false;
 }
 
+// The whole chain, locked: two approvers acting at once must not both read the same
+// pending level. FOR UPDATE serialises them, so the second sees the first's decision.
+async function loadChain(tx: DrizzleTx, requestId: string): Promise<ChainRow[]> {
+  return (await tx.execute(sql`
+    SELECT id::text, level::int AS level, approver_id::text, action, acted_by::text
+    FROM hr.leave_request_approvals
+    WHERE leave_request_id = ${requestId}
+    ORDER BY level ASC
+    FOR UPDATE
+  `)) as unknown as ChainRow[];
+}
+
+/**
+ * After someone approves, any pending level still assigned to them needs a new approver
+ * (they cannot approve twice). Hands each to the next manager up the reporting chain, else
+ * another hr_admin/org_admin, else a tenant_admin; reassigned_from records who it was taken
+ * from. With nobody to take it the level stays put and an admin override finishes it.
+ */
+async function reassignCoveredLevels(
+  tx: DrizzleTx, ctx: LeaveCtx, requesterId: string, rows: ChainRow[], decidedRowId: string,
+): Promise<void> {
+  const stuck = rowsNeedingReplacement(rows, ctx.user_id, decidedRowId);
+  if (stuck.length === 0) return;
+  const excluded = new Set<string>([requesterId, ctx.user_id, ...rows.map((r) => r.approver_id)]);
+  for (const row of stuck) {
+    const next = await resolveReplacementApprover(tx, ctx.org_id, ctx.tenant_id, ctx.user_id, excluded);
+    if (!next) continue;
+    await tx.execute(sql`
+      UPDATE hr.leave_request_approvals
+      SET approver_id = ${next.approverId}, reassigned_from = ${row.approver_id}
+      WHERE id = ${row.id}
+    `);
+    excluded.add(next.approverId);
+  }
+}
+
 export interface DecisionResult {
   request_id: string;
   requester_id: string;
@@ -507,36 +557,40 @@ export async function approveLeave(
   isOverride: boolean,
 ): Promise<DecisionResult> {
   return serviceTxWithContext(ctx, comment, async (tx) => {
-    const req = await loadRequestForAction(tx, id);
+    const req = await loadRequestForAction(tx, id, { lock: true });
     if (!req) throw new NotFoundError('Leave request not found');
     if (req.org_id !== ctx.org_id) throw new NotFoundError('Leave request not found');
     if (req.status_name !== 'pending') throw new ConflictError(`Request is already ${req.status_name}`);
 
-    const pending = await currentPendingLevel(tx, id);
-    if (!pending) throw new ConflictError('No pending approval level for this request');
+    const chain = await loadChain(tx, id);
+    if (!chain.some((r) => r.action === 'pending')) throw new ConflictError('No pending approval level for this request');
 
-    // Authorization: the resolved approver for the current level, or an
-    // authorized override (rank>=80 / hr_admin). Everyone must also pass the
-    // structural can_approve_leave check (never approve your own request).
-    const isAssignedApprover = pending.approver_id === ctx.user_id;
-    if (!isAssignedApprover && !isOverride) {
-      throw new ForbiddenError('You are not the approver for this level');
-    }
+    // Authorization: the level's assigned approver, a higher approver covering it, or an
+    // admin override; never someone who already approved a level. Everyone must also pass
+    // the structural can_approve_leave check (never approve your own request).
+    const auth = decisionAuthority(chain, ctx.user_id, isOverride, 'approve');
+    if (!auth.ok) throw new ForbiddenError(auth.reason);
+    const pending = auth.pending;
     if (!(await canApproveLeave(tx, ctx.org_id, ctx.user_id, req.user_id))) {
       throw new ForbiddenError('You are not authorized to approve this request');
     }
 
-    // Record who acted — annotate the override so the acting user is captured
-    // even when they are not the row's designated approver.
-    const actComment = isAssignedApprover
+    // Record who acted — annotate it so the acting user is captured even when they are
+    // not the row's designated approver.
+    const actComment = pending.approver_id === ctx.user_id
       ? comment
       : `[override by ${ctx.user_id}] ${comment ?? ''}`.trim();
 
-    await tx.execute(sql`
+    const decided = (await tx.execute(sql`
       UPDATE hr.leave_request_approvals
-      SET action = 'approved', acted_at = CLOCK_TIMESTAMP(), comment = ${actComment}
-      WHERE id = ${pending.id}
-    `);
+      SET action = 'approved', acted_at = CLOCK_TIMESTAMP(), comment = ${actComment}, acted_by = ${ctx.user_id}
+      WHERE id = ${pending.id} AND action = 'pending'
+      RETURNING id
+    `)) as unknown as Array<{ id: string }>;
+    if (decided.length === 0) throw new ConflictError('This approval level was already decided');
+
+    // They have now used their one approval: a level still assigned to them moves on.
+    await reassignCoveredLevels(tx, ctx, req.user_id, chain, pending.id);
 
     const next = await hasFurtherPending(tx, id, pending.level);
     if (next) {
@@ -584,29 +638,29 @@ export async function rejectLeave(
   isOverride: boolean,
 ): Promise<DecisionResult> {
   return serviceTxWithContext(ctx, comment, async (tx) => {
-    const req = await loadRequestForAction(tx, id);
+    const req = await loadRequestForAction(tx, id, { lock: true });
     if (!req) throw new NotFoundError('Leave request not found');
     if (req.org_id !== ctx.org_id) throw new NotFoundError('Leave request not found');
     if (req.status_name !== 'pending') throw new ConflictError(`Request is already ${req.status_name}`);
 
-    const pending = await currentPendingLevel(tx, id);
-    if (!pending) throw new ConflictError('No pending approval level for this request');
-
-    const isAssignedApprover = pending.approver_id === ctx.user_id;
-    if (!isAssignedApprover && !isOverride) {
-      throw new ForbiddenError('You are not the approver for this level');
-    }
+    const chain = await loadChain(tx, id);
+    if (!chain.some((r) => r.action === 'pending')) throw new ConflictError('No pending approval level for this request');
+    const auth = decisionAuthority(chain, ctx.user_id, isOverride, 'reject');
+    if (!auth.ok) throw new ForbiddenError(auth.reason);
+    const pending = auth.pending;
     if (!(await canApproveLeave(tx, ctx.org_id, ctx.user_id, req.user_id))) {
       throw new ForbiddenError('You are not authorized to act on this request');
     }
 
-    const actComment = isAssignedApprover ? comment : `[override by ${ctx.user_id}] ${comment}`;
+    const actComment = pending.approver_id === ctx.user_id ? comment : `[override by ${ctx.user_id}] ${comment}`;
 
-    await tx.execute(sql`
+    const decided = (await tx.execute(sql`
       UPDATE hr.leave_request_approvals
-      SET action = 'rejected', acted_at = CLOCK_TIMESTAMP(), comment = ${actComment}
-      WHERE id = ${pending.id}
-    `);
+      SET action = 'rejected', acted_at = CLOCK_TIMESTAMP(), comment = ${actComment}, acted_by = ${ctx.user_id}
+      WHERE id = ${pending.id} AND action = 'pending'
+      RETURNING id
+    `)) as unknown as Array<{ id: string }>;
+    if (decided.length === 0) throw new ConflictError('This approval level was already decided');
 
     const rejectedStatusId = await resolveStatusId(tx, ctx.tenant_id, 'rejected');
     await tx.execute(sql`UPDATE hr.leave_requests SET status_id = ${rejectedStatusId} WHERE id = ${id}`);
@@ -639,7 +693,7 @@ export async function updateLeaveRequest(
   data: UpdateLeaveRequestInput,
 ): Promise<{ days_count: number; level1_approver_id: string | null }> {
   return serviceTxWithContext(ctx, data.reason ?? null, async (tx) => {
-    const req = await loadRequestForAction(tx, id);
+    const req = await loadRequestForAction(tx, id, { lock: true });
     if (!req) throw new NotFoundError('Leave request not found');
     if (req.user_id !== ctx.user_id) throw new ForbiddenError('You can only edit your own leave requests');
     if (req.status_name !== 'pending') {
@@ -678,7 +732,7 @@ export async function updateLeaveRequest(
 
 export async function cancelLeave(ctx: LeaveCtx, id: string, comment: string | null): Promise<void> {
   return serviceTxWithContext(ctx, comment, async (tx) => {
-    const req = await loadRequestForAction(tx, id);
+    const req = await loadRequestForAction(tx, id, { lock: true });
     if (!req) throw new NotFoundError('Leave request not found');
     if (req.user_id !== ctx.user_id) throw new ForbiddenError('You can only cancel your own leave requests');
 
@@ -725,6 +779,48 @@ export async function createAdjustment(ctx: LeaveCtx, data: CreateAdjustmentInpu
 // ═════════════════════════════════════════════════════════════════════════════
 // READS — own scope (withRoleTx, RLS applies)
 // ═════════════════════════════════════════════════════════════════════════════
+interface ApprovalSummaryRow {
+  leave_request_id: string;
+  levels_total: number;
+  levels_approved: number;
+  pending_level: number | null;
+  pending_approver_id: string | null;
+  pending_approver_name: string | null;
+  approved_by_names: string[] | null;
+}
+
+/**
+ * Adds where each request stands in its approval chain (levels approved of total, who it is
+ * pending with, who has approved) to a page of vw_leave_requests_enriched rows. One extra
+ * read of hr.vw_leave_approval_summary for the whole page; a request with no chain rows
+ * (created before levels existed) simply gets no summary.
+ */
+async function withApprovalSummary(tx: DrizzleTx, rows: Row[]): Promise<Row[]> {
+  if (rows.length === 0) return rows;
+  const ids = rows.map((r) => String(r['id']));
+  const summaries = (await tx.execute(sql`
+    SELECT leave_request_id::text, levels_total, levels_approved, pending_level,
+           pending_approver_id::text, pending_approver_name, approved_by_names
+    FROM hr.vw_leave_approval_summary
+    WHERE leave_request_id = ANY(${sqlUuidArr(ids)})
+  `)) as unknown as ApprovalSummaryRow[];
+  const byId = new Map(summaries.map((s) => [s.leave_request_id, s]));
+  return rows.map((r) => {
+    const s = byId.get(String(r['id']));
+    return {
+      ...r,
+      approval_levels_total: s?.levels_total ?? 0,
+      approval_levels_approved: s?.levels_approved ?? 0,
+      pending_level: s?.pending_level ?? null,
+      pending_approver_id: s?.pending_approver_id ?? null,
+      pending_approver_name: s?.pending_approver_name ?? null,
+      // Distinct, in level order: a person who somehow signed twice (rows from before the
+      // one-person-one-level rule) is named once.
+      approved_by_names: Array.from(new Set(s?.approved_by_names ?? [])),
+    };
+  });
+}
+
 export interface ApprovalStep {
   level: number;
   approver_id: string;
@@ -732,6 +828,11 @@ export interface ApprovalStep {
   action: string;
   acted_at: string | null;
   comment: string | null;
+  // Who actually decided; differs from approver_name when an hr_admin/org_admin overrode.
+  acted_by_id: string | null;
+  acted_by_name: string | null;
+  // Set when the level was handed on because its original approver covered a lower level.
+  reassigned_from_name: string | null;
 }
 
 export interface PendingWith {
@@ -751,9 +852,13 @@ export async function getOwnRequestDetail(ctx: LeaveCtx, id: string) {
 
     const chain = (await tx.execute(sql`
       SELECT a.level, a.approver_id::text, u.full_name AS approver_name,
-             a.action, a.acted_at, a.comment
+             a.action, a.acted_at, a.comment,
+             a.acted_by::text AS acted_by_id, ab.full_name AS acted_by_name,
+             rf.full_name AS reassigned_from_name
       FROM hr.leave_request_approvals a
       JOIN iam.users u ON u.id = a.approver_id
+      LEFT JOIN iam.users ab ON ab.id = a.acted_by
+      LEFT JOIN iam.users rf ON rf.id = a.reassigned_from
       WHERE a.leave_request_id = ${id}
       ORDER BY a.level ASC
     `)) as unknown as ApprovalStep[];
@@ -764,6 +869,81 @@ export async function getOwnRequestDetail(ctx: LeaveCtx, id: string) {
       : null;
 
     return { ...request, approval_chain: chain, pending_with };
+  });
+}
+
+export interface RequestApprovals {
+  request_id: string;
+  status_name: string;
+  approval_chain: ApprovalStep[];
+  pending_with: PendingWith | null;
+  // Whether THIS viewer may approve it now, and if not, why. The review dialog shows it
+  // before they click; the approve call re-checks the same rule, so this is advisory.
+  my_decision: { can_decide: boolean; covering: boolean; reason: string | null };
+}
+
+/**
+ * The approval chain of a request, for an approver or admin who is not its requester
+ * (getOwnRequestDetail is requester-only). Visible to: org-wide admins, anyone in the chain,
+ * and a manager whose subtree holds the requester, the same scope as listTeamRequests.
+ * Anyone else gets a 404, so the endpoint cannot be used to probe request ids.
+ */
+export async function getRequestApprovals(ctx: LeaveCtx, id: string, seeAllOrg: boolean, isOverride: boolean): Promise<RequestApprovals> {
+  return withServiceTx(async (tx) => {
+    const req = await loadRequestForAction(tx, id);
+    if (!req || req.org_id !== ctx.org_id) throw new NotFoundError('Leave request not found');
+
+    const chain = (await tx.execute(sql`
+      SELECT a.level, a.approver_id::text, u.full_name AS approver_name,
+             a.action, a.acted_at, a.comment,
+             a.acted_by::text AS acted_by_id, ab.full_name AS acted_by_name,
+             rf.full_name AS reassigned_from_name
+      FROM hr.leave_request_approvals a
+      JOIN iam.users u ON u.id = a.approver_id
+      LEFT JOIN iam.users ab ON ab.id = a.acted_by
+      LEFT JOIN iam.users rf ON rf.id = a.reassigned_from
+      WHERE a.leave_request_id = ${id}
+      ORDER BY a.level ASC
+    `)) as unknown as ApprovalStep[];
+
+    const inChain = chain.some((s) => s.approver_id === ctx.user_id || s.acted_by_id === ctx.user_id);
+    let visible = seeAllOrg || inChain || req.user_id === ctx.user_id;
+    if (!visible) {
+      const team = (await tx.execute(sql`
+        SELECT 1 FROM iam.vw_user_team_members m
+        WHERE m.manager_id = ${ctx.user_id} AND m.member_id = ${req.user_id} AND m.org_id = ${ctx.org_id}
+        LIMIT 1
+      `)) as unknown as unknown[];
+      visible = team.length > 0;
+    }
+    if (!visible) throw new NotFoundError('Leave request not found');
+
+    const pending = chain.find((s) => s.action === 'pending');
+    const decisionRows = (await tx.execute(sql`
+      SELECT id::text, level::int AS level, approver_id::text, action, acted_by::text
+      FROM hr.leave_request_approvals WHERE leave_request_id = ${id} ORDER BY level ASC
+    `)) as unknown as ChainRow[];
+    let my_decision: RequestApprovals['my_decision'];
+    if (req.status_name !== 'pending') {
+      my_decision = { can_decide: false, covering: false, reason: `Request is already ${req.status_name}` };
+    } else if (req.user_id === ctx.user_id) {
+      my_decision = { can_decide: false, covering: false, reason: 'You cannot approve your own request' };
+    } else {
+      const auth = decisionAuthority(decisionRows, ctx.user_id, isOverride, 'approve');
+      my_decision = auth.ok
+        ? { can_decide: true, covering: auth.covering, reason: null }
+        : { can_decide: false, covering: false, reason: auth.reason };
+    }
+
+    return {
+      request_id: id,
+      status_name: req.status_name,
+      approval_chain: chain,
+      pending_with: pending
+        ? { level: pending.level, approver_id: pending.approver_id, approver_name: pending.approver_name }
+        : null,
+      my_decision,
+    };
   });
 }
 
@@ -789,7 +969,7 @@ export async function listOwnRequests(ctx: LeaveCtx, filters: ListLeaveRequestsI
       ${statusClause} ${fromClause} ${toClause}
     `)) as unknown as Array<{ count: number }>;
 
-    return { data: rows, total: countRows[0]?.count ?? 0, page, limit };
+    return { data: await withApprovalSummary(tx, rows), total: countRows[0]?.count ?? 0, page, limit };
   });
 }
 
@@ -943,7 +1123,7 @@ export async function listTeamRequests(ctx: LeaveCtx, filters: ListLeaveRequests
       ${statusClause} ${fromClause} ${toClause}
     `)) as unknown as Array<{ count: number }>;
 
-    return { data: rows, total: countRows[0]?.count ?? 0, page, limit };
+    return { data: await withApprovalSummary(tx, rows), total: countRows[0]?.count ?? 0, page, limit };
   });
 }
 
@@ -1403,7 +1583,7 @@ export async function requestLeaveInfo(
   isOverride: boolean,
 ): Promise<{ request_id: string; requester_id: string; org_id: string }> {
   return serviceTxWithContext(ctx, comment, async (tx) => {
-    const req = await loadRequestForAction(tx, id);
+    const req = await loadRequestForAction(tx, id, { lock: true });
     if (!req || req.org_id !== ctx.org_id) throw new NotFoundError('Leave request not found');
     if (req.status_name !== 'pending') throw new ConflictError(`Request is already ${req.status_name}`);
     const pending = await currentPendingLevel(tx, id);

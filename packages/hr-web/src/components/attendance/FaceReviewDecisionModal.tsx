@@ -28,7 +28,7 @@ function PhotoPane({ src, label, caption }: { src: string | null; label: string;
     <div className="flex-1">
       <p className="mb-1 text-xs font-semibold text-on-surface-variant">{label}</p>
       {!src || failed ? (
-        <p className="rounded-lg border border-dashed border-outline-variant py-10 text-center text-[11px] text-outline">
+        <p className="rounded-lg border border-dashed border-outline-variant py-10 text-center text-[0.6875rem] text-outline">
           {!src ? 'Not available' : 'Photo unavailable'}
         </p>
       ) : show ? (
@@ -45,7 +45,7 @@ function PhotoPane({ src, label, caption }: { src: string | null; label: string;
           Load photo
         </button>
       )}
-      <p className="mt-1 text-[10px] leading-tight text-outline">{caption}</p>
+      <p className="mt-1 text-[0.625rem] leading-tight text-outline">{caption}</p>
     </div>
   );
 }

@@ -20,6 +20,7 @@ import { slaState } from '../../lib/h7/types';
 import StatCard from '../common/StatCard';
 import StatusPill from '../common/StatusPill';
 import PersonAvatar from '../common/PersonAvatar';
+import ApprovalProgress from '../shared/ApprovalProgress';
 
 interface Props {
   actor: SessionUser;
@@ -200,6 +201,7 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
                   <span className="text-on-surface-variant"> · {formatDays(r.days_count)}</span>
                 </p>
                 {r.reason && <p className="line-clamp-2 text-xs text-on-surface-variant">{r.reason}</p>}
+                <ApprovalProgress data={r} status={r.status_name} />
                 {r.handover_name && <p className="text-xs text-on-surface-variant">Work handover: <strong className="text-on-surface">{r.handover_name}</strong></p>}
                 {r.attachment_name && <a href={leaveApi.attachmentUrl(r.id)} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-primary hover:underline">📎 {r.attachment_name}</a>}
                 {(() => {

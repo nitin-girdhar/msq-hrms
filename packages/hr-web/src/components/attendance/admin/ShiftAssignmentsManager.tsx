@@ -72,7 +72,7 @@ export default function ShiftAssignmentsManager({ onNotice }: Props) {
                   <td className="px-4 py-3 text-on-surface-variant">{formatDay(a.effective_from)}</td>
                   <td className="px-4 py-3 text-on-surface-variant">{a.effective_to ? formatDay(a.effective_to) : '—'}</td>
                   <td className="px-4 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${a.is_active ? 'bg-status-success-container text-on-status-success-container' : 'bg-surface-container text-on-surface-variant'}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-[0.6875rem] font-medium ${a.is_active ? 'bg-status-success-container text-on-status-success-container' : 'bg-surface-container text-on-surface-variant'}`}>
                       {a.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>

@@ -72,6 +72,15 @@ export function translatePgError(error: unknown): AppError | null {
     case '23503': // foreign_key_violation
     case '23514': // check_violation
       return new BadRequestError('The request references invalid or inconsistent data');
+    // Class 22 (data exception): a value the CLIENT sent cannot be stored — a non-uuid id,
+    // month 13 / 2031-02-30, an int out of range, a NUL byte. These are 400s, not 500s.
+    case '22P02': // invalid_text_representation (bad uuid / int / enum literal)
+    case '22007': // invalid_datetime_format
+    case '22008': // datetime_field_overflow
+    case '22003': // numeric_value_out_of_range
+    case '22021': // character_not_in_repertoire (NUL byte)
+    case '22P05': // untranslatable_character
+      return new BadRequestError('One of the supplied values is not valid');
     default:
       return null;
   }

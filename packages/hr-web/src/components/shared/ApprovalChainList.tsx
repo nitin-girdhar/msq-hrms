@@ -10,6 +10,9 @@ export interface ApprovalChainStep {
   action: string;
   acted_at: string | null;
   comment: string | null;
+  acted_by_id?: string | null;
+  acted_by_name?: string | null;
+  reassigned_from_name?: string | null;
 }
 
 interface Props {
@@ -46,20 +49,27 @@ export default function ApprovalChainList({ steps, formatDateTime }: Props) {
           >
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-outline">
+                <span className="text-[0.6875rem] font-semibold uppercase tracking-wide text-outline">
                   Level {step.level}
                 </span>
                 <span className="font-medium text-on-surface">{step.approver_name}</span>
+                {step.reassigned_from_name && (
+                  <span className="text-[0.6875rem] text-outline">(took over from {step.reassigned_from_name})</span>
+                )}
               </div>
-              <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${style.bg} ${style.fg}`}>
+              <span className={`rounded-full px-2 py-0.5 text-[0.6875rem] font-medium ${style.bg} ${style.fg}`}>
                 {isUpcoming ? 'Upcoming' : style.label}
               </span>
             </div>
             {step.acted_at && (
-              <p className="mt-1 text-[11px] text-outline">{formatDateTime(step.acted_at)}</p>
+              <p className="mt-1 text-[0.6875rem] text-outline">
+                {step.action === 'rejected' ? 'Rejected' : 'Approved'}
+                {step.acted_by_name && step.acted_by_id !== step.approver_id ? ` by ${step.acted_by_name} (on behalf of ${step.approver_name})` : ''}
+                {' · '}{formatDateTime(step.acted_at)}
+              </p>
             )}
             {step.comment && (
-              <p className="mt-1.5 rounded-lg bg-surface-container-low px-2.5 py-1.5 text-[13px] text-on-surface-variant">
+              <p className="mt-1.5 rounded-lg bg-surface-container-low px-2.5 py-1.5 text-[0.8125rem] text-on-surface-variant">
                 {step.comment}
               </p>
             )}

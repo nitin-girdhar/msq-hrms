@@ -136,7 +136,7 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
       <form id={FORM_ID} onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
         {error && <div role="alert" className="rounded-xl border border-status-overdue/30 bg-status-overdue-container px-3 py-2 text-xs text-on-status-overdue-container">{error}</div>}
 
-        <p className="rounded-xl border border-outline-variant bg-surface-container-low px-3 py-2 text-[11px] text-on-surface-variant">
+        <p className="rounded-xl border border-outline-variant bg-surface-container-low px-3 py-2 text-[0.6875rem] text-on-surface-variant">
           A revision is a <strong>new row effective from the chosen date</strong> — existing policy history is never modified.
         </p>
 
@@ -161,7 +161,7 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
               <option value="org">Specific branch</option>
               <option value="tenant">{`All ${actor.tenant_name} Branches`}</option>
             </select>
-            <p className="text-[11px] text-outline">
+            <p className="text-[0.6875rem] text-outline">
               {scope === 'tenant'
                 ? 'Applies to every branch unless a specific branch has its own policy.'
                 : (branches?.length ?? 0) > 1
@@ -205,7 +205,7 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
           </div>
         </div>
 
-        <p className="text-[11px] text-outline">
+        <p className="text-[0.6875rem] text-outline">
           Approval levels ≥ 1. The approver chain walks up the requester’s <strong>manager chain</strong> that many levels; short chains stop at the top-most manager, falling back to an org/HR admin.
         </p>
 

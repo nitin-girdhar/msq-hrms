@@ -116,7 +116,7 @@ export default function GeoExceptionsManager({ onNotice }: Props) {
                     {g.employee_code && <span className="ml-1.5 text-xs font-normal text-outline">{g.employee_code}</span>}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${TYPE_CHIP[g.exception_type]}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-[0.6875rem] font-medium ${TYPE_CHIP[g.exception_type]}`}>
                       {TYPE_LABEL[g.exception_type]}
                     </span>
                   </td>
@@ -124,7 +124,7 @@ export default function GeoExceptionsManager({ onNotice }: Props) {
                   <td className="px-4 py-3 text-on-surface-variant">{g.effective_to ? formatDay(g.effective_to) : 'Open-ended'}</td>
                   <td className="px-4 py-3 max-w-[240px] truncate text-on-surface-variant" title={g.reason}>{g.reason}</td>
                   <td className="px-4 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${g.is_in_force ? 'bg-status-success-container text-on-status-success-container' : 'bg-surface-container text-on-surface-variant'}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-[0.6875rem] font-medium ${g.is_in_force ? 'bg-status-success-container text-on-status-success-container' : 'bg-surface-container text-on-surface-variant'}`}>
                       {g.is_in_force ? 'In force' : g.is_active ? 'Ended' : 'Switched off'}
                     </span>
                   </td>

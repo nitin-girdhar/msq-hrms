@@ -71,6 +71,10 @@ export async function listOwnRequests(ctx: LeaveCtx, filters: ListLeaveRequestsI
   return repo.listOwnRequests(ctx, filters);
 }
 
+export async function getRequestApprovals(ctx: LeaveCtx, id: string) {
+  return repo.getRequestApprovals(ctx, id, canManageLeave(ctx), canOverrideLeaveApproval(ctx));
+}
+
 export async function getOwnRequestDetail(ctx: LeaveCtx, id: string) {
   return repo.getOwnRequestDetail(ctx, id);
 }

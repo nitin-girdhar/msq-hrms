@@ -177,7 +177,7 @@ export default function HolidaysManager({ onNotice }: Props) {
                   <td className="px-4 py-3 text-on-surface-variant">{h.holiday_date}</td>
                   <td className="px-4 py-3 font-medium text-on-surface">{h.name}</td>
                   <td className="px-4 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${h.is_optional ? 'bg-status-due-container text-on-status-due-container' : 'bg-surface-container text-on-surface-variant'}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-[0.6875rem] font-medium ${h.is_optional ? 'bg-status-due-container text-on-status-due-container' : 'bg-surface-container text-on-surface-variant'}`}>
                       {h.is_optional ? 'Optional' : 'Public'}
                     </span>
                   </td>

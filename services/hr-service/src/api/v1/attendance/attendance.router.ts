@@ -75,6 +75,8 @@ export async function attendanceRouter(app: FastifyInstance) {
   app.get('/attendance/regularizations/:id', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_VIEW)] }, ctrl.getRegularization);
   // Requester-side edit / withdraw: same capability as filing one, because the
   // authority being exercised is "this is my request", not an approval.
+  // Approver-side chain + whether the caller may decide it now (scope enforced in the repository).
+  app.get('/attendance/regularizations/:id/approvals', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_APPROVE, 'You do not have permission to review corrections')] }, ctrl.getRegularizationApprovals);
   app.patch('/attendance/regularizations/:id', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_REQUEST, 'You do not have permission to change this request'), validate({ body: updateRegularizationSchema })] }, ctrl.updateRegularization);
   app.post('/attendance/regularizations/:id/cancel', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_REQUEST, 'You do not have permission to change this request')] }, ctrl.cancelRegularization);
   app.post('/attendance/regularizations/:id/approve', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_APPROVE, 'You do not have permission to approve corrections'), validate({ body: approveRegularizationSchema })] }, ctrl.approveRegularization);

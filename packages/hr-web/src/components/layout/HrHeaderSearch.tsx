@@ -108,7 +108,7 @@ export default function HrHeaderSearch({ actor, pages }: Props) {
             aria-label={mayFindPeople ? 'Search pages and people' : 'Search pages'} placeholder={mayFindPeople ? 'Search people or pages…' : 'Search pages…'}
             value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} onKeyDown={onKey}
             className="h-9 w-full rounded-lg bg-surface-container-low pl-8 pr-12 text-body-sm text-on-surface placeholder:text-outline focus:bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/20" />
-          <kbd className={`pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded bg-surface-container px-1.5 py-0.5 font-mono text-[10px] text-outline ${q ? '' : 'md:block'}`}>Ctrl /</kbd>
+          <kbd className={`pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded bg-surface-container px-1.5 py-0.5 font-mono text-[0.625rem] text-outline ${q ? '' : 'md:block'}`}>Ctrl /</kbd>
           {showPanel && (
             <div id="hr-search-results" role="listbox" aria-label="Matches"
               className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 max-h-96 overflow-y-auto rounded-xl border border-outline-variant bg-surface-container-lowest py-1 shadow-overlay md:w-96">

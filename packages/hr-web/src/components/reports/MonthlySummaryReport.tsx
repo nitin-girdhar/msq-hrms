@@ -90,7 +90,7 @@ export default function MonthlySummaryReport() {
                 <tr key={r.user_id} className="border-b border-outline-variant/50 last:border-0 hover:bg-surface-container-low">
                   <td className="px-4 py-3">
                     <p className="font-medium text-on-surface">{r.user_full_name}</p>
-                    <p className="text-[11px] text-outline">{r.user_email}</p>
+                    <p className="text-[0.6875rem] text-outline">{r.user_email}</p>
                   </td>
                   <td className="px-4 py-3 text-on-surface-variant">{r.present_count}</td>
                   <td className="px-4 py-3 text-on-surface-variant">{r.absent_count}</td>

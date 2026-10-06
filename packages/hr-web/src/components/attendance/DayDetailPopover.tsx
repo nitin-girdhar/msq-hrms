@@ -92,7 +92,7 @@ export default function DayDetailPopover({ date, row, userId, onClose, onRequest
             split shift this is the only place the middle punches appear at all. */}
         {sessions.length > 0 && (
           <div>
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-outline">
+            <p className="mb-1.5 text-[0.6875rem] font-semibold uppercase tracking-wide text-outline">
               Sessions ({sessions.length})
             </p>
             <ol className="flex flex-col gap-1">
@@ -110,7 +110,7 @@ export default function DayDetailPopover({ date, row, userId, onClose, onRequest
                     className="flex items-center justify-between gap-2 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-sm"
                   >
                     <span className="flex items-center gap-1.5 tabular-nums text-on-surface">
-                      <span className="text-[11px] font-semibold text-outline">{i + 1}</span>
+                      <span className="text-[0.6875rem] font-semibold text-outline">{i + 1}</span>
                       {formatClockTime(session.in?.occurred_at ?? null)}
                       <span className="text-outline-variant">→</span>
                       {formatClockTime(session.out?.occurred_at ?? null)}
@@ -126,7 +126,7 @@ export default function DayDetailPopover({ date, row, userId, onClose, onRequest
             {/* The sum of the sessions can exceed counted time — a punch held for
                 face review, or one outside the shift window, is not paid. */}
             {(row?.has_pending_face_review || row?.has_off_window_punch) && (
-              <p className="mt-1.5 text-[11px] text-outline">
+              <p className="mt-1.5 text-[0.6875rem] text-outline">
                 Not every session above counts towards worked time.
               </p>
             )}
@@ -182,7 +182,7 @@ export default function DayDetailPopover({ date, row, userId, onClose, onRequest
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-[11px] font-semibold uppercase tracking-wide text-outline">{label}</dt>
+      <dt className="text-[0.6875rem] font-semibold uppercase tracking-wide text-outline">{label}</dt>
       <dd className="text-on-surface">{value}</dd>
     </div>
   );

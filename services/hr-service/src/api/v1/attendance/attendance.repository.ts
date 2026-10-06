@@ -35,7 +35,8 @@ import { punchEligibility } from '../../../lib/attendance/punch-eligibility.js';
 import { resolveGeoBypass } from '../../../lib/attendance/geo-bypass.js';
 // Regularizations escalate up the same hierarchy leave does — one resolver,
 // reading iam.reporting_lines, shared by both.
-import { resolveApprovers } from '../../../lib/leave/resolve-approvers.js';
+import { resolveApprovers, resolveReplacementApprover } from '../../../lib/leave/resolve-approvers.js';
+import { decisionAuthority, rowsNeedingReplacement, type ChainRow } from '../../../lib/approvals/authority.js';
 import {
   computeDayResolution,
   deriveFromEvents,
@@ -45,7 +46,8 @@ import {
 } from '../../../lib/attendance/day-resolution.js';
 import type { ReportDayRow, ReportEventRow } from '../../../lib/attendance/report-detail.js';
 import type { MusterDayRow } from '../../../lib/attendance/report-muster.js';
-import { getPhotoStorage, detectImageExt } from '../../../lib/storage/photo-storage.js';
+import { blobKeys } from '@platform/blob-storage';
+import { assertOwnKey, getPhotoStorage, detectImageExt } from '../../../lib/storage/photo-storage.js';
 import { getFaceDriver, FaceEnrollmentError } from '../../../lib/face/index.js';
 import { resolvePunchFace, FaceBlockedError, type FaceMatchAction, type FaceOutcome } from '../../../lib/face/punch-verification.js';
 import { config } from '../../../config/index.js';
@@ -475,7 +477,7 @@ export async function punch(
 
     // Photo enforcement (identical for both punch types). Decode now for the
     // required-photo check; the bytes are stored after the work date is known so
-    // the key keeps its retention-friendly `punch/<user>/<YYYYMMDD>_…` shape.
+    // the key keeps its retention-friendly `…/punches/<YYYY>/<MM>/<YYYYMMDD>_…` shape.
     let photoKey: string | null = null;
     let photoBuf: Buffer | null = null;
     if (data.photo) {
@@ -513,8 +515,10 @@ export async function punch(
       // sequence — the old fixed `<date>_chkin` overwrote the earlier session's
       // selfie. The YYYYMMDD prefix stays leading: msq-deploy/retention/
       // retention-cleanup.sh ages selfies out by parsing the date off the front.
+      // Tenant-first: <tenant>/<branch>/<employee>/punches/<YYYY>/<MM>/<YYYYMMDD>_<kind>_<n>.<ext>
+      // (branch = the org the punch happened in; the DB column stays the source of truth).
       photoKey = await getPhotoStorage().putAt(
-        `punch/${ctx.user_id}/${compact}_${kind}_${priorSameType + 1}.${ext}`,
+        blobKeys.punch(ctx.tenant_id, ctx.org_id, ctx.user_id, { date: compact, kind, n: priorSameType + 1, ext }),
         photoBuf,
       );
     }
@@ -1592,6 +1596,46 @@ export async function cancelRegularization(ctx: AttendanceCtx, id: string): Prom
   });
 }
 
+interface RegApprovalSummaryRow {
+  regularization_id: string;
+  levels_total: number;
+  levels_approved: number;
+  pending_level: number | null;
+  pending_approver_id: string | null;
+  pending_approver_name: string | null;
+  approved_by_names: string[] | null;
+}
+
+/**
+ * Adds where each regularization stands in its approval chain (levels approved of total, who
+ * it is pending with, who has approved) to a page of rows. One extra read of
+ * hr.vw_regularization_approval_summary for the whole page; a request with no chain rows
+ * (created before levels existed) gets no summary.
+ */
+async function withRegApprovalSummary(tx: DrizzleTx, rows: Row[]): Promise<Row[]> {
+  if (rows.length === 0) return rows;
+  const ids = rows.map((r) => String(r['id']));
+  const summaries = (await tx.execute(sql`
+    SELECT regularization_id::text, levels_total, levels_approved, pending_level,
+           pending_approver_id::text, pending_approver_name, approved_by_names
+    FROM hr.vw_regularization_approval_summary
+    WHERE regularization_id = ANY(${sqlUuidArr(ids)})
+  `)) as unknown as RegApprovalSummaryRow[];
+  const byId = new Map(summaries.map((s) => [s.regularization_id, s]));
+  return rows.map((r) => {
+    const s = byId.get(String(r['id']));
+    return {
+      ...r,
+      approval_levels_total: s?.levels_total ?? 0,
+      approval_levels_approved: s?.levels_approved ?? 0,
+      pending_level: s?.pending_level ?? null,
+      pending_approver_id: s?.pending_approver_id ?? null,
+      pending_approver_name: s?.pending_approver_name ?? null,
+      approved_by_names: Array.from(new Set(s?.approved_by_names ?? [])),
+    };
+  });
+}
+
 export async function listRegularizations(ctx: AttendanceCtx, filters: ListRegularizationsInput, seeAllOrg: boolean) {
   const { scope, status, page, limit } = filters;
   const offset = (page - 1) * limit;
@@ -1613,7 +1657,7 @@ export async function listRegularizations(ctx: AttendanceCtx, filters: ListRegul
         SELECT COUNT(*)::int AS count FROM hr.attendance_regularizations r
         WHERE r.user_id = ${ctx.user_id} AND NOT r.is_deleted ${statusClause}
       `)) as unknown as Array<{ count: number }>;
-      return { data: rows, total: countRows[0]?.count ?? 0, page, limit };
+      return { data: await withRegApprovalSummary(tx, rows), total: countRows[0]?.count ?? 0, page, limit };
     });
   }
 
@@ -1641,7 +1685,7 @@ export async function listRegularizations(ctx: AttendanceCtx, filters: ListRegul
       SELECT COUNT(*)::int AS count FROM hr.attendance_regularizations r
       WHERE r.org_id = ${ctx.org_id} AND NOT r.is_deleted ${statusClause} ${scopeClause}
     `)) as unknown as Array<{ count: number }>;
-    return { data: rows, total: countRows[0]?.count ?? 0, page, limit };
+    return { data: await withRegApprovalSummary(tx, rows), total: countRows[0]?.count ?? 0, page, limit };
   });
 }
 
@@ -1652,6 +1696,11 @@ export interface RegApprovalStep {
   action: string;
   acted_at: string | null;
   comment: string | null;
+  // Who actually decided; differs from approver_name when an hr_admin/org_admin overrode.
+  acted_by_id: string | null;
+  acted_by_name: string | null;
+  // Set when the level was handed on because its original approver covered a lower level.
+  reassigned_from_name: string | null;
 }
 
 export interface RegPendingWith {
@@ -1675,9 +1724,13 @@ export async function getOwnRegularizationDetail(ctx: AttendanceCtx, id: string)
 
     const chain = (await tx.execute(sql`
       SELECT a.level, a.approver_id::text, u.full_name AS approver_name,
-             a.action, a.acted_at, a.comment
+             a.action, a.acted_at, a.comment,
+             a.acted_by::text AS acted_by_id, ab.full_name AS acted_by_name,
+             rf.full_name AS reassigned_from_name
       FROM hr.attendance_regularization_approvals a
       JOIN iam.users u ON u.id = a.approver_id
+      LEFT JOIN iam.users ab ON ab.id = a.acted_by
+      LEFT JOIN iam.users rf ON rf.id = a.reassigned_from
       WHERE a.regularization_id = ${id}
       ORDER BY a.level ASC
     `)) as unknown as RegApprovalStep[];
@@ -1688,6 +1741,87 @@ export async function getOwnRegularizationDetail(ctx: AttendanceCtx, id: string)
       : null;
 
     return { ...regularization, approval_chain: chain, pending_with };
+  });
+}
+
+export interface RegRequestApprovals {
+  regularization_id: string;
+  status: string;
+  approval_chain: RegApprovalStep[];
+  pending_with: RegPendingWith | null;
+  my_decision: { can_decide: boolean; covering: boolean; reason: string | null };
+}
+
+/**
+ * The approval chain of a regularization for an approver or admin who is not its requester
+ * (getOwnRegularizationDetail is requester-only). Same scope as the team queue: org-wide
+ * admins, anyone in the chain, or a manager whose subtree holds the requester; everyone else
+ * gets a 404.
+ */
+export async function getRegularizationApprovals(
+  ctx: AttendanceCtx, id: string, seeAllOrg: boolean, isOverride: boolean,
+): Promise<RegRequestApprovals> {
+  return withServiceTx(async (tx) => {
+    const reg = await loadRegForAction(tx, id);
+    if (!reg || reg.org_id !== ctx.org_id) throw new NotFoundError('Regularization not found');
+
+    const chain = (await tx.execute(sql`
+      SELECT a.level, a.approver_id::text, u.full_name AS approver_name,
+             a.action, a.acted_at, a.comment,
+             a.acted_by::text AS acted_by_id, ab.full_name AS acted_by_name,
+             rf.full_name AS reassigned_from_name
+      FROM hr.attendance_regularization_approvals a
+      JOIN iam.users u ON u.id = a.approver_id
+      LEFT JOIN iam.users ab ON ab.id = a.acted_by
+      LEFT JOIN iam.users rf ON rf.id = a.reassigned_from
+      WHERE a.regularization_id = ${id}
+      ORDER BY a.level ASC
+    `)) as unknown as RegApprovalStep[];
+
+    const inChain = chain.some((s) => s.approver_id === ctx.user_id || s.acted_by_id === ctx.user_id);
+    let visible = seeAllOrg || inChain || reg.user_id === ctx.user_id;
+    if (!visible) {
+      const team = (await tx.execute(sql`
+        SELECT 1 FROM iam.vw_user_team_members m
+        WHERE m.manager_id = ${ctx.user_id} AND m.member_id = ${reg.user_id} AND m.org_id = ${ctx.org_id}
+        LIMIT 1
+      `)) as unknown as unknown[];
+      visible = team.length > 0;
+    }
+    if (!visible) throw new NotFoundError('Regularization not found');
+
+    const pending = chain.find((s) => s.action === 'pending');
+    const decisionRows = (await tx.execute(sql`
+      SELECT id::text, level::int AS level, approver_id::text, action, acted_by::text
+      FROM hr.attendance_regularization_approvals WHERE regularization_id = ${id} ORDER BY level ASC
+    `)) as unknown as ChainRow[];
+    let my_decision: RegRequestApprovals['my_decision'];
+    if (reg.status !== 'pending') {
+      my_decision = { can_decide: false, covering: false, reason: `Regularization is already ${reg.status}` };
+    } else if (reg.user_id === ctx.user_id) {
+      my_decision = { can_decide: false, covering: false, reason: 'You cannot approve your own request' };
+    } else if (decisionRows.length === 0) {
+      // Created before approval levels existed: single level, decided by whoever hr.can_approve allows.
+      const ok = isOverride || (await canApprove(tx, ctx.org_id, ctx.user_id, reg.user_id));
+      my_decision = ok
+        ? { can_decide: true, covering: false, reason: null }
+        : { can_decide: false, covering: false, reason: 'You are not authorized to approve this regularization' };
+    } else {
+      const auth = decisionAuthority(decisionRows, ctx.user_id, isOverride, 'approve');
+      my_decision = auth.ok
+        ? { can_decide: true, covering: auth.covering, reason: null }
+        : { can_decide: false, covering: false, reason: auth.reason };
+    }
+
+    return {
+      regularization_id: id,
+      status: reg.status,
+      approval_chain: chain,
+      pending_with: pending
+        ? { level: pending.level, approver_id: pending.approver_id, approver_name: pending.approver_name }
+        : null,
+      my_decision,
+    };
   });
 }
 
@@ -1760,18 +1894,6 @@ interface RegPendingLevel {
   approver_id: string;
 }
 
-// The lowest level still awaiting a decision — the one an approval acts on.
-async function currentPendingRegLevel(tx: DrizzleTx, regId: string): Promise<RegPendingLevel | null> {
-  const rows = (await tx.execute(sql`
-    SELECT id::text, level, approver_id::text
-    FROM hr.attendance_regularization_approvals
-    WHERE regularization_id = ${regId} AND action = 'pending'
-    ORDER BY level ASC
-    LIMIT 1
-  `)) as unknown as RegPendingLevel[];
-  return rows[0] ?? null;
-}
-
 async function furtherPendingRegLevel(tx: DrizzleTx, regId: string, level: number): Promise<RegPendingLevel | null> {
   const rows = (await tx.execute(sql`
     SELECT id::text, level, approver_id::text
@@ -1781,6 +1903,40 @@ async function furtherPendingRegLevel(tx: DrizzleTx, regId: string, level: numbe
     LIMIT 1
   `)) as unknown as RegPendingLevel[];
   return rows[0] ?? null;
+}
+
+// The whole chain, locked so two approvers acting at once cannot both read the same
+// pending level. Same shape as leave (leave.repository.ts loadChain).
+async function loadRegChain(tx: DrizzleTx, regId: string): Promise<ChainRow[]> {
+  return (await tx.execute(sql`
+    SELECT id::text, level::int AS level, approver_id::text, action, acted_by::text
+    FROM hr.attendance_regularization_approvals
+    WHERE regularization_id = ${regId}
+    ORDER BY level ASC
+    FOR UPDATE
+  `)) as unknown as ChainRow[];
+}
+
+/**
+ * After someone approves, any pending level still assigned to them moves to the next manager
+ * up, else another hr_admin/org_admin, else a tenant_admin (see leave.repository.ts).
+ */
+async function reassignCoveredRegLevels(
+  tx: DrizzleTx, ctx: AttendanceCtx, requesterId: string, rows: ChainRow[], decidedRowId: string,
+): Promise<void> {
+  const stuck = rowsNeedingReplacement(rows, ctx.user_id, decidedRowId);
+  if (stuck.length === 0) return;
+  const excluded = new Set<string>([requesterId, ctx.user_id, ...rows.map((r) => r.approver_id)]);
+  for (const row of stuck) {
+    const next = await resolveReplacementApprover(tx, ctx.org_id, ctx.tenant_id, ctx.user_id, excluded);
+    if (!next) continue;
+    await tx.execute(sql`
+      UPDATE hr.attendance_regularization_approvals
+      SET approver_id = ${next.approverId}, reassigned_from = ${row.approver_id}
+      WHERE id = ${row.id}
+    `);
+    excluded.add(next.approverId);
+  }
 }
 
 export async function approveRegularization(
@@ -1800,27 +1956,27 @@ export async function approveRegularization(
 
     // Multi-level sign-off, same shape as leave: act on the lowest pending
     // level, and only finalize once no level is left.
-    const pending = await currentPendingRegLevel(tx, id);
+    const chain = await loadRegChain(tx, id);
 
     // Requests created before approval levels existed have no rows at all —
     // treat them as single-level so an in-flight queue does not become
     // unactionable at deploy time.
-    if (pending) {
-      const isAssignedApprover = pending.approver_id === ctx.user_id;
-      // hr_admin / org_admin / tenant_admin act at any level without holding
-      // one; canApprove (hr.can_approve) is what grants that, and it also
-      // covers the manager chain for the assigned approver.
-      if (!isAssignedApprover && !isOverride && !(await canApprove(tx, ctx.org_id, ctx.user_id, reg.user_id))) {
-        throw new ForbiddenError('You are not the approver for this level');
-      }
-      const actComment = isAssignedApprover
+    if (chain.length > 0) {
+      if (!chain.some((r) => r.action === 'pending')) throw new ConflictError('No pending approval level for this request');
+      // The level's assigned approver, a higher approver covering it, or an admin override;
+      // never someone who already approved a level.
+      const auth = decisionAuthority(chain, ctx.user_id, isOverride, 'approve');
+      if (!auth.ok) throw new ForbiddenError(auth.reason);
+      const pending = auth.pending;
+      const actComment = pending.approver_id === ctx.user_id
         ? comment
         : `[override by ${ctx.user_id}] ${comment ?? ''}`.trim();
       await tx.execute(sql`
         UPDATE hr.attendance_regularization_approvals
-        SET action = 'approved', acted_at = CLOCK_TIMESTAMP(), comment = ${actComment}
+        SET action = 'approved', acted_at = CLOCK_TIMESTAMP(), comment = ${actComment}, acted_by = ${ctx.user_id}
         WHERE id = ${pending.id}
       `);
+      await reassignCoveredRegLevels(tx, ctx, reg.user_id, chain, pending.id);
 
       // More levels to go: the request stays pending and the day is untouched.
       const next = await furtherPendingRegLevel(tx, id, pending.level);
@@ -1903,18 +2059,18 @@ export async function rejectRegularization(
 
     // A rejection at ANY level ends the request — the remaining levels never see
     // it, exactly as leave behaves. Same authority rule as approve.
-    const pending = await currentPendingRegLevel(tx, id);
-    if (pending) {
-      const isAssignedApprover = pending.approver_id === ctx.user_id;
-      if (!isAssignedApprover && !isOverride && !(await canApprove(tx, ctx.org_id, ctx.user_id, reg.user_id))) {
-        throw new ForbiddenError('You are not the approver for this level');
-      }
-      const actComment = isAssignedApprover
+    const chain = await loadRegChain(tx, id);
+    if (chain.length > 0) {
+      if (!chain.some((r) => r.action === 'pending')) throw new ConflictError('No pending approval level for this request');
+      const auth = decisionAuthority(chain, ctx.user_id, isOverride, 'reject');
+      if (!auth.ok) throw new ForbiddenError(auth.reason);
+      const pending = auth.pending;
+      const actComment = pending.approver_id === ctx.user_id
         ? comment
         : `[override by ${ctx.user_id}] ${comment}`.trim();
       await tx.execute(sql`
         UPDATE hr.attendance_regularization_approvals
-        SET action = 'rejected', acted_at = CLOCK_TIMESTAMP(), comment = ${actComment}
+        SET action = 'rejected', acted_at = CLOCK_TIMESTAMP(), comment = ${actComment}, acted_by = ${ctx.user_id}
         WHERE id = ${pending.id}
       `);
     } else if (!isOverride && !(await canApprove(tx, ctx.org_id, ctx.user_id, reg.user_id))) {
@@ -2260,6 +2416,7 @@ export async function enrollFace(ctx: AttendanceCtx, userId: string): Promise<Fa
     });
   }
 
+  assertOwnKey(ctx.tenant_id, refKey);
   const photoBuf = await getPhotoStorage().get(refKey);
   if (!photoBuf) {
     throw new BadRequestError('Stored profile photo could not be read; re-upload it', {

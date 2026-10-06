@@ -261,7 +261,7 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied, ed
                 ))}
               </select>
               {balance !== undefined && (
-                <span className="text-[11px] text-on-surface-variant">Current balance: {formatDays(balance)}</span>
+                <span className="text-[0.6875rem] text-on-surface-variant">Current balance: {formatDays(balance)}</span>
               )}
             </div>
 
@@ -339,7 +339,7 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied, ed
                   placeholder="https://…"
                   className={inputCls}
                 />
-                <span className="text-[11px] text-outline">
+                <span className="text-[0.6875rem] text-outline">
                   Required for this leave beyond {preview?.requires_document_after_days} day(s). No file upload yet — paste a link (e.g. a shared doc).
                 </span>
               </div>
@@ -362,7 +362,7 @@ export default function ApplyLeaveModal({ open, onClose, balances, onApplied, ed
                     </span>
                   </div>
                   {preview.warnings.map((w, i) => (
-                    <p key={i} className="text-[11px] text-on-status-due-container">⚠ {w}</p>
+                    <p key={i} className="text-[0.6875rem] text-on-status-due-container">⚠ {w}</p>
                   ))}
                 </div>
               ) : (

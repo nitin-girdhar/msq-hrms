@@ -141,7 +141,7 @@ export default function GeoExceptionFormModal({ open, exception, onClose, onSave
             {employees.map((e) => <option key={e.user_id} value={e.user_id}>{e.full_name} ({e.email})</option>)}
           </select>
           {isEdit && (
-            <p className="text-[11px] text-on-surface-variant">
+            <p className="text-[0.6875rem] text-on-surface-variant">
               The employee cannot be changed. End this exception and add a new one instead.
             </p>
           )}
@@ -153,7 +153,7 @@ export default function GeoExceptionFormModal({ open, exception, onClose, onSave
             <option value="remote_role">{TYPE_COPY.remote_role.label}</option>
             <option value="wfh">{TYPE_COPY.wfh.label}</option>
           </select>
-          <p className="text-[11px] text-on-surface-variant">
+          <p className="text-[0.6875rem] text-on-surface-variant">
             {isEdit
               ? 'The kind cannot be changed — it is the recorded reason for punches already made under this exception.'
               : TYPE_COPY[type].hint}
@@ -168,7 +168,7 @@ export default function GeoExceptionFormModal({ open, exception, onClose, onSave
           <div className="flex flex-col gap-1.5">
             <label htmlFor="ge-to" className="text-xs font-semibold text-on-surface">Effective to</label>
             <input id="ge-to" type="date" value={effectiveTo} min={effectiveFrom} onChange={(e) => setEffectiveTo(e.target.value)} disabled={submitting} className={inputCls} />
-            <p className="text-[11px] text-on-surface-variant">Leave empty for open-ended.</p>
+            <p className="text-[0.6875rem] text-on-surface-variant">Leave empty for open-ended.</p>
           </div>
         </div>
 
@@ -189,7 +189,7 @@ export default function GeoExceptionFormModal({ open, exception, onClose, onSave
           />
           {/* Required, not optional: this is the record that has to explain,
               months later, why this person's attendance was not location-checked. */}
-          <p className="text-[11px] text-on-surface-variant">
+          <p className="text-[0.6875rem] text-on-surface-variant">
             Shown in the attendance audit trail. Say why this person is not held to the office radius.
           </p>
         </div>

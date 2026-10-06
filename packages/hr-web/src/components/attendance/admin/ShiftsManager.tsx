@@ -80,7 +80,7 @@ export default function ShiftsManager({ onNotice }: Props) {
                   <td className="px-4 py-3 text-on-surface-variant">{s.min_half_day_minutes}m / {s.min_full_day_minutes}m</td>
                   <td className="px-4 py-3 text-on-surface-variant">{s.is_night_shift ? 'Yes' : 'No'}</td>
                   <td className="px-4 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${s.is_active ? 'bg-status-success-container text-on-status-success-container' : 'bg-surface-container text-on-surface-variant'}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-[0.6875rem] font-medium ${s.is_active ? 'bg-status-success-container text-on-status-success-container' : 'bg-surface-container text-on-surface-variant'}`}>
                       {s.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>

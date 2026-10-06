@@ -301,6 +301,14 @@ export interface RegularizationView {
   acted_at: string | null;
   approver_comment: string | null;
   created_at: string;
+  /** Approval chain progress (list endpoints only). */
+  approval_levels_total?: number;
+  approval_levels_approved?: number;
+  pending_level?: number | null;
+  pending_approver_id?: string | null;
+  pending_approver_name?: string | null;
+  /** People who actually approved, in level order, each named once. */
+  approved_by_names?: string[];
 }
 
 export type RegularizationApprovalAction = 'pending' | 'approved' | 'rejected';
@@ -312,12 +320,22 @@ export interface RegularizationApprovalStep {
   action: RegularizationApprovalAction;
   acted_at: string | null;
   comment: string | null;
+  /** Who actually decided; differs from approver_name when an admin overrode. */
+  acted_by_id?: string | null;
+  acted_by_name?: string | null;
+  reassigned_from_name?: string | null;
 }
 
 export interface RegularizationPendingWith {
   level: number;
   approver_id: string;
   approver_name: string;
+}
+
+export interface RegularizationApprovalReview {
+  approval_chain: RegularizationApprovalStep[];
+  pending_with: RegularizationPendingWith | null;
+  my_decision: { can_decide: boolean; covering: boolean; reason: string | null };
 }
 
 export interface RegularizationDetail extends RegularizationView {

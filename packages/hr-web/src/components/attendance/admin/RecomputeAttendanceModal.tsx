@@ -124,7 +124,7 @@ export default function RecomputeAttendanceModal({ open, assignment, onClose, on
             />
             <span>
               <span className="font-semibold">Every employee in this branch</span>
-              <span className="block text-[11px] text-on-surface-variant">
+              <span className="block text-[0.6875rem] text-on-surface-variant">
                 Otherwise only {assignment.user_full_name} is recomputed.
               </span>
             </span>
