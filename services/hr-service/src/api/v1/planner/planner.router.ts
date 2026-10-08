@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { logActivity } from '@platform/audit-log';
-import { CAPABILITY } from '@platform/rbac';
+import { can, CAPABILITY } from '@platform/rbac';
 import { authenticate } from '../../../middleware/auth.middleware.js';
 import { validate } from '../../../middleware/validate.middleware.js';
 import { requireCapability } from '../../../middleware/require-capability.middleware.js';
@@ -22,7 +22,8 @@ import * as repo from './planner.repository.js';
 // the org come from the verified session, never from the request.
 function ctxOf(request: FastifyRequest): repo.PlannerCtx {
   const { org_id, user_id, role, tenant_id } = request.auth;
-  return { org_id, user_id, role, tenant_id, readOnly: false };
+  // platform.write like every other controller: a role without it is read-only at the database.
+  return { org_id, user_id, role, tenant_id, readOnly: !can(request.auth, CAPABILITY.PLATFORM_WRITE) };
 }
 
 const audit = (request: FastifyRequest, action: string, subject: string, extra: Record<string, unknown>) =>

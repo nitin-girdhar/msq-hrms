@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { SessionUser } from '@platform/types';
+import { CAPABILITY, holdsUsableNode } from '@platform/rbac';
 import { Alert, PageBody, PageHeader } from '@platform/ui-kit';
 import type { HrRank } from '../../lib/hr-rank';
 import RulesEditor from './admin/RulesEditor';
@@ -18,15 +19,16 @@ interface Props {
 type Section = 'rules' | 'shifts' | 'assignments' | 'exceptions';
 
 export default function AttendanceAdminShell({ actor, hrRank }: Props) {
-  const [section, setSection] = useState<Section>('rules');
-  // Exceptions carry their own capability, so an attendance admin without it
-  // never sees the tab the service would refuse them.
+  // Each section is a TAB node of hr.attendance.admin: it appears for a role that holds the tab and
+  // something beneath it. Exceptions keeps its own view check, so an attendance admin without it never
+  // sees the tab the service would refuse them.
   const sections: { id: Section; label: string }[] = [
-    { id: 'rules', label: 'Rules' },
-    { id: 'shifts', label: 'Shifts' },
-    { id: 'assignments', label: 'Assignments' },
+    ...(holdsUsableNode(actor, CAPABILITY.HR_ATTENDANCE_ADMIN_RULES) ? [{ id: 'rules' as const, label: 'Rules' }] : []),
+    ...(holdsUsableNode(actor, CAPABILITY.HR_ATTENDANCE_ADMIN_SHIFTS) ? [{ id: 'shifts' as const, label: 'Shifts' }] : []),
+    ...(holdsUsableNode(actor, CAPABILITY.HR_ATTENDANCE_ADMIN_ASSIGNMENTS) ? [{ id: 'assignments' as const, label: 'Assignments' }] : []),
     ...(canViewGeoExceptions(actor) ? [{ id: 'exceptions' as const, label: 'Exceptions' }] : []),
   ];
+  const [section, setSection] = useState<Section>(sections[0]?.id ?? 'rules');
   const [notice, setNotice] = useState<string | null>(null);
 
   const onNotice = (msg: string) => setNotice(msg);
@@ -67,9 +69,10 @@ export default function AttendanceAdminShell({ actor, hrRank }: Props) {
           ))}
         </div>
 
-        {section === 'rules' && <RulesEditor actor={actor} onNotice={onNotice} />}
-        {section === 'shifts' && <ShiftsManager onNotice={onNotice} />}
-        {section === 'assignments' && <ShiftAssignmentsManager onNotice={onNotice} />}
+        {sections.length === 0 && <Alert tone="error">You do not have access to any attendance administration section.</Alert>}
+        {section === 'rules' && sections.some((s) => s.id === 'rules') && <RulesEditor actor={actor} onNotice={onNotice} />}
+        {section === 'shifts' && sections.some((s) => s.id === 'shifts') && <ShiftsManager actor={actor} onNotice={onNotice} />}
+        {section === 'assignments' && sections.some((s) => s.id === 'assignments') && <ShiftAssignmentsManager actor={actor} onNotice={onNotice} />}
         {section === 'exceptions' && canViewGeoExceptions(actor) && <GeoExceptionsManager onNotice={onNotice} />}
       </PageBody>
     </div>

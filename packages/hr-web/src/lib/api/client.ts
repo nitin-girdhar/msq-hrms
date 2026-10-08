@@ -556,6 +556,9 @@ export const attendance = {
     request<Envelope<PunchResult>>('/hr/attendance/check-out', { method: 'POST', body: JSON.stringify(body) }),
 
   getRules: () => request<Envelope<AttendanceRules>>('/hr/attendance/rules'),
+  // The admin read: gated on hr.attendance.admin.rules.view, which an HR admin
+  // can hold without hr.attendance.view.
+  getAdminRules: () => request<Envelope<AttendanceRules>>('/hr/attendance/rules/admin'),
 
   // `scope` is write-only and deliberately absent from AttendanceRules: it says
   // WHICH row to write (this org's override, or the tenant-wide default others

@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import type { SessionUser } from '@platform/types';
+import { can, CAPABILITY } from '@platform/rbac';
 import { Alert, Button, PageSection } from '@platform/ui-kit';
 import { shiftAssignments as shiftAssignmentsApi } from '../../../lib/api/client';
 import type { ShiftAssignmentView } from '../../../lib/attendance/types';
@@ -10,10 +12,12 @@ import ShiftAssignmentFormModal from './ShiftAssignmentFormModal';
 import RecomputeAttendanceModal from './RecomputeAttendanceModal';
 
 interface Props {
+  actor: SessionUser;
   onNotice: (msg: string) => void;
 }
 
-export default function ShiftAssignmentsManager({ onNotice }: Props) {
+export default function ShiftAssignmentsManager({ actor, onNotice }: Props) {
+  const canManage = can(actor, CAPABILITY.HR_ATTENDANCE_ADMIN_ASSIGNMENTS_MANAGE);
   const [items, setItems] = useState<ShiftAssignmentView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,9 +42,11 @@ export default function ShiftAssignmentsManager({ onNotice }: Props) {
     <PageSection
       title="Shift assignments"
       action={
-        <Button variant="primary" size="md" onClick={() => { setEditing(undefined); setFormOpen(true); }}>
-          Assign shift
-        </Button>
+        canManage ? (
+          <Button variant="primary" size="md" onClick={() => { setEditing(undefined); setFormOpen(true); }}>
+            Assign shift
+          </Button>
+        ) : undefined
       }
     >
       <p className="mb-3 text-xs text-on-surface-variant">Effective-dated shift assignments per employee.</p>
@@ -77,7 +83,7 @@ export default function ShiftAssignmentsManager({ onNotice }: Props) {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex justify-end gap-2">
+                    {canManage && <div className="flex justify-end gap-2">
                       <button
                         type="button"
                         onClick={() => { setEditing(a); setFormOpen(true); }}
@@ -93,7 +99,7 @@ export default function ShiftAssignmentsManager({ onNotice }: Props) {
                       >
                         Recompute
                       </button>
-                    </div>
+                    </div>}
                   </td>
                 </tr>
               ))}

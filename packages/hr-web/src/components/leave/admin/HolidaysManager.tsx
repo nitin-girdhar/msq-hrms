@@ -1,17 +1,22 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { can, CAPABILITY } from '@platform/rbac';
 import { holidays as holidaysApi, holidayCalendars as calendarsApi } from '../../../lib/api/client';
+import type { SessionUser } from '@platform/types';
 import type { HolidayView, HolidayCalendarView } from '../../../lib/leave/types';
 
 interface Props {
+  actor: SessionUser;
   onNotice: (msg: string) => void;
 }
 
 const CURRENT_YEAR = new Date().getUTCFullYear();
 const YEARS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1];
 
-export default function HolidaysManager({ onNotice }: Props) {
+export default function HolidaysManager({ actor, onNotice }: Props) {
+  // Read-only without hr.leave.admin.holidays.manage: the calendar and list stay, the forms go.
+  const canManage = can(actor, CAPABILITY.HR_LEAVE_ADMIN_HOLIDAYS_MANAGE);
   const [year, setYear] = useState(CURRENT_YEAR);
   const [calendars, setCalendars] = useState<HolidayCalendarView[]>([]);
   const [calendarId, setCalendarId] = useState('');
@@ -122,7 +127,7 @@ export default function HolidaysManager({ onNotice }: Props) {
             )}
           </select>
         </div>
-        <div className="flex items-end gap-2">
+        {canManage && <div className="flex items-end gap-2">
           <div className="flex flex-col gap-1.5">
             <label htmlFor="hm-newcal" className="text-xs font-semibold text-on-surface">New calendar for {year}</label>
             <input id="hm-newcal" value={newCalName} onChange={(e) => setNewCalName(e.target.value)} placeholder="e.g. India Holidays" className={inputCls} />
@@ -130,10 +135,10 @@ export default function HolidaysManager({ onNotice }: Props) {
           <button type="button" onClick={createCalendar} disabled={busy || !newCalName.trim()} className="rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2.5 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low disabled:opacity-60">
             Add calendar
           </button>
-        </div>
+        </div>}
       </div>
 
-      <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
+      {canManage && <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Add holiday</p>
         {yearCalendars.length === 0 && (
           <p className="mb-3 text-xs text-on-surface-variant">
@@ -157,7 +162,7 @@ export default function HolidaysManager({ onNotice }: Props) {
             Add holiday
           </button>
         </div>
-      </div>
+      </div>}
 
       {items.length === 0 ? (
         <p className="rounded-xl border border-dashed border-outline-variant bg-surface-container-lowest px-4 py-8 text-center text-sm text-outline">No holidays for {year}.</p>

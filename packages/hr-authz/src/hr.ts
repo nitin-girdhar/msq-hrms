@@ -21,10 +21,26 @@ export const HR_RANKS = {
   ADMIN:   DEFAULT_ROLE_RANK.HR_ADMIN,
 } as const;
 
-/** True when the acting user holds the HR admin role by name. Kept for copy and
- *  logging; gate on capabilities, not on this. */
-export function isHrAdmin(role: string): boolean {
-  return role === 'hr_admin';
+/** The Attendance section at all — the self-service dashboard and every read behind it. */
+export function canViewAttendance(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_ATTENDANCE_VIEW);
+}
+
+/** The Leave section at all — balances, requests and the reads behind them. */
+export function canViewLeave(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_LEAVE_VIEW);
+}
+
+/**
+ * The HR Home page: it composes attendance, leave and announcements, so it opens
+ * for a holder of any one of them (each block still renders only for its own grant).
+ */
+export function canOpenHrHome(actor: CapabilityHolder): boolean {
+  return (
+    can(actor, CAPABILITY.HR_ATTENDANCE_VIEW) ||
+    can(actor, CAPABILITY.HR_LEAVE_VIEW) ||
+    can(actor, CAPABILITY.HR_EMPLOYEES_ANNOUNCEMENTS_VIEW)
+  );
 }
 
 /** Read employee profiles — gates the HRMS Employees page. */
@@ -75,21 +91,19 @@ export function canOverrideLeaveApproval(actor: CapabilityHolder): boolean {
 /**
  * Authority to write TENANT-WIDE HR configuration — the rows other orgs inherit
  * (hr.hr_settings and hr.attendance_rules with org_id NULL), as opposed to an
- * org's own override. Still keyed on platform_role: this is a TENANCY question
- * ("may you act across every org"), not a per-role permission, so it is answered
- * by the JWT rather than the capability matrix.
+ * org's own override. A capability since 1.76.0 (it was a platform_role test):
+ * a tenant that wants a regional HR head to own the defaults grants the key.
  *
- * The capability check is separate and still required — this only decides SCOPE.
- * An hr_admin holds hr.leave.admin / hr.attendance.admin and configures their own
- * org; only a tenant admin can change the default every other org inherits.
+ * Separate from canManageLeave / canManageAttendance on purpose: those say "may
+ * configure THIS org"; these say "may reconfigure every sibling that inherits".
+ * An org's own hr_admin holds the first and must not hold the second.
  */
-export function isTenantHrAdmin(platformRole: string): boolean {
-  return platformRole === 'tenant_admin' || platformRole === 'super_admin';
+export function canSetTenantLeaveDefaults(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_LEAVE_ADMIN_TENANT_WIDE);
 }
 
-/** @see isTenantHrAdmin — the leave-side name, kept for its existing callers. */
-export function isTenantLeaveAdmin(platformRole: string): boolean {
-  return isTenantHrAdmin(platformRole);
+export function canSetTenantAttendanceDefaults(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_ATTENDANCE_ADMIN_TENANT_WIDE);
 }
 
 // ── Attendance ──────────────────────────────────────────────────────────────

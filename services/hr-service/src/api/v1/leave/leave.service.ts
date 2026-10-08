@@ -9,7 +9,7 @@ import { logActivity } from '@platform/audit-log';
 import {
   canManageLeave,
   canOverrideLeaveApproval,
-  isTenantLeaveAdmin,
+  canSetTenantLeaveDefaults,
 } from '@hr/authz';
 import { createLogger } from '@platform/logger';
 import { config } from '../../../config/index.js';
@@ -358,7 +358,7 @@ export async function listPolicies(ctx: LeaveCtx, filters: ListPoliciesInput) {
 export async function createPolicy(ctx: LeaveCtx, data: CreatePolicyInput) {
   const tenantWide = data.org_id == null;
   if (tenantWide) {
-    if (!isTenantLeaveAdmin(ctx.role)) {
+    if (!canSetTenantLeaveDefaults(ctx)) {
       throw new ForbiddenError('Only a tenant admin can create a tenant-wide leave policy');
     }
   } else if (!canManageLeave(ctx)) {
@@ -378,7 +378,7 @@ export async function updatePolicy(ctx: LeaveCtx, id: string, data: UpdatePolicy
   if (!canManageLeave(ctx)) {
     throw new ForbiddenError('Only HR admins or org admins can edit leave policies');
   }
-  await repo.updatePolicy(ctx, id, data, isTenantLeaveAdmin(ctx.role));
+  await repo.updatePolicy(ctx, id, data, canSetTenantLeaveDefaults(ctx));
   void logActivity({
     action_type: 'leave_policy_updated',
     performed_by: ctx.user_id,
@@ -429,7 +429,7 @@ export async function getSettings(ctx: LeaveCtx) {
 
 export async function updateSettings(ctx: LeaveCtx, month: number, scope: 'org' | 'tenant') {
   if (scope === 'tenant') {
-    if (!isTenantLeaveAdmin(ctx.role)) {
+    if (!canSetTenantLeaveDefaults(ctx)) {
       throw new ForbiddenError('Only a tenant admin can change the tenant-wide leave cycle');
     }
   } else {

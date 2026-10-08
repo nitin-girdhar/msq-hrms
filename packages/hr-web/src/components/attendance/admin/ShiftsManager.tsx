@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import type { SessionUser } from '@platform/types';
+import { can, CAPABILITY } from '@platform/rbac';
 import { Alert, Button, PageSection } from '@platform/ui-kit';
 import { shifts as shiftsApi } from '../../../lib/api/client';
 import type { ShiftView } from '../../../lib/attendance/types';
@@ -8,10 +10,12 @@ import { emptyBlockCls, stateBlockCls } from '../../../lib/ui';
 import ShiftFormModal from './ShiftFormModal';
 
 interface Props {
+  actor: SessionUser;
   onNotice: (msg: string) => void;
 }
 
-export default function ShiftsManager({ onNotice }: Props) {
+export default function ShiftsManager({ actor, onNotice }: Props) {
+  const canManage = can(actor, CAPABILITY.HR_ATTENDANCE_ADMIN_SHIFTS_MANAGE);
   const [items, setItems] = useState<ShiftView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,9 +37,11 @@ export default function ShiftsManager({ onNotice }: Props) {
     <PageSection
       title="Shifts"
       action={
-        <Button variant="primary" size="md" onClick={() => { setEditing(null); setFormOpen(true); }}>
-          Create shift
-        </Button>
+        canManage ? (
+          <Button variant="primary" size="md" onClick={() => { setEditing(null); setFormOpen(true); }}>
+            Create shift
+          </Button>
+        ) : undefined
       }
     >
       <p className="mb-3 text-xs text-on-surface-variant">
@@ -85,7 +91,7 @@ export default function ShiftsManager({ onNotice }: Props) {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Button onClick={() => { setEditing(s); setFormOpen(true); }}>Edit</Button>
+                    {canManage && <Button onClick={() => { setEditing(s); setFormOpen(true); }}>Edit</Button>}
                   </td>
                 </tr>
               ))}

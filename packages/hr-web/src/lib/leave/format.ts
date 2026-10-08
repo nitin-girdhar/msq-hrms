@@ -23,13 +23,12 @@ export function canManageLeaveAdmin(actor: CapabilityHolder): boolean {
  * Who may act on someone else's leave request — i.e. who the Approvals tab is
  * for at all.
  *
- * Approve and reject are separate grants, so this asks for either: a role that
- * can only reject still has a decision to make. Someone with neither can do
- * nothing on that page — the queue is empty by construction and every action is
+ * Approving and rejecting are one grant (hr.leave.approve since 1.76.0). Someone
+ * without it can do nothing on that page — the queue is empty by construction and every action is
  * refused — so the tab is hidden rather than shown as a dead end.
  */
 export function canDecideLeave(actor: CapabilityHolder): boolean {
-  return can(actor, CAPABILITY.HR_LEAVE_APPROVE) || can(actor, CAPABILITY.HR_LEAVE_REJECT);
+  return can(actor, CAPABILITY.HR_LEAVE_APPROVE);
 }
 
 /**
@@ -43,9 +42,9 @@ export function canApplyLeave(actor: CapabilityHolder): boolean {
   return can(actor, CAPABILITY.HR_LEAVE_REQUEST_CREATE);
 }
 
-/** A tenant admin may additionally write tenant-wide policies/settings. */
-export function canManageTenantLeave(rank: number): boolean {
-  return rank >= ANCHOR_RANK.TENANT_ADMIN;
+/** Writing the tenant-wide policies/settings is its own grant (hr.leave.admin.tenant_wide). */
+export function canManageTenantLeave(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_LEAVE_ADMIN_TENANT_WIDE);
 }
 
 function formatDay(iso: string): string {

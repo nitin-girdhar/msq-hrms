@@ -378,7 +378,7 @@ export default function TeamRosterShell({ actor }: Props) {
         <LeadershipCard supervisor={roster?.supervisor ?? null} chain={chain} />
         </div>
 
-        <PageSection title="All swap activity" >
+        <PageSection title="My swap activity">
           {mine.length === 0 ? (
             <p className={emptyBlockCls}>No shift swaps yet.</p>
           ) : (

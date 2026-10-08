@@ -45,7 +45,7 @@ export async function attendanceRouter(app: FastifyInstance) {
   app.post('/attendance/check-out', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_PUNCH, 'You do not have permission to record attendance'), validate({ body: checkOutSchema })] }, ctrl.checkOut);
 
   // ── Rules ───────────────────────────────────────────────────────────────────
-  app.get('/attendance/rules', { preHandler: [...gate] }, ctrl.getRules);
+  app.get('/attendance/rules', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_VIEW, 'You do not have permission to view attendance')] }, ctrl.getRules);
   app.get('/attendance/rules/admin', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_ADMIN_RULES_VIEW, 'You do not have permission to view attendance rules')] }, ctrl.getAdminRules);
   app.put('/attendance/rules/admin', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_ADMIN_RULES_UPDATE, 'You do not have permission to change attendance rules'), validate({ body: attendanceRulesAdminSchema })] }, ctrl.updateRules);
 
@@ -80,7 +80,7 @@ export async function attendanceRouter(app: FastifyInstance) {
   app.patch('/attendance/regularizations/:id', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_REQUEST, 'You do not have permission to change this request'), validate({ body: updateRegularizationSchema })] }, ctrl.updateRegularization);
   app.post('/attendance/regularizations/:id/cancel', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_REQUEST, 'You do not have permission to change this request')] }, ctrl.cancelRegularization);
   app.post('/attendance/regularizations/:id/approve', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_APPROVE, 'You do not have permission to approve corrections'), validate({ body: approveRegularizationSchema })] }, ctrl.approveRegularization);
-  app.post('/attendance/regularizations/:id/reject', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_REJECT, 'You do not have permission to reject corrections'), validate({ body: rejectRegularizationSchema })] }, ctrl.rejectRegularization);
+  app.post('/attendance/regularizations/:id/reject', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_APPROVE, 'You do not have permission to reject corrections'), validate({ body: rejectRegularizationSchema })] }, ctrl.rejectRegularization);
 
   // ── Face enrollment / status (self-enroll allowed; view gated in service) ──
   // Enroll needs only PUNCH — every employee holds it — because a member may
@@ -94,7 +94,7 @@ export async function attendanceRouter(app: FastifyInstance) {
   // ── Face reviews (same approval authority as regularizations) ───────────────
   app.get('/attendance/face-reviews', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_APPROVE), validate({ query: faceReviewsQuerySchema })] }, ctrl.faceReviews);
   app.post('/attendance/face-reviews/:eventId/clear', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_APPROVE)] }, ctrl.faceReviewClear);
-  app.post('/attendance/face-reviews/:eventId/reject', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_REJECT)] }, ctrl.faceReviewReject);
+  app.post('/attendance/face-reviews/:eventId/reject', { preHandler: [...gate, requireCapability(CAPABILITY.HR_ATTENDANCE_REGULARIZATION_APPROVE)] }, ctrl.faceReviewReject);
 
   // ── Reports ───────────────────────────────────────────────────────────────────
   app.get('/attendance/reports/summary', { preHandler: [...gate, requireCapability(CAPABILITY.HR_REPORTS_ATTENDANCE_VIEW, 'You do not have permission to view attendance reports'), validate({ query: reportsSummaryQuerySchema })] }, ctrl.reportsSummary);

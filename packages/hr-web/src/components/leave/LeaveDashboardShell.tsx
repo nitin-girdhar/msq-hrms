@@ -175,7 +175,7 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
           {loading ? (
             <div className={stateBlockCls}>Loading…</div>
           ) : (
-            <MyRequestsTable items={requests} onView={(r) => setViewingId(r.id)} onEdit={handleEdit} onCancel={handleCancel} busyId={cancelBusyId} />
+            <MyRequestsTable items={requests} onView={(r) => setViewingId(r.id)} onEdit={handleEdit} onCancel={handleCancel} mayCancel={can(actor, CAPABILITY.HR_LEAVE_REQUEST_CANCEL)} busyId={cancelBusyId} />
           )}
         </PageSection>
 

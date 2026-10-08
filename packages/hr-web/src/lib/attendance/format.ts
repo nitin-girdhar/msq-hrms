@@ -44,14 +44,12 @@ export function canSetOrgLocation(rank: number): boolean {
 }
 
 /**
- * A tenant admin may additionally write the TENANT-WIDE rules row — the default
- * every org without its own override inherits. Rank-based like
- * canManageTenantLeave, because this is a tenancy question rather than a
- * per-role permission; hr-service answers the same question with
- * isTenantHrAdmin(platform_role).
+ * Writing the TENANT-WIDE rules row — the default every org without its own
+ * override inherits — is its own grant (hr.attendance.admin.tenant_wide);
+ * hr-service answers the same question with canSetTenantAttendanceDefaults.
  */
-export function canManageTenantAttendance(rank: number): boolean {
-  return rank >= ANCHOR_RANK.TENANT_ADMIN;
+export function canManageTenantAttendance(actor: CapabilityHolder): boolean {
+  return can(actor, CAPABILITY.HR_ATTENDANCE_ADMIN_TENANT_WIDE);
 }
 
 export const ATTENDANCE_STATUS_STYLES: Record<AttendanceStatusName, { bg: string; fg: string; dot: string }> = {

@@ -11,7 +11,7 @@ import {
   canManageGeoExceptions,
   canViewTeamAttendance,
   canOverrideAttendanceApproval,
-  isTenantHrAdmin,
+  canSetTenantAttendanceDefaults,
   attendanceReportReach,
   type ReportReach,
 } from '@hr/authz';
@@ -102,8 +102,8 @@ export async function checkOut(ctx: AttendanceCtx, data: CheckOutInput, meta: Pu
 
 // ── Rules ───────────────────────────────────────────────────────────────────
 // Two readers, two different gates. The dashboard needs the org's timezone and
-// grace window to render a correct "today", so the plain read stays open to
-// anyone in the module. The ADMIN read exposes the whole configuration and is
+// grace window to render a correct "today", so the plain read is open to
+// anyone who can use attendance (hr.attendance.view). The ADMIN read exposes the whole configuration and is
 // what the Admin tab loads, so it requires the same grant as writing it —
 // otherwise the tab is hidden but its data is still served on request.
 export async function getRules(ctx: AttendanceCtx) {
@@ -123,9 +123,9 @@ export async function updateRules(ctx: AttendanceCtx, data: AttendanceRulesAdmin
   }
   // Two different authorities. The capability above says "may configure
   // attendance"; writing the TENANT-WIDE row additionally changes what every
-  // other org inherits, which is a tenancy question answered by the platform
-  // role — an org's own hr_admin must not be able to reconfigure its siblings.
-  if (data.scope === 'tenant' && !isTenantHrAdmin(ctx.role)) {
+  // other org inherits, which is its own capability (hr.attendance.admin.tenant_wide)
+  // — an org's own hr_admin must not be able to reconfigure its siblings.
+  if (data.scope === 'tenant' && !canSetTenantAttendanceDefaults(ctx)) {
     throw new ForbiddenError('Only tenant admins can set attendance rules for every organization');
   }
   const result = await repo.upsertRules(ctx, data);

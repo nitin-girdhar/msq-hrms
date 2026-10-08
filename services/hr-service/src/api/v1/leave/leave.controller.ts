@@ -94,8 +94,8 @@ export class LeaveController {
   // request is touched. Per-request authority is then re-checked by the single path.
   bulkDecide = async (request: FastifyRequest, reply: FastifyReply) => {
     const input = request.body as BulkLeaveDecisionInput;
-    const needed = input.decision === 'approve' ? CAPABILITY.HR_LEAVE_APPROVE : CAPABILITY.HR_LEAVE_REJECT;
-    if (!can(request.auth, needed)) {
+    // One capability decides both ways (1.76.0 merged reject into approve).
+    if (!can(request.auth, CAPABILITY.HR_LEAVE_APPROVE)) {
       throw new ForbiddenError(`You do not have permission to ${input.decision} leave`);
     }
     const result = await service.bulkDecideLeave(ctxOf(request), input);

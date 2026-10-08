@@ -11,10 +11,12 @@ interface Props {
   onView: (req: LeaveRequestView) => void;
   onEdit: (req: LeaveRequestView) => void;
   onCancel: (req: LeaveRequestView) => void;
+  /** hr.leave.request.cancel — the Cancel button follows the call behind it. */
+  mayCancel: boolean;
   busyId?: string | null;
 }
 
-export default function MyRequestsTable({ items, onView, onEdit, onCancel, busyId }: Props) {
+export default function MyRequestsTable({ items, onView, onEdit, onCancel, mayCancel, busyId }: Props) {
   if (items.length === 0) return <p className={emptyBlockCls}>No leave requests found.</p>;
 
   // The approver's open question: shown until the requester edits the request.
@@ -35,7 +37,7 @@ export default function MyRequestsTable({ items, onView, onEdit, onCancel, busyI
           Edit
         </Button>
       )}
-      {canCancelRequest(r.status_name) && (
+      {mayCancel && canCancelRequest(r.status_name) && (
         <Button variant="danger" onClick={() => onCancel(r)} disabled={busyId === r.id}>
           {busyId === r.id ? 'Cancelling…' : 'Cancel'}
         </Button>

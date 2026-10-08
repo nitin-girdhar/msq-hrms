@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { SessionUser } from '@platform/types';
+import { can, CAPABILITY } from '@platform/rbac';
 import { Alert, Button, PageBody, PageHeader, PageSection, PhotoUploadModal, users as usersApi } from '@platform/ui-kit';
 import { attendance as attendanceApi, attendanceTools } from '../../lib/api/client';
 import { ownPunchesOnDate } from '../../lib/attendance/sessions';
@@ -29,6 +30,8 @@ interface Props {
 
 export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
   const wide = useWideScreen();
+  // Asking for a correction is hr.attendance.regularization.request; the header button and the form follow it.
+  const mayRequestRegularization = can(actor, CAPABILITY.HR_ATTENDANCE_REGULARIZATION_REQUEST);
   const [rules, setRules] = useState<AttendanceRules | null>(null);
   const [todayRow, setTodayRow] = useState<AttendanceDayRow | undefined>(undefined);
   const [shift, setShift] = useState<{ shift_name: string } | undefined>(undefined);
@@ -202,7 +205,7 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
         title="My Attendance"
         subtitle="Check in/out, your monthly calendar, and regularization requests."
         tabs={<AttendanceTabs hrRank={hrRank} actor={actor} />}
-        actions={<Button variant="secondary" onClick={() => { setNotice(null); setRegFormDate(todayIso(orgTz)); }}>Regularize a missed punch</Button>}
+        actions={mayRequestRegularization ? <Button variant="secondary" onClick={() => { setNotice(null); setRegFormDate(todayIso(orgTz)); }}>Regularize a missed punch</Button> : undefined}
       />
 
       <PageBody>
@@ -258,7 +261,7 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
         </PageSection>
 
         {/* The correction form sits on the page (Stitch): a missed punch is fixed here, not in a pop-up. */}
-        <RegularizationFormModal
+        {mayRequestRegularization && <RegularizationFormModal
           inline
           open
           date={regFormDate}
@@ -269,7 +272,7 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
             setNotice(regEditing ? 'Regularization request updated.' : 'Regularization request submitted.');
             setRefreshKey((k) => k + 1);
           }}
-        />
+        />}
 
         <PageSection title="Regularization history & audit trail">
           <MyRegularizationsList

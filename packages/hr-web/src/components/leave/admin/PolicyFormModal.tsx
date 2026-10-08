@@ -51,7 +51,7 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
   const num = (v: string): number | null => (v.trim() === '' ? null : Number(v));
 
   useEffect(() => {
-    if (!open || !canManageTenantLeave(actor.rank)) return;
+    if (!open || !canManageTenantLeave(actor)) return;
     orgsApi
       .list()
       .then((res) => setBranches(res.data.map((o) => ({ id: o.org_id ?? o.id, name: o.org_name ?? o.name }))))
@@ -154,7 +154,7 @@ export default function PolicyFormModal({ open, actor, onClose, onSaved }: Props
           </div>
         </div>
 
-        {canManageTenantLeave(actor.rank) && (
+        {canManageTenantLeave(actor) && (
           <div className="flex flex-col gap-1.5">
             <label htmlFor="pf-scope" className={labelCls}>Applies to</label>
             <select id="pf-scope" value={scope} onChange={(e) => setScope(e.target.value as 'org' | 'tenant')} disabled={submitting} className={inputCls}>

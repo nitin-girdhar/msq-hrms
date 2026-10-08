@@ -83,6 +83,7 @@ export async function statutoryRouter(app: FastifyInstance) {
   const edit = requireCapability(CAPABILITY.HR_EMPLOYEES_PROFILE_EDIT);
   const manage = requireCapability(CAPABILITY.HR_EMPLOYEES_STATUTORY_MANAGE, 'You do not have permission to manage statutory details');
   const open360 = requireCapability(CAPABILITY.HR_EMPLOYEES_PROFILE360_VIEW, 'You do not have permission to open employee profiles');
+  const viewStatutory = requireCapability(CAPABILITY.HR_EMPLOYEES_STATUTORY_VIEW, 'You do not have permission to view statutory details');
 
   // ── Self ───────────────────────────────────────────────────────────────────
   app.get('/profile/me/statutory', { preHandler: [authenticate, edit] }, async (request, reply) => {
@@ -134,9 +135,9 @@ export async function statutoryRouter(app: FastifyInstance) {
   });
 
   // ── HR: someone's statutory details ───────────────────────────────────────
-  // Everyone who can open the 360 gets the masked view; only statutory.manage sees the
-  // numbers, and that read is audited.
-  app.get('/employees/:userId/statutory', { preHandler: [authenticate, open360] }, async (request, reply) => {
+  // statutory.view gets the masked view; only statutory.manage sees the numbers, and
+  // that read is audited.
+  app.get('/employees/:userId/statutory', { preHandler: [authenticate, open360, viewStatutory] }, async (request, reply) => {
     const c = ctxOf(request);
     const { userId } = request.params as { userId: string };
     const full = can(request.auth, CAPABILITY.HR_EMPLOYEES_STATUTORY_MANAGE);

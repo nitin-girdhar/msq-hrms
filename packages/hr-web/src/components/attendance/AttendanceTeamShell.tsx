@@ -155,9 +155,12 @@ export default function AttendanceTeamShell({ actor, hrRank }: Props) {
           </div>
         </PageSection>
 
-        <PageSection title={`Pending regularizations (${pending.length})`}>
-          <RegularizationQueue items={pending} loading={pendingLoading} onReview={(r) => { setReviewing(r); setNotice(null); }} />
-        </PageSection>
+        {/* Deciding is hr.attendance.regularization.approve; without it the queue is a list of things you cannot act on. */}
+        {canReviewFaces && (
+          <PageSection title={`Pending regularizations (${pending.length})`}>
+            <RegularizationQueue items={pending} loading={pendingLoading} onReview={(r) => { setReviewing(r); setNotice(null); }} />
+          </PageSection>
+        )}
 
         {showFaceReviews && (
           <PageSection title={`Pending face reviews (${faceReviews.length})`}>

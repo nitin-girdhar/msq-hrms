@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { SessionUser } from '@platform/types';
+import { CAPABILITY, holdsUsableNode, type CapabilityKey } from '@platform/rbac';
 import { Alert, PageBody, PageHeader } from '@platform/ui-kit';
 import type { HrRank } from '../../lib/hr-rank';
 import PoliciesManager from './admin/PoliciesManager';
@@ -16,15 +17,18 @@ interface Props {
 
 type Section = 'policies' | 'cycle' | 'holidays' | 'adjustment';
 
-const SECTIONS: { id: Section; label: string }[] = [
-  { id: 'policies', label: 'Policies' },
-  { id: 'cycle', label: 'Leave cycle' },
-  { id: 'holidays', label: 'Holidays' },
-  { id: 'adjustment', label: 'Adjustment' },
+// Each section is a TAB node of hr.leave.admin: it appears for a role that holds the tab and something
+// beneath it, the same rule the sidebar uses for pages.
+const SECTIONS: { id: Section; label: string; node: CapabilityKey }[] = [
+  { id: 'policies', label: 'Policies', node: CAPABILITY.HR_LEAVE_ADMIN_POLICIES },
+  { id: 'cycle', label: 'Leave cycle', node: CAPABILITY.HR_LEAVE_ADMIN_CYCLE },
+  { id: 'holidays', label: 'Holidays', node: CAPABILITY.HR_LEAVE_ADMIN_HOLIDAYS },
+  { id: 'adjustment', label: 'Adjustment', node: CAPABILITY.HR_LEAVE_ADMIN_ADJUSTMENT },
 ];
 
 export default function LeaveAdminShell({ actor, hrRank }: Props) {
-  const [section, setSection] = useState<Section>('policies');
+  const sections = SECTIONS.filter((s) => holdsUsableNode(actor, s.node));
+  const [section, setSection] = useState<Section>(sections[0]?.id ?? 'policies');
   const [notice, setNotice] = useState<string | null>(null);
 
   const onNotice = (msg: string) => setNotice(msg);
@@ -47,7 +51,7 @@ export default function LeaveAdminShell({ actor, hrRank }: Props) {
           aria-label="Leave administration sections"
           className="flex gap-1 rounded-xl border border-outline-variant bg-surface-container-lowest p-1 shadow-sm"
         >
-          {SECTIONS.map((s) => (
+          {sections.map((s) => (
             <button
               key={s.id}
               type="button"
@@ -65,10 +69,11 @@ export default function LeaveAdminShell({ actor, hrRank }: Props) {
           ))}
         </div>
 
-        {section === 'policies' && <PoliciesManager actor={actor} onNotice={onNotice} />}
-        {section === 'cycle' && <LeaveCycleSetting actor={actor} onNotice={onNotice} />}
-        {section === 'holidays' && <HolidaysManager onNotice={onNotice} />}
-        {section === 'adjustment' && <AdjustmentForm onNotice={onNotice} />}
+        {sections.length === 0 && <Alert tone="error">You do not have access to any leave administration section.</Alert>}
+        {section === 'policies' && sections.some((s) => s.id === 'policies') && <PoliciesManager actor={actor} onNotice={onNotice} />}
+        {section === 'cycle' && sections.some((s) => s.id === 'cycle') && <LeaveCycleSetting actor={actor} onNotice={onNotice} />}
+        {section === 'holidays' && sections.some((s) => s.id === 'holidays') && <HolidaysManager actor={actor} onNotice={onNotice} />}
+        {section === 'adjustment' && sections.some((s) => s.id === 'adjustment') && <AdjustmentForm onNotice={onNotice} />}
       </PageBody>
     </div>
   );

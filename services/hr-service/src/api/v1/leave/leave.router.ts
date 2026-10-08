@@ -69,7 +69,7 @@ export async function leaveRouter(app: FastifyInstance) {
   app.post('/leave/requests/bulk-decision', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_VIEW), validate({ body: bulkLeaveDecisionSchema })] }, ctrl.bulkDecide);
   app.post('/leave/requests/:id/request-info', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_APPROVE, 'You do not have permission to ask for more information'), validate({ body: requestLeaveInfoSchema })] }, ctrl.requestInfo);
   app.post('/leave/requests/:id/approve', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_APPROVE, 'You do not have permission to approve leave'), validate({ body: approveLeaveRequestSchema })] }, ctrl.approve);
-  app.post('/leave/requests/:id/reject', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_REJECT, 'You do not have permission to reject leave'), validate({ body: rejectLeaveRequestSchema })] }, ctrl.reject);
+  app.post('/leave/requests/:id/reject', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_APPROVE, 'You do not have permission to reject leave'), validate({ body: rejectLeaveRequestSchema })] }, ctrl.reject);
   app.post('/leave/requests/:id/cancel', { preHandler: [...gate, requireCapability(CAPABILITY.HR_LEAVE_REQUEST_CANCEL, 'You do not have permission to cancel leave'), validate({ body: cancelLeaveRequestSchema })] }, ctrl.cancel);
 
   // ── Policy summary + encashment (1.64.0) ──────────────────────────────────

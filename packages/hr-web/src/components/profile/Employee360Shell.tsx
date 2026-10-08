@@ -59,6 +59,7 @@ export default function Employee360Shell({ actor, userId }: Props) {
   const canAssets = can(actor, CAPABILITY.HR_EMPLOYEES_ASSETS_MANAGE);
   const canDocuments = can(actor, CAPABILITY.HR_EMPLOYEES_DOCUMENTS_MANAGE);
   const canStatutory = can(actor, CAPABILITY.HR_EMPLOYEES_STATUTORY_MANAGE);
+  const canStatutoryView = can(actor, CAPABILITY.HR_EMPLOYEES_STATUTORY_VIEW);
 
   const load = useCallback(() => {
     employee360
@@ -70,8 +71,10 @@ export default function Employee360Shell({ actor, userId }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Everyone who can open a profile sees Overview / Attendance / Leave / Statutory (masked); the rest need their own capability.
-  const tabs: Array<[Tab, string]> = [['overview', 'Overview'], ['attendance', 'Attendance'], ['leave', 'Leave'], ['statutory', 'Statutory & bank']];
+  // Everyone who can open a profile sees Overview / Attendance / Leave; Statutory & bank (masked) needs
+  // statutory.view, and the rest need their own capability.
+  const tabs: Array<[Tab, string]> = [['overview', 'Overview'], ['attendance', 'Attendance'], ['leave', 'Leave']];
+  if (canStatutoryView) tabs.push(['statutory', 'Statutory & bank']);
   if (canAssets) tabs.push(['assets', 'Assets']);
   if (canDocuments) tabs.push(['documents', 'Documents']);
   if (canNotes) tabs.push(['notes', 'HR notes'], ['audit', 'Audit trail']);

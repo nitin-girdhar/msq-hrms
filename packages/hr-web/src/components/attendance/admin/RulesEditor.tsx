@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { can, CAPABILITY } from '@platform/rbac';
 import type { ReactNode } from 'react';
 import type { SessionUser } from '@platform/types';
 import { attendance as attendanceApi } from '../../../lib/api/client';
@@ -78,11 +79,11 @@ export default function RulesEditor({ actor, onNotice }: Props) {
 
   const geo = useGeolocation();
   const canSetLocation = canSetOrgLocation(actor.rank);
-  const canSetTenantWide = canManageTenantAttendance(actor.rank);
+  const canSetTenantWide = canManageTenantAttendance(actor);
 
   const load = useCallback(() => {
     setLoading(true);
-    Promise.all([attendanceApi.getRules(), orgsApi.list()])
+    Promise.all([attendanceApi.getAdminRules(), orgsApi.list()])
       .then(([rulesRes, orgsRes]) => {
         const mine = orgsRes.data.find((o) => o.org_id === actor.org_id || o.id === actor.org_id);
         // Seed the inputs with the saved coordinates rather than leaving them
@@ -474,12 +475,12 @@ export default function RulesEditor({ actor, onNotice }: Props) {
       {/* One action for the whole form. Two separate save buttons meant the page
           could not say whether an edit was persisted, and editing both halves
           then pressing one of them silently dropped the other. */}
-      <div className="flex items-center justify-end gap-3 border-t border-outline-variant pt-4">
+      {can(actor, CAPABILITY.HR_ATTENDANCE_ADMIN_RULES_UPDATE) && <div className="flex items-center justify-end gap-3 border-t border-outline-variant pt-4">
         {dirty && <span className="text-xs text-on-surface-variant">Unsaved changes</span>}
         <Button variant="primary" size="md" onClick={save} disabled={saving || !dirty || thresholdOrderInvalid}>
           {saving ? 'Saving…' : 'Save changes'}
         </Button>
-      </div>
+      </div>}
     </div>
   );
 }
