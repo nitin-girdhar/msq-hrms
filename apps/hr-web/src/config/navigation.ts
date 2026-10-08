@@ -11,19 +11,22 @@ import type { NavItem } from '@platform/ui-kit/shell';
 export const HR_NAV: readonly NavItem[] = [
   // Home opens for anyone holding attendance; a leave-only user still reaches it
   // via the brand link and the landing redirect (the page itself serves both).
-  { id: 'dashboard',  label: 'Home',       href: '/dashboard',  icon: 'layout-dashboard', capability: CAPABILITY.HR_ATTENDANCE },
-  { id: 'attendance', label: 'Attendance', href: '/attendance', icon: 'clock', capability: CAPABILITY.HR_ATTENDANCE },
+  // Home composes attendance, leave and announcements: any one of them opens it (canOpenHrHome).
+  { id: 'dashboard',  label: 'Home',       href: '/dashboard',  icon: 'layout-dashboard', capability: CAPABILITY.HR_ATTENDANCE_VIEW, exact: true, orCapabilities: [CAPABILITY.HR_LEAVE_VIEW, CAPABILITY.HR_EMPLOYEES_ANNOUNCEMENTS_VIEW] },
+  // Operations (exact), like their page guards: canViewAttendance / canViewLeave.
+  { id: 'attendance', label: 'Attendance', href: '/attendance', icon: 'clock', capability: CAPABILITY.HR_ATTENDANCE_VIEW, exact: true },
   // An OPERATION (exact), like My profile below.
   { id: 'team',       label: 'My team',    href: '/team',       icon: 'users-round', capability: CAPABILITY.HR_ATTENDANCE_ROSTER_VIEW, exact: true },
   // An OPERATION (exact): planning the roster is a different job from viewing it.
   { id: 'planner',    label: 'Roster planner', href: '/planner', icon: 'calendar-days', capability: CAPABILITY.HR_ATTENDANCE_ROSTER_MANAGE, exact: true },
-  { id: 'leave',      label: 'Leave',      href: '/leave',      icon: 'plane', capability: CAPABILITY.HR_LEAVE },
-  // Payslips: own-view OR payroll management opens it; `exact` because both are operations.
-  { id: 'payroll',    label: 'Payroll',    href: '/payroll',    icon: 'file-text', capability: CAPABILITY.HR_EMPLOYEES_PAYSLIP_VIEW, exact: true },
-  // Own documents (upload + status) or HR review; both are operations, hence `exact`.
-  { id: 'documents',  label: 'Documents',  href: '/documents',  icon: 'folder-open', capability: CAPABILITY.HR_EMPLOYEES_DOCUMENTS_VIEW, exact: true },
-  { id: 'employees',  label: 'Employees',  href: '/employees',  icon: 'id-card', capability: CAPABILITY.HR_EMPLOYEES },
-  { id: 'reports',    label: 'Reports',    href: '/reports',    icon: 'chart-column', capability: CAPABILITY.HR_REPORTS },
+  { id: 'leave',      label: 'Leave',      href: '/leave',      icon: 'plane', capability: CAPABILITY.HR_LEAVE_VIEW, exact: true },
+  // Payslips: own-view OR payroll management opens it (the page guard asks the same pair).
+  { id: 'payroll',    label: 'Payroll',    href: '/payroll',    icon: 'file-text', capability: CAPABILITY.HR_EMPLOYEES_PAYSLIP_VIEW, exact: true, orCapabilities: [CAPABILITY.HR_REPORTS_PAYROLL_MANAGE] },
+  // Own documents (upload + status) OR HR review; the page guard asks the same pair.
+  { id: 'documents',  label: 'Documents',  href: '/documents',  icon: 'folder-open', capability: CAPABILITY.HR_EMPLOYEES_DOCUMENTS_VIEW, exact: true, orCapabilities: [CAPABILITY.HR_EMPLOYEES_DOCUMENTS_MANAGE] },
+  // Operations (exact): the page guards are canViewEmployees / canViewAttendanceReports.
+  { id: 'employees',  label: 'Employees',  href: '/employees',  icon: 'id-card', capability: CAPABILITY.HR_EMPLOYEES_VIEW, exact: true },
+  { id: 'reports',    label: 'Reports',    href: '/reports',    icon: 'chart-column', capability: CAPABILITY.HR_REPORTS_ATTENDANCE_VIEW, exact: true },
   // An OPERATION, not a tool/page node, hence `exact`: holdsUsableNode() wants a granted descendant.
   { id: 'profile',    label: 'My profile', href: '/profile',    icon: 'users-round', capability: CAPABILITY.HR_EMPLOYEES_PROFILE_EDIT, exact: true },
 ] as const;

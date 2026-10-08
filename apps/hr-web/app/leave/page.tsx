@@ -1,7 +1,7 @@
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { buildLoginUrl } from '@platform/ui-kit';
 import { getServerSession } from '@platform/ui-kit/server';
-import { isOnHomeBranch } from '@hr/authz';
+import { canViewAttendance, canViewLeave, isOnHomeBranch } from '@hr/authz';
 import { canApplyLeave, canDecideLeave, LeaveDashboardShell, getHrRank } from '@hr/web';
 
 export const dynamic = 'force-dynamic';
@@ -9,6 +9,11 @@ export const dynamic = 'force-dynamic';
 export default async function LeavePage() {
   const result = await getServerSession();
   if (!result) redirect(buildLoginUrl());
+  // hr.leave.view is what every read behind this page requires.
+  if (!canViewLeave(result.session)) {
+    if (canViewAttendance(result.session)) redirect('/attendance');
+    notFound();
+  }
   // Dashboard is the self-service screen (balances, my requests, apply leave)
   // — an actor without hr.leave.request.create (org_admin, tenant_admin,
   // hr_admin), or currently acting on a branch other than their home one,

@@ -1,8 +1,7 @@
 import { redirect } from 'next/navigation';
 import { NotificationProvider, productOrigins, authOrigin, adminWebOrigin, adminOrigin, usableProducts, landingFor } from '@platform/ui-kit';
-import { AppShell } from '@platform/ui-kit/shell';
+import { AppShell, filterNav } from '@platform/ui-kit/shell';
 import { requireSession, getEnabledModules, type PlatformModule } from '@platform/ui-kit/server';
-import { can } from '@platform/rbac';
 import { HrHeaderSearch, HrAttentionBell, HrWorkCards } from '@hr/web';
 import { HR_NAV, HR_MOBILE_TABS } from '@/src/config/navigation';
 
@@ -52,7 +51,7 @@ export default async function HrModuleShell({ module, children }: Props) {
         activeProduct="hr"
         homeHref="/dashboard"
         // Keyed: an element handed from a Server Component to a Client one needs a key (see the LMS layout).
-        searchSlot={<HrHeaderSearch key="hr-search" actor={session} pages={HR_NAV.filter((n) => can(session, n.capability)).map((n) => ({ id: n.id, label: n.label, href: n.href }))} />}
+        searchSlot={<HrHeaderSearch key="hr-search" actor={session} pages={filterNav(HR_NAV, session).map((n) => ({ id: n.id, label: n.label, href: n.href }))} />}
         notificationSlot={<HrAttentionBell key="hr-bell" actor={session} />}
         sidebarFooter={<HrWorkCards key="hr-work-cards" actor={session} />}
         title="People & Attendance"

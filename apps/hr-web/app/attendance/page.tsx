@@ -1,7 +1,7 @@
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { buildLoginUrl } from '@platform/ui-kit';
 import { getServerSession } from '@platform/ui-kit/server';
-import { canPunchAttendance, canViewTeamAttendance, isOnHomeBranch } from '@hr/authz';
+import { canPunchAttendance, canViewAttendance, canViewLeave, canViewTeamAttendance, isOnHomeBranch } from '@hr/authz';
 import { AttendanceDashboardShell, getHrRank } from '@hr/web';
 
 export const dynamic = 'force-dynamic';
@@ -9,6 +9,13 @@ export const dynamic = 'force-dynamic';
 export default async function AttendancePage() {
   const result = await getServerSession();
   if (!result) redirect(buildLoginUrl());
+  // hr.attendance.view is what every read behind this page requires. Without it the
+  // page would render and then 403 on each call, so send the actor to the other HR
+  // section they hold, or 404 when they hold neither.
+  if (!canViewAttendance(result.session)) {
+    if (canViewLeave(result.session)) redirect('/leave');
+    notFound();
+  }
   // Dashboard is the self-service screen (check-in/out, my month, my
   // regularizations) — an actor without hr.attendance.punch (org_admin,
   // tenant_admin, hr_admin), or currently acting on a branch other than their
