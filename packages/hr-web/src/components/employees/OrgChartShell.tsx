@@ -243,8 +243,8 @@ export default function OrgChartShell({ actor }: { actor: SessionUser }) {
 
   return (
     <div className="flex w-full flex-1 flex-col">
-      <PageHeader title="Org chart" subtitle={`Who reports to whom in this ${branch}.`} />
-      <PageBody>
+      <PageHeader title="Org chart" info={`Who reports to whom in this ${branch}.`} />
+      <PageBody dense>
         <Link href="/employees" className="inline-flex min-h-11 items-center text-xs font-semibold text-primary hover:underline sm:min-h-0">← Employees</Link>
         {error && <Alert tone="error">{error}</Alert>}
 

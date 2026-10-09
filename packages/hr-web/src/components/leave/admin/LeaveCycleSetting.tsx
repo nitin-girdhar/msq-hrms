@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { can, CAPABILITY } from '@platform/rbac';
+import { InfoTip } from '@platform/ui-kit';
 import type { SessionUser } from '@platform/types';
 import { leave as leaveApi } from '../../../lib/api/client';
 import { MONTHS, canManageTenantLeave } from '../../../lib/leave/format';
@@ -52,8 +53,9 @@ export default function LeaveCycleSetting({ actor, onNotice }: Props) {
 
   return (
     <div className="max-w-md space-y-4">
-      <p className="text-sm text-on-surface-variant">
-        The leave cycle determines accrual periods and year-end carry-forward. It is not the calendar year.
+      <p className="flex items-center gap-1.5 text-sm text-on-surface-variant">
+        Leave cycle
+        <InfoTip label="About the leave cycle">The leave cycle determines accrual periods and year-end carry-forward. It is not the calendar year.</InfoTip>
       </p>
       {error && <div className="rounded-lg border border-status-overdue/30 bg-status-overdue-container px-4 py-2 text-xs text-on-status-overdue-container">{error}</div>}
 

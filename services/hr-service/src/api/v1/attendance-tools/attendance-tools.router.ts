@@ -135,6 +135,8 @@ export async function attendanceToolsRouter(app: FastifyInstance) {
       const valid = await inOrg(tx, c.org_id, ids);
       const out: Array<{ user_id: string; ok: boolean; error?: string }> = [];
       for (const id of ids) {
+        // Nobody decides their own attendance, same as manual punch and regularization approval.
+        if (id === c.user_id) { out.push({ user_id: id, ok: false, error: 'You cannot regularize your own attendance' }); continue; }
         if (!valid.has(id)) { out.push({ user_id: id, ok: false, error: 'Not an active employee in this branch' }); continue; }
         // The same write an approved regularization makes: the day is stamped 'regularization'
         // and every review flag is cleared, since a person decided it.

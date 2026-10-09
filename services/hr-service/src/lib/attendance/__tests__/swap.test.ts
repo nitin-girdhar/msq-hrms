@@ -48,6 +48,21 @@ describe('restGapProblem', () => {
     const next: ShiftTimes = { id: 'x', start: '09:00', end: '17:00', isNight: false };
     expect(restGapProblem(SWAP, EVENING, { prev: null, next })).toBeNull();
   });
+  it('uses the policy hours passed in, and names them in the reason', () => {
+    // EVENING ends 22:00, MORNING next day starts 08:00 = 10h: fine under 8h, short under 12h.
+    expect(restGapProblem(SWAP, EVENING, { prev: null, next: MORNING }, 8)).toBeNull();
+    expect(restGapProblem(SWAP, EVENING, { prev: null, next: MORNING }, 12)).toMatch(/fewer than 12 hours/);
+  });
+  it('turns the rule off at 0', () => {
+    expect(restGapProblem(SWAP, EVENING, { prev: NIGHT, next: MORNING }, 0)).toBeNull();
+  });
+  it('lets the shift that starts after the gap override the policy', () => {
+    // Next-day MORNING starts 08:00, only 10h after EVENING: its own 0 waives the gap, its own 14 tightens it.
+    expect(restGapProblem(SWAP, EVENING, { prev: null, next: { ...MORNING, minRestHours: 0 } })).toBeNull();
+    expect(restGapProblem(SWAP, EVENING, { prev: null, next: { ...MORNING, minRestHours: 14 } }, 0)).toMatch(/fewer than 14 hours/);
+    // And the incoming shift owns the gap after the previous day.
+    expect(restGapProblem(SWAP, { ...EVENING, minRestHours: 0 }, { prev: NIGHT, next: null })).toBeNull();
+  });
 });
 
 describe('checkSwap', () => {

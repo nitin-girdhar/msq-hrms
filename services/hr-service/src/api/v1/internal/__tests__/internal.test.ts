@@ -25,6 +25,15 @@ describe('authenticateInternal', () => {
   it('accepts the shared secret', async () => {
     await expect(authenticateInternal(req('test-secret'))).resolves.toBeUndefined();
   });
+
+  // The gateway sends the same secret on every user request it proxies; only a
+  // service-to-service caller arrives without a user identity.
+  it('rejects a gateway-proxied user request even with the right secret', async () => {
+    const proxied = {
+      headers: { 'x-internal-secret': 'test-secret', 'x-user-id': '0190a0a0-0000-7000-8000-000000000009' },
+    } as unknown as FastifyRequest;
+    await expect(authenticateInternal(proxied)).rejects.toMatchObject({ statusCode: 401 });
+  });
 });
 
 describe('syncEmployeeProfileSchema', () => {

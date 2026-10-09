@@ -79,12 +79,12 @@ export default function Employee360Shell({ actor, userId }: Props) {
   if (canDocuments) tabs.push(['documents', 'Documents']);
   if (canNotes) tabs.push(['notes', 'HR notes'], ['audit', 'Audit trail']);
 
-  if (loading) return <div className="flex w-full flex-1 flex-col"><PageHeader title="Employee" /><PageBody><div className={stateBlockCls}>Loading…</div></PageBody></div>;
+  if (loading) return <div className="flex w-full flex-1 flex-col"><PageHeader title="Employee" /><PageBody dense><div className={stateBlockCls}>Loading…</div></PageBody></div>;
   if (!data) {
     return (
       <div className="flex w-full flex-1 flex-col">
         <PageHeader title="Employee" />
-        <PageBody>
+        <PageBody dense>
           <Alert tone="error">{error ?? 'Profile not found.'}</Alert>
           <Link href="/employees" className="text-sm font-semibold text-primary hover:underline">← Back to employees</Link>
         </PageBody>
@@ -99,7 +99,7 @@ export default function Employee360Shell({ actor, userId }: Props) {
   return (
     <div className="flex w-full flex-1 flex-col">
       <PageHeader title={h.full_name} subtitle={[h.designation_name, h.department_name].filter(Boolean).join(' · ') || h.email} />
-      <PageBody>
+      <PageBody dense>
         <Link href="/employees" className="text-xs font-semibold text-primary hover:underline">← Employees</Link>
 
         <section className="grid gap-4 rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm sm:p-5 lg:grid-cols-[1fr_auto]">

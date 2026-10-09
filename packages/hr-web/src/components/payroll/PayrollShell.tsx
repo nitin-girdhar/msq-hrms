@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SessionUser } from '@platform/types';
 import { can, CAPABILITY } from '@platform/rbac';
-import { Alert, Button, Modal, PageBody, PageHeader, PageSection } from '@platform/ui-kit';
+import { Alert, Button, InfoTip, Modal, PageBody, PageHeader, PageSection } from '@platform/ui-kit';
 import { hrEmployees, payroll, statutory } from '../../lib/api/client';
 import type { StatutoryValues } from '../../lib/h7/types';
 import { groupByFinancialYear } from '../../lib/payroll/fy';
@@ -68,8 +68,8 @@ export default function PayrollShell({ actor }: Props) {
 
   return (
     <div className="flex w-full flex-1 flex-col">
-      <PageHeader title="Payroll" subtitle="Your payslips, and payroll tools for HR." />
-      <PageBody>
+      <PageHeader title="Payroll" info="Your payslips, and payroll tools for HR." />
+      <PageBody dense>
         {notice && <Alert tone="success">{notice}</Alert>}
         {error && <Alert tone="error">{error}</Alert>}
 
@@ -249,7 +249,10 @@ function AdminSection({ onNotice, onError }: { onNotice: (m: string) => void; on
               : <Button variant="primary" disabled={busy} onClick={() => void run(() => payroll.lock(month), 'Month locked — attendance for it can no longer be corrected.')}>Lock month</Button>}
           </div>
         </div>
-        <p className="text-xs text-on-surface-variant">Locking stops new attendance corrections and recomputes for the month, so the figures you take to payroll cannot move. Publishing makes drafts visible to their employees; a published payslip can no longer be edited.</p>
+        <p className="flex items-center gap-1.5 text-xs text-on-surface-variant">
+          Lock and publish
+          <InfoTip label="About locking and publishing">Locking stops new attendance corrections and recomputes for the month, so the figures you take to payroll cannot move. Publishing makes drafts visible to their employees; a published payslip can no longer be edited.</InfoTip>
+        </p>
         {!data ? <div className={stateBlockCls}>Loading…</div> : data.payslips.length === 0 ? <p className={emptyBlockCls}>No payslips for this month yet.</p> : (
           <ul className="divide-y divide-outline-variant/50 rounded-lg border border-outline-variant">
             {data.payslips.map((p) => (

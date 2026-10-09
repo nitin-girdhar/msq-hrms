@@ -203,12 +203,12 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
     <div className="flex w-full flex-1 flex-col">
       <PageHeader
         title="My Attendance"
-        subtitle="Check in/out, your monthly calendar, and regularization requests."
+        info="Check in/out, your monthly calendar, and regularization requests."
         tabs={<AttendanceTabs hrRank={hrRank} actor={actor} />}
         actions={mayRequestRegularization ? <Button variant="secondary" onClick={() => { setNotice(null); setRegFormDate(todayIso(orgTz)); }}>Regularize a missed punch</Button> : undefined}
       />
 
-      <PageBody>
+      <PageBody dense>
         {notice && <Alert tone="success">{notice}</Alert>}
         {error && <Alert tone="error">{error}</Alert>}
 

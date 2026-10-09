@@ -106,11 +106,11 @@ export default function AttendanceTeamShell({ actor, hrRank }: Props) {
     <div className="flex w-full flex-1 flex-col">
       <PageHeader
         title="Team Attendance"
-        subtitle="Who’s in, who’s out, and pending regularization requests."
+        info="Who’s in, who’s out, and pending regularization requests."
         tabs={<AttendanceTabs hrRank={hrRank} actor={actor} />}
       />
 
-      <PageBody>
+      <PageBody dense>
         {notice && <Alert tone="success">{notice}</Alert>}
         {error && <Alert tone="error">{error}</Alert>}
 

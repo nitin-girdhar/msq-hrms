@@ -71,6 +71,8 @@ export default function ShiftFormModal({ open, editing, onClose, onSaved }: Prop
   const [minFullDay, setMinFullDay] = useState(480);
   const [isNightShift, setIsNightShift] = useState(false);
   const [isSplit, setIsSplit] = useState(false);
+  // '' = follow the attendance policy; a number (incl. 0 = no rule) is this shift's own minimum rest.
+  const [minRest, setMinRest] = useState('');
   const [segments, setSegments] = useState<ShiftSegmentView[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +87,7 @@ export default function ShiftFormModal({ open, editing, onClose, onSaved }: Prop
     setMinFullDay(editing?.min_full_day_minutes ?? 480);
     setIsNightShift(editing?.is_night_shift ?? false);
     setIsSplit(editing?.is_split ?? false);
+    setMinRest(editing?.min_rest_hours != null ? String(editing.min_rest_hours) : '');
     setSegments(
       (editing?.segments ?? []).map((s) => ({
         seq: s.seq,
@@ -128,8 +131,9 @@ export default function ShiftFormModal({ open, editing, onClose, onSaved }: Prop
     onClose();
   };
 
+  const minRestInvalid = minRest.trim() !== '' && !(Number.isInteger(Number(minRest)) && Number(minRest) >= 0 && Number(minRest) <= 24);
   const blockSubmit =
-    submitting || !name.trim() || !startTime || !endTime || segmentError !== null || thresholdOrderInvalid;
+    minRestInvalid || submitting || !name.trim() || !startTime || !endTime || segmentError !== null || thresholdOrderInvalid;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -145,6 +149,8 @@ export default function ShiftFormModal({ open, editing, onClose, onSaved }: Prop
         min_full_day_minutes: minFullDay,
         is_night_shift: isNightShift,
         is_split: isSplit,
+        // null clears the shift's own value so it follows the policy again.
+        min_rest_hours: minRest.trim() === '' ? null : Number(minRest),
         // Always sent so turning split off clears the stored set server-side.
         segments: isSplit ? segments : [],
       };
@@ -213,6 +219,13 @@ export default function ShiftFormModal({ open, editing, onClose, onSaved }: Prop
             <label htmlFor="sf-full" className="text-xs font-semibold text-on-surface">Min full-day (min)</label>
             <input id="sf-full" type="number" min={0} value={minFullDay} onChange={(e) => setMinFullDay(Number(e.target.value))} disabled={submitting} className={inputCls} />
           </div>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="sf-rest" className="text-xs font-semibold text-on-surface">Minimum rest before this shift (hours)</label>
+          <input id="sf-rest" type="number" min={0} max={24} step={1} value={minRest} onChange={(e) => setMinRest(e.target.value)} placeholder="Follow the attendance policy" disabled={submitting} className={inputCls} />
+          <p className="text-xs text-on-surface-variant">Leave empty to use the attendance policy. 0 means no rest rule for this shift.</p>
+          {minRestInvalid && <p role="alert" className="text-xs font-medium text-status-overdue">Enter a whole number from 0 to 24, or leave it empty.</p>}
         </div>
 
         {thresholdOrderInvalid && (

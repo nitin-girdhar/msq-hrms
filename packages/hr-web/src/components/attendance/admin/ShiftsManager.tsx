@@ -36,6 +36,7 @@ export default function ShiftsManager({ actor, onNotice }: Props) {
   return (
     <PageSection
       title="Shifts"
+      info="Org shift definitions used for late/early-exit and half/full-day thresholds."
       action={
         canManage ? (
           <Button variant="primary" size="md" onClick={() => { setEditing(null); setFormOpen(true); }}>
@@ -44,10 +45,6 @@ export default function ShiftsManager({ actor, onNotice }: Props) {
         ) : undefined
       }
     >
-      <p className="mb-3 text-xs text-on-surface-variant">
-        Org shift definitions used for late/early-exit and half/full-day thresholds.
-      </p>
-
       {error && <div className="mb-3"><Alert tone="error">{error}</Alert></div>}
 
       {loading ? (

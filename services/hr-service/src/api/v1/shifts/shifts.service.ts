@@ -36,6 +36,7 @@ export async function create(ctx: OrgCtx, data: CreateShiftInput) {
       ...(data.min_full_day_minutes !== undefined ? { minFullDayMinutes: data.min_full_day_minutes } : {}),
       ...(data.is_night_shift !== undefined ? { isNightShift: data.is_night_shift } : {}),
       ...(data.is_split !== undefined ? { isSplit: data.is_split } : {}),
+      ...(data.min_rest_hours !== undefined ? { minRestHours: data.min_rest_hours } : {}),
     });
     return toApiRow(row);
   } catch (err) {
@@ -58,6 +59,7 @@ export async function update(ctx: OrgCtx, id: string, data: UpdateShiftInput) {
   if (data.min_full_day_minutes !== undefined) fields.minFullDayMinutes = data.min_full_day_minutes;
   if (data.is_night_shift !== undefined) fields.isNightShift = data.is_night_shift;
   if (data.is_split !== undefined) fields.isSplit = data.is_split;
+  if (data.min_rest_hours !== undefined) fields.minRestHours = data.min_rest_hours;
   if (data.is_active !== undefined) fields.isActive = data.is_active;
 
   try {

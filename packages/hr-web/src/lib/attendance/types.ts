@@ -45,6 +45,9 @@ export interface AttendanceRules {
   // direct manager. Applies to requests filed from now on — the chain is
   // materialized at submit time, so pending requests keep theirs.
   regularization_approval_levels: number;
+  // Minimum rest in hours between two shifts; the roster planner warns when an edit breaks it. A shift's
+  // own min_rest_hours overrides it. 0 = the rule is off.
+  min_rest_hours: number;
   // Org IANA timezone; use it with todayIso(tz) so the client's "today" matches
   // the server-computed attendance work_date.
   timezone: string;
@@ -219,6 +222,8 @@ export interface ShiftView {
   // window its segments nest inside. Empty segments for a non-split shift.
   is_split: boolean;
   segments: ShiftSegmentView[];
+  // This shift's own minimum rest before it starts; null = follow the attendance policy, 0 = no rule.
+  min_rest_hours: number | null;
   is_active: boolean;
 }
 

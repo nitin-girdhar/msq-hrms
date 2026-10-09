@@ -63,17 +63,13 @@ export default function GeoExceptionsManager({ onNotice }: Props) {
   return (
     <PageSection
       title="Geofence exceptions"
+      info="People who may check in from outside the office radius: a rotating field role, or an approved work-from-home stretch. Their location is still captured on every punch; only the radius check is skipped."
       action={
         <Button variant="primary" size="md" onClick={() => { setEditing(undefined); setFormOpen(true); }}>
           Add exception
         </Button>
       }
     >
-      <p className="mb-3 text-xs text-on-surface-variant">
-        People who may check in from outside the office radius — a rotating field role, or an approved
-        work-from-home stretch. Their location is still captured on every punch; only the radius check is skipped.
-      </p>
-
       {error && <div className="mb-3"><Alert tone="error">{error}</Alert></div>}
 
       <label className="mb-3 flex items-center gap-2 text-xs text-on-surface-variant">

@@ -145,6 +145,7 @@ export async function updateRules(ctx: AttendanceCtx, data: AttendanceRulesAdmin
       min_full_day_minutes: result.min_full_day_minutes,
       regularization_max_backdate_days: result.regularization_max_backdate_days,
       regularization_approval_levels: result.regularization_approval_levels,
+      min_rest_hours: result.min_rest_hours,
     },
   });
   return result;

@@ -26,8 +26,8 @@ export default function DocumentsShell({ actor }: Props) {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <PageHeader title="Documents" subtitle="ID and address proofs, certificates and tax proofs" />
-      <PageBody>
+      <PageHeader title="Documents" info="ID and address proofs, certificates and tax proofs" />
+      <PageBody dense>
         {notice && <Alert tone="success">{notice}</Alert>}
         {error && <Alert tone="error">{error}</Alert>}
         {canReview && (

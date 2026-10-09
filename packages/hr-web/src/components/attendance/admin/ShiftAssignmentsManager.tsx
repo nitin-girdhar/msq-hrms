@@ -41,6 +41,7 @@ export default function ShiftAssignmentsManager({ actor, onNotice }: Props) {
   return (
     <PageSection
       title="Shift assignments"
+      info="Effective-dated shift assignments per employee."
       action={
         canManage ? (
           <Button variant="primary" size="md" onClick={() => { setEditing(undefined); setFormOpen(true); }}>
@@ -49,8 +50,6 @@ export default function ShiftAssignmentsManager({ actor, onNotice }: Props) {
         ) : undefined
       }
     >
-      <p className="mb-3 text-xs text-on-surface-variant">Effective-dated shift assignments per employee.</p>
-
       {error && <div className="mb-3"><Alert tone="error">{error}</Alert></div>}
 
       {loading ? (

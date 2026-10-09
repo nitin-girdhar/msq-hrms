@@ -87,6 +87,8 @@ export const applyShiftsSchema = z
     from: isoDate,
     to: isoDate,
     shift_id: z.string().uuid().nullable(),
+    // Set by the planner after it has shown the minimum-rest warning and the user chose to go ahead.
+    confirm_rest_warnings: z.boolean().default(false),
   })
   .refine((v) => v.to >= v.from, { message: 'The end date is before the start date', path: ['to'] })
   .refine((v) => daysBetween(v.from, v.to) <= 92, { message: 'Plan at most three months at a time', path: ['to'] });
@@ -99,6 +101,7 @@ export const reallocateShiftsSchema = z
     from: isoDate,
     to: isoDate,
     user_ids: z.array(z.string().uuid()).max(300).optional(),
+    confirm_rest_warnings: z.boolean().default(false),
   })
   .refine((v) => v.from_shift_id !== v.to_shift_id, { message: 'Choose two different shifts', path: ['to_shift_id'] })
   .refine((v) => v.to >= v.from, { message: 'The end date is before the start date', path: ['to'] })

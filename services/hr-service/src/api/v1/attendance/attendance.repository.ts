@@ -109,6 +109,9 @@ export interface EffectiveRules {
   // manager. Read here rather than by its own query so org-over-tenant
   // precedence is resolved in exactly one place.
   regularization_approval_levels: number;
+  // Minimum rest (hours) the roster planner warns about between two shifts; a shift's own
+  // min_rest_hours overrides it. 0 = rule off.
+  min_rest_hours: number;
   // The org's IANA timezone. Attendance work_date and shift boundaries are
   // computed in this zone server-side (see workDateOf), so the client must use
   // it to derive "today" — using the browser's UTC date mismatched the stored
@@ -135,6 +138,7 @@ const DEFAULT_RULES: EffectiveRules = {
   min_full_day_minutes: DEFAULT_THRESHOLDS.minFullDayMinutes,
   regularization_max_backdate_days: 30,
   regularization_approval_levels: 1,
+  min_rest_hours: 11,
   timezone: 'Asia/Kolkata',
   office_lat: null,
   office_lng: null,
@@ -167,7 +171,7 @@ async function loadRulesRow(tx: DrizzleTx, orgId: string): Promise<EffectiveRule
            r.require_face_match, r.face_match_threshold::float8 AS face_match_threshold, r.face_match_action,
            r.photo_change_cooldown_days, r.image_retention_days,
            r.min_half_day_minutes, r.min_full_day_minutes,
-           r.regularization_max_backdate_days, r.regularization_approval_levels
+           r.regularization_max_backdate_days, r.regularization_approval_levels, r.min_rest_hours
     FROM entity.organizations o
     LEFT JOIN LATERAL (
       SELECT ar.*
@@ -729,7 +733,7 @@ export async function upsertRules(ctx: AttendanceCtx, data: AttendanceRulesAdmin
          require_face_match, face_match_threshold, face_match_action,
          photo_change_cooldown_days, image_retention_days,
          min_half_day_minutes, min_full_day_minutes,
-         regularization_max_backdate_days, regularization_approval_levels, created_by)
+         regularization_max_backdate_days, regularization_approval_levels, min_rest_hours, created_by)
       VALUES
         (${ctx.tenant_id}, ${orgId}, ${data.geofence_enabled}, ${data.geofence_radius_meters}, ${data.require_photo},
          ${data.require_geo}, ${data.allow_wfh_checkin},
@@ -739,6 +743,7 @@ export async function upsertRules(ctx: AttendanceCtx, data: AttendanceRulesAdmin
          ${data.min_full_day_minutes ?? DEFAULT_THRESHOLDS.minFullDayMinutes},
          ${data.regularization_max_backdate_days ?? DEFAULT_RULES.regularization_max_backdate_days},
          ${data.regularization_approval_levels ?? DEFAULT_RULES.regularization_approval_levels},
+         ${data.min_rest_hours ?? DEFAULT_RULES.min_rest_hours},
          ${ctx.user_id})
       ON CONFLICT (tenant_id, COALESCE(org_id, '00000000-0000-0000-0000-000000000000'::uuid))
         WHERE NOT is_deleted
@@ -757,6 +762,7 @@ export async function upsertRules(ctx: AttendanceCtx, data: AttendanceRulesAdmin
         min_full_day_minutes = EXCLUDED.min_full_day_minutes,
         regularization_max_backdate_days = EXCLUDED.regularization_max_backdate_days,
         regularization_approval_levels = EXCLUDED.regularization_approval_levels,
+        min_rest_hours = EXCLUDED.min_rest_hours,
         updated_at = CLOCK_TIMESTAMP()
     `);
     return loadRulesRow(tx, ctx.org_id);
@@ -1171,7 +1177,7 @@ export async function listShifts(ctx: AttendanceCtx) {
   return withRoleTx(ctx, async (tx) => {
     const shifts = (await tx.execute(sql`
       SELECT id::text, org_id::text, name, start_time::text, end_time::text, grace_minutes,
-             min_half_day_minutes, min_full_day_minutes, is_night_shift, is_split, is_active
+             min_half_day_minutes, min_full_day_minutes, is_night_shift, is_split, min_rest_hours, is_active
       FROM hr.shifts WHERE org_id = ${ctx.org_id} AND NOT is_deleted
       ORDER BY name
     `)) as unknown as Array<Row & { id: string }>;
@@ -1246,11 +1252,11 @@ export async function createShift(ctx: AttendanceCtx, data: CreateShiftInput): P
       const rows = (await tx.execute(sql`
         INSERT INTO hr.shifts
           (org_id, name, start_time, end_time, grace_minutes, min_half_day_minutes, min_full_day_minutes,
-           is_night_shift, is_split, created_by)
+           is_night_shift, is_split, min_rest_hours, created_by)
         VALUES
           (${ctx.org_id}, ${data.name}, ${data.start_time}, ${data.end_time}, ${data.grace_minutes},
            ${data.min_half_day_minutes}, ${data.min_full_day_minutes}, ${data.is_night_shift},
-           ${data.is_split ?? false}, ${ctx.user_id})
+           ${data.is_split ?? false}, ${data.min_rest_hours ?? null}, ${ctx.user_id})
         RETURNING id::text
       `)) as unknown as Array<{ id: string }>;
       const id = rows[0]!.id;
@@ -1279,6 +1285,8 @@ export async function updateShift(ctx: AttendanceCtx, id: string, data: UpdateSh
     if (data.min_full_day_minutes !== undefined) sets.push(sql`min_full_day_minutes = ${data.min_full_day_minutes}`);
     if (data.is_night_shift !== undefined) sets.push(sql`is_night_shift = ${data.is_night_shift}`);
     if (data.is_split !== undefined) sets.push(sql`is_split = ${data.is_split}`);
+    // null clears the override (back to the policy); absent leaves it alone.
+    if (data.min_rest_hours !== undefined) sets.push(sql`min_rest_hours = ${data.min_rest_hours}`);
     if (data.is_active !== undefined) sets.push(sql`is_active = ${data.is_active}`);
 
     // The stored row is needed either way: to 404, and to resolve the window a

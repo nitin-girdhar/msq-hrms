@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SessionUser } from '@platform/types';
 import { can, CAPABILITY } from '@platform/rbac';
-import { Alert, Button, Modal, PageBody, PageHeader, useIsMobile } from '@platform/ui-kit';
+import { Alert, Button, InfoTip, Modal, PageBody, PageHeader, useIsMobile } from '@platform/ui-kit';
 import { planner, swaps } from '../../lib/api/client';
 import type { ShiftSwap } from '../../lib/team/types';
 import {
@@ -53,6 +53,9 @@ export default function PlannerShell({ actor }: { actor: SessionUser }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [skipped, setSkipped] = useState<ApplyShiftsOutcome['skipped']>([]);
+  // Edits held back by the minimum-rest policy. `confirm` re-sends exactly those people with the warning accepted.
+  const [rest, setRest] = useState<{ warnings: ApplyShiftsOutcome['warnings']; confirm: () => Promise<{ data: ApplyShiftsOutcome }> } | null>(null);
+  const [confirming, setConfirming] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [edit, setEdit] = useState<Edit | null>(null);
   const [pattern, setPattern] = useState(false);
@@ -91,11 +94,20 @@ export default function PlannerShell({ actor }: { actor: SessionUser }) {
   const toggle = (id: string) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const allShown = week ? week.people.length > 0 && week.people.every((p) => selected.has(p.user_id)) : false;
 
-  const afterApply = (o: ApplyShiftsOutcome) => {
+  const afterApply = (o: ApplyShiftsOutcome, confirm?: () => Promise<{ data: ApplyShiftsOutcome }>) => {
     setSkipped(o.skipped);
+    setRest(o.warnings.length > 0 && confirm ? { warnings: o.warnings, confirm } : null);
     setNotice(o.applied > 0 ? `Updated ${o.applied} ${o.applied === 1 ? 'person' : 'people'}.` : null);
-    if (o.applied === 0 && o.skipped.length === 0) setNotice('Nothing needed to change.');
+    if (o.applied === 0 && o.skipped.length === 0 && o.warnings.length === 0) setNotice('Nothing needed to change.');
     load();
+  };
+
+  const confirmRest = async () => {
+    if (!rest) return;
+    setConfirming(true);
+    try { afterApply((await rest.confirm()).data); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Could not apply the change.'); }
+    finally { setConfirming(false); }
   };
 
   const exportCsv = () => {
@@ -118,7 +130,7 @@ export default function PlannerShell({ actor }: { actor: SessionUser }) {
     <div className="flex w-full flex-1 flex-col">
       <PageHeader
         title="Roster planner"
-        subtitle="Plan who works which shift. Click a day to change it; tick people to set a shift for a date range."
+        info="Plan who works which shift. Click a day to change it; tick people to set a shift for a date range."
         actions={
           <>
             <Button variant="secondary" className="max-lg:min-h-11" onClick={exportCsv} disabled={!week || week.people.length === 0}>Export</Button>
@@ -128,9 +140,19 @@ export default function PlannerShell({ actor }: { actor: SessionUser }) {
           </>
         }
       />
-      <PageBody>
+      <PageBody dense>
         {notice && <Alert tone="success">{notice}</Alert>}
         {error && <Alert tone="error">{error}</Alert>}
+        {rest && (
+          <div role="alert" className="rounded-xl border border-status-due/30 bg-status-due-container px-4 py-3 text-sm text-on-status-due-container">
+            <p className="font-semibold">{rest.warnings.length} {rest.warnings.length === 1 ? 'person has' : 'people have'} less rest between shifts than the policy asks for. Nothing was changed for {rest.warnings.length === 1 ? 'them' : 'them'} yet:</p>
+            <ul className="mt-1 list-disc pl-5">{rest.warnings.map((s) => <li key={s.user_id}>{s.full_name} - {s.reason}</li>)}</ul>
+            <div className="mt-2 flex gap-2">
+              <Button variant="primary" className="max-lg:min-h-11" onClick={() => void confirmRest()} disabled={confirming}>{confirming ? 'Applying…' : 'Assign anyway'}</Button>
+              <Button variant="secondary" className="max-lg:min-h-11" onClick={() => setRest(null)} disabled={confirming}>Leave as is</Button>
+            </div>
+          </div>
+        )}
         {skipped.length > 0 && (
           <div role="alert" className="rounded-xl border border-status-due/30 bg-status-due-container px-4 py-3 text-sm text-on-status-due-container">
             <p className="font-semibold">{skipped.length} {skipped.length === 1 ? 'person was' : 'people were'} not changed:</p>
@@ -280,8 +302,9 @@ export default function PlannerShell({ actor }: { actor: SessionUser }) {
               <CapacityDonut week={week} dayIdx={focusIdx} date={dates[focusIdx] ?? week.week_start} shiftStyle={shiftStyle} />
               {can(actor, CAPABILITY.HR_ATTENDANCE_SWAP_APPROVE) && <SwapDesk onChanged={load} />}
             </div>
-            <p className="text-label-sm text-on-surface-variant">
-              A shift set on a weekly off or holiday is kept but shows as off. Every change is checked against the 11-hour rest rule and recorded in the audit log.
+            <p className="flex items-center gap-1.5 text-label-sm text-on-surface-variant">
+              Planner rules
+              <InfoTip label="About planner rules">A shift set on a weekly off or holiday is kept but shows as off. Every change is checked against the 11-hour rest rule and recorded in the audit log.</InfoTip>
             </p>
           </>
         )}
@@ -291,7 +314,7 @@ export default function PlannerShell({ actor }: { actor: SessionUser }) {
         <CellModal
           edit={edit} week={week} shiftStyle={shiftStyle}
           onClose={() => setEdit(null)}
-          onDone={(o) => { setEdit(null); afterApply(o); }}
+          onDone={(o, c) => { setEdit(null); afterApply(o, c); }}
           onError={setError}
         />
       )}
@@ -299,14 +322,14 @@ export default function PlannerShell({ actor }: { actor: SessionUser }) {
         <PatternModal
           week={week} people={week.people.filter((p) => selected.has(p.user_id))}
           onClose={() => setPattern(false)}
-          onDone={(o) => { setPattern(false); setSelected(new Set()); afterApply(o); }}
+          onDone={(o, c) => { setPattern(false); setSelected(new Set()); afterApply(o, c); }}
         />
       )}
       {needs && (
         <NeedsModal shift={needs} onClose={() => setNeeds(null)} onSaved={() => { setNeeds(null); setNotice('Saved.'); load(); }} />
       )}
       {reallocating && week && (
-        <ReallocateModal week={week} selected={[...selected]} onClose={() => setReallocating(false)} onDone={(o) => { setReallocating(false); afterApply(o); }} />
+        <ReallocateModal week={week} selected={[...selected]} onClose={() => setReallocating(false)} onDone={(o, c) => { setReallocating(false); afterApply(o, c); }} />
       )}
       {publishing && week && (
         <PublishModal week={week} onClose={() => setPublishing(false)} onDone={() => { setPublishing(false); setNotice('Roster published.'); load(); }} />
@@ -319,7 +342,7 @@ const footerBtn = 'rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-6
 
 function CellModal({ edit, week, shiftStyle, onClose, onDone, onError }: {
   edit: Edit; week: PlannerWeek; shiftStyle: (id: string) => (typeof SHIFT_STYLE)[number];
-  onClose: () => void; onDone: (o: ApplyShiftsOutcome) => void; onError: (m: string) => void;
+  onClose: () => void; onDone: (o: ApplyShiftsOutcome, confirm?: () => Promise<{ data: ApplyShiftsOutcome }>) => void; onError: (m: string) => void;
 }) {
   const current = edit.person.days.find((d) => d.date === edit.date)?.shift_id ?? null;
   const [shiftId, setShiftId] = useState<string | null>(current);
@@ -332,8 +355,9 @@ function CellModal({ edit, week, shiftStyle, onClose, onDone, onError }: {
     if (to < edit.date) { setErr('The end date is before the start date.'); return; }
     setBusy(true);
     try {
-      const r = await planner.apply({ user_ids: [edit.person.user_id], from: edit.date, to, shift_id: shiftId });
-      onDone(r.data);
+      const body = { user_ids: [edit.person.user_id], from: edit.date, to, shift_id: shiftId };
+      const r = await planner.apply(body);
+      onDone(r.data, () => planner.apply({ ...body, confirm_rest_warnings: true }));
     } catch (e) { const m = e instanceof Error ? e.message : 'Could not save.'; setErr(m); onError(m); } finally { setBusy(false); }
   };
   const footer = (
@@ -371,7 +395,7 @@ function CellModal({ edit, week, shiftStyle, onClose, onDone, onError }: {
 }
 
 function PatternModal({ week, people, onClose, onDone }: {
-  week: PlannerWeek; people: PlannerPerson[]; onClose: () => void; onDone: (o: ApplyShiftsOutcome) => void;
+  week: PlannerWeek; people: PlannerPerson[]; onClose: () => void; onDone: (o: ApplyShiftsOutcome, confirm?: () => Promise<{ data: ApplyShiftsOutcome }>) => void;
 }) {
   const today = todayIso();
   const [shiftId, setShiftId] = useState<string>(week.shifts[0]?.id ?? '');
@@ -387,8 +411,10 @@ function PatternModal({ week, people, onClose, onDone }: {
     if (to < from) { setErr('The end date is before the start date.'); return; }
     setBusy(true);
     try {
-      const r = await planner.apply({ user_ids: people.map((p) => p.user_id), from, to, shift_id: clear ? null : shiftId });
-      onDone(r.data);
+      const body = { user_ids: people.map((p) => p.user_id), from, to, shift_id: clear ? null : shiftId };
+      const r = await planner.apply(body);
+      // Re-send only the people held back, so everyone already updated is left alone.
+      onDone(r.data, () => planner.apply({ ...body, user_ids: r.data.warnings.map((w) => w.user_id), confirm_rest_warnings: true }));
     } catch (e) { setErr(e instanceof Error ? e.message : 'Could not save.'); } finally { setBusy(false); }
   };
   const footer = (
@@ -413,7 +439,7 @@ function PatternModal({ week, people, onClose, onDone }: {
           <div className="flex flex-col gap-1.5"><label htmlFor="pm-from" className={fieldLabelCls}>From</label><input id="pm-from" type="date" min={today} value={from} onChange={(e) => setFrom(e.target.value)} className={fieldInputCls} disabled={busy} /></div>
           <div className="flex flex-col gap-1.5"><label htmlFor="pm-to" className={fieldLabelCls}>To</label><input id="pm-to" type="date" min={from} value={to} onChange={(e) => setTo(e.target.value)} className={fieldInputCls} disabled={busy} /></div>
         </div>
-        <p className="text-xs text-on-surface-variant">Weekly offs, holidays and approved leave stay as they are. People whose rest between shifts would fall under 11 hours are skipped and listed.</p>
+        <p className="text-xs text-on-surface-variant">Weekly offs, holidays and approved leave stay as they are. If someone's rest between shifts would fall under the minimum set in the attendance policy, you are warned and can choose to assign anyway.</p>
       </div>
     </Modal>
   );
@@ -663,7 +689,10 @@ function SwapDesk({ onChanged }: { onChanged: () => void }) {
         Swap requests
         {items && items.length > 0 && <span className="rounded-full bg-status-overdue px-2 py-0.5 text-label-sm font-bold text-on-status-overdue">{items.length}</span>}
       </h3>
-      <p className="mb-3 text-xs text-on-surface-variant">Two people agreed to trade a day; approving changes both rosters.</p>
+      <p className="mb-2 flex items-center gap-1.5 text-xs text-on-surface-variant">
+        Swap desk
+        <InfoTip label="About swap requests">Two people agreed to trade a day; approving changes both rosters.</InfoTip>
+      </p>
       {error && <div role="alert" className="mb-2 rounded-lg border border-status-overdue/30 bg-status-overdue-container px-3 py-2 text-xs text-on-status-overdue-container">{error}</div>}
       {items === null ? <p className="text-sm text-on-surface-variant">Loading…</p> : items.length === 0 ? (
         <p className="text-sm text-on-surface-variant">Nothing waiting for you.</p>
@@ -696,7 +725,7 @@ function SwapDesk({ onChanged }: { onChanged: () => void }) {
 }
 
 function ReallocateModal({ week, selected, onClose, onDone }: {
-  week: PlannerWeek; selected: string[]; onClose: () => void; onDone: (o: ApplyShiftsOutcome) => void;
+  week: PlannerWeek; selected: string[]; onClose: () => void; onDone: (o: ApplyShiftsOutcome, confirm?: () => Promise<{ data: ApplyShiftsOutcome }>) => void;
 }) {
   const today = todayIso();
   const [fromShift, setFromShift] = useState(week.shifts[0]?.id ?? '');
@@ -714,8 +743,9 @@ function ReallocateModal({ week, selected, onClose, onDone }: {
     if (to < from) { setErr('The end date is before the start date.'); return; }
     setBusy(true);
     try {
-      const r = await planner.reallocate({ from_shift_id: fromShift, to_shift_id: toShift, from, to, ...(onlySelected && selected.length ? { user_ids: selected } : {}) });
-      onDone(r.data);
+      const body = { from_shift_id: fromShift, to_shift_id: toShift, from, to, ...(onlySelected && selected.length ? { user_ids: selected } : {}) };
+      const r = await planner.reallocate(body);
+      onDone(r.data, () => planner.reallocate({ ...body, user_ids: r.data.warnings.map((w) => w.user_id), confirm_rest_warnings: true }));
     } catch (e) { setErr(e instanceof Error ? e.message : 'Could not reallocate.'); } finally { setBusy(false); }
   };
   const footer = (
@@ -743,7 +773,7 @@ function ReallocateModal({ week, selected, onClose, onDone }: {
         {selected.length > 0 && (
           <label className="flex items-center gap-2 text-sm text-on-surface"><input type="checkbox" checked={onlySelected} onChange={(e) => setOnlySelected(e.target.checked)} disabled={busy} /> Only the {selected.length} ticked {selected.length === 1 ? 'person' : 'people'}</label>
         )}
-        <p className="text-xs text-on-surface-variant">Only days someone is on the first shift change. Anyone whose rest between shifts would fall under 11 hours is skipped and listed.</p>
+        <p className="text-xs text-on-surface-variant">Only days someone is on the first shift change. If someone's rest between shifts would fall under the attendance policy minimum, you are warned and can choose to assign anyway.</p>
       </div>
     </Modal>
   );

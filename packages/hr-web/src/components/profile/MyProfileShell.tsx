@@ -103,8 +103,8 @@ export default function MyProfileShell({ actor }: Props) {
 
   return (
     <div className="flex w-full flex-1 flex-col">
-      <PageHeader title="My profile" subtitle="Your details, contacts and account" />
-      <PageBody>
+      <PageHeader title="My profile" info="Your details, contacts and account" />
+      <PageBody dense>
         {notice && <Alert tone="success">{notice}</Alert>}
         {error && <Alert tone="error">{error}</Alert>}
 

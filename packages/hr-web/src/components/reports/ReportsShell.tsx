@@ -27,9 +27,9 @@ export default function ReportsShell({ actor }: Props) {
 
   return (
     <div className="flex w-full flex-1 flex-col">
-      <PageHeader title="Reports" subtitle="Monthly attendance for payroll — per branch or across every branch." />
+      <PageHeader title="Reports" info="Monthly attendance for payroll — per branch or across every branch." />
 
-      <PageBody>
+      <PageBody dense>
         <div className="flex flex-wrap gap-1 rounded-xl border border-outline-variant bg-surface-container-lowest p-1 shadow-sm">
           {sections.map((s) => (
             <button

@@ -116,11 +116,11 @@ export default function LeaveApprovalsShell({ actor, hrRank }: Props) {
     <div className="flex w-full flex-1 flex-col">
       <PageHeader
         title="Leave Approvals"
-        subtitle="Pending requests awaiting your decision, and your team’s approved leave."
+        info="Pending requests awaiting your decision, and your team’s approved leave."
         tabs={<LeaveTabs hrRank={hrRank} actor={actor} />}
       />
 
-      <PageBody>
+      <PageBody dense>
         {notice && <Alert tone="success">{notice}</Alert>}
         {error && <Alert tone="error">{error}</Alert>}
 

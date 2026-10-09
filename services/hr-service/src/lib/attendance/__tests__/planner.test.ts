@@ -87,6 +87,27 @@ describe('restProblems', () => {
   });
 });
 
+describe('restProblems policy', () => {
+  const lookup = (map: Record<string, ShiftTimes | null>) => (d: string) => map[d] ?? null;
+
+  it('is quiet for every gap when the policy is 0', () => {
+    const f = lookup({ '2026-10-10': night, '2026-10-11': day });
+    expect(restProblems(f, '2026-10-10', '2026-10-11', 0)).toEqual([]);
+  });
+
+  it('follows a longer policy', () => {
+    const f = lookup({ '2026-10-10': day, '2026-10-11': day });
+    expect(restProblems(f, '2026-10-11', '2026-10-11', 11)).toEqual([]);
+    expect(restProblems(f, '2026-10-11', '2026-10-11', 24).length).toBeGreaterThan(0);
+  });
+
+  it("lets a shift's own value win over the policy", () => {
+    const relaxed: ShiftTimes = { ...day, minRestHours: 0 };
+    const f = lookup({ '2026-10-10': night, '2026-10-11': relaxed });
+    expect(restProblems(f, '2026-10-11', '2026-10-11', 11)).toEqual([]);
+  });
+});
+
 describe('dates', () => {
   it('lists a range inclusively', () => expect(eachDate('2026-10-30', '2026-11-02')).toEqual(['2026-10-30', '2026-10-31', '2026-11-01', '2026-11-02']));
   it('finds the Monday of a week, including from a Sunday', () => {

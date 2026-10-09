@@ -13,7 +13,11 @@
 // milliseconds against a naive calendar date — no time zone is involved.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Minimum rest between the end of one shift and the start of the next. One fixed rule for now. */
+/**
+ * Fallback minimum rest between the end of one shift and the start of the next, used only when no
+ * policy row applies. The real value is hr.attendance_rules.min_rest_hours (tenant default, org
+ * override), which a shift can override with its own hr.shifts.min_rest_hours. 0 turns the rule off.
+ */
 export const MIN_REST_HOURS = 11;
 
 const HOUR_MS = 3_600_000;
@@ -25,6 +29,8 @@ export interface ShiftTimes {
   start: string;
   end: string;
   isNight: boolean;
+  /** This shift's own minimum rest BEFORE it starts; null/undefined = follow the policy. 0 = no rule. */
+  minRestHours?: number | null;
 }
 
 export interface DayContext {
@@ -68,15 +74,17 @@ export function restGapProblem(
   ctx: Pick<DayContext, 'prev' | 'next'>,
   minRestHours = MIN_REST_HOURS,
 ): string | null {
-  const min = minRestHours * HOUR_MS;
   const span = shiftSpan(swapDate, incoming);
+  // The gap is owed to the shift that STARTS after it, so that shift's own setting wins over the policy.
   if (ctx.prev) {
+    const hours = incoming.minRestHours ?? minRestHours;
     const prev = shiftSpan(shiftDate(swapDate, -1), ctx.prev);
-    if (span.start - prev.end < min) return `fewer than ${minRestHours} hours of rest after the previous day's shift`;
+    if (hours > 0 && span.start - prev.end < hours * HOUR_MS) return `fewer than ${hours} hours of rest after the previous day's shift`;
   }
   if (ctx.next) {
+    const hours = ctx.next.minRestHours ?? minRestHours;
     const next = shiftSpan(shiftDate(swapDate, 1), ctx.next);
-    if (next.start - span.end < min) return `fewer than ${minRestHours} hours of rest before the next day's shift`;
+    if (hours > 0 && next.start - span.end < hours * HOUR_MS) return `fewer than ${hours} hours of rest before the next day's shift`;
   }
   return null;
 }

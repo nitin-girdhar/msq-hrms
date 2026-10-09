@@ -83,21 +83,21 @@ export async function payrollRouter(app: FastifyInstance) {
     return reply.send({ success: true, data: r });
   });
 
-  app.post('/payroll/admin/:month/publish', { preHandler: [authenticate, manage] }, async (request, reply) => {
+  app.post('/payroll/admin/:month/publish', { preHandler: [authenticate, manage, validate({ params: payrollMonthQuerySchema })] }, async (request, reply) => {
     const month = monthParam(request);
     const r = await repo.publish(ctxOf(request), month);
     audit(request, 'payslips_published', ctxOf(request).user_id, { month, count: r.published });
     return reply.send({ success: true, data: r });
   });
 
-  app.post('/payroll/admin/:month/lock', { preHandler: [authenticate, manage] }, async (request, reply) => {
+  app.post('/payroll/admin/:month/lock', { preHandler: [authenticate, manage, validate({ params: payrollMonthQuerySchema })] }, async (request, reply) => {
     const month = monthParam(request);
     const r = await repo.setLock(ctxOf(request), month, true);
     audit(request, 'payroll_month_locked', ctxOf(request).user_id, { month });
     return reply.send({ success: true, data: r });
   });
 
-  app.post('/payroll/admin/:month/unlock', { preHandler: [authenticate, manage] }, async (request, reply) => {
+  app.post('/payroll/admin/:month/unlock', { preHandler: [authenticate, manage, validate({ params: payrollMonthQuerySchema })] }, async (request, reply) => {
     const month = monthParam(request);
     const r = await repo.setLock(ctxOf(request), month, false);
     audit(request, 'payroll_month_unlocked', ctxOf(request).user_id, { month });

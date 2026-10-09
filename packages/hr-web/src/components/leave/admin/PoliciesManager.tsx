@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { can, CAPABILITY } from '@platform/rbac';
+import { InfoTip } from '@platform/ui-kit';
 import type { SessionUser } from '@platform/types';
 import { leave as leaveApi } from '../../../lib/api/client';
 import type { LeavePolicyView } from '../../../lib/leave/types';
@@ -37,7 +38,10 @@ export default function PoliciesManager({ actor, onNotice }: Props) {
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-on-surface-variant">Effective-dated leave rules per type. A revision adds a new row from a future date.</p>
+        <p className="flex items-center gap-1.5 text-sm text-on-surface-variant">
+          Leave rules per type
+          <InfoTip label="About leave policies">Effective-dated leave rules per type. A revision adds a new row from a future date.</InfoTip>
+        </p>
         {can(actor, CAPABILITY.HR_LEAVE_ADMIN_POLICIES_MANAGE) && <button type="button" onClick={() => setFormOpen(true)} className="min-h-11 shrink-0 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary/90">
           Create / revise policy
         </button>}

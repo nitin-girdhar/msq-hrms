@@ -119,7 +119,7 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
     <div className="flex w-full flex-1 flex-col">
       <PageHeader
         title="Leave management & time-off"
-        subtitle={`Plan leave, check who is away, and track your requests, ${actor.name || actor.email}.`}
+        info={`Plan leave, check who is away, and track your requests, ${actor.name || actor.email}.`}
         tabs={<LeaveTabs hrRank={hrRank} actor={actor} />}
         actions={
           <>
@@ -141,7 +141,7 @@ export default function LeaveDashboardShell({ actor, hrRank }: Props) {
         }
       />
 
-      <PageBody>
+      <PageBody dense>
         {notice && <Alert tone="success">{notice}</Alert>}
         {error && <Alert tone="error">{error}</Alert>}
 

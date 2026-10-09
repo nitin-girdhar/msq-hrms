@@ -39,18 +39,18 @@ export async function plannerRouter(app: FastifyInstance) {
     const body = request.body as ApplyShiftsInput;
     const result = await repo.applyShifts(ctxOf(request), body);
     for (const id of result.changed) {
-      audit(request, 'roster_shift_changed', id, { from: body.from, to: body.to, shift_id: body.shift_id });
+      audit(request, 'roster_shift_changed', id, { from: body.from, to: body.to, shift_id: body.shift_id, rest_warning_confirmed: result.overridden.includes(id) });
     }
-    return reply.send({ success: true, data: { applied: result.applied, skipped: result.skipped } });
+    return reply.send({ success: true, data: { applied: result.applied, skipped: result.skipped, warnings: result.warnings } });
   });
 
   app.post('/attendance/planner/reallocate', { preHandler: [authenticate, manage, validate({ body: reallocateShiftsSchema })] }, async (request, reply) => {
     const body = request.body as ReallocateShiftsInput;
     const result = await repo.reallocate(ctxOf(request), body);
     for (const id of result.changed) {
-      audit(request, 'roster_shift_reallocated', id, { from: body.from, to: body.to, from_shift_id: body.from_shift_id, to_shift_id: body.to_shift_id });
+      audit(request, 'roster_shift_reallocated', id, { from: body.from, to: body.to, from_shift_id: body.from_shift_id, to_shift_id: body.to_shift_id, rest_warning_confirmed: result.overridden.includes(id) });
     }
-    return reply.send({ success: true, data: { applied: result.applied, skipped: result.skipped } });
+    return reply.send({ success: true, data: { applied: result.applied, skipped: result.skipped, warnings: result.warnings } });
   });
 
   app.put('/attendance/planner/requirements', { preHandler: [authenticate, manage, validate({ body: setRequirementSchema })] }, async (request, reply) => {

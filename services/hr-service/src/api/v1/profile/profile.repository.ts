@@ -204,7 +204,10 @@ export async function updateOwnContact(ctx: RoleTxContext, id: string, data: Upd
 
 /** Soft delete (no DELETE grant for app_user): flag it deleted, and un-flag active (a CHECK forbids both). */
 export async function removeOwnContact(ctx: RoleTxContext, id: string): Promise<void> {
-  await withRoleTx(ctx, async (tx) => {
+  // Service tx on purpose: self_policy's WITH CHECK requires NOT is_deleted, so a
+  // soft delete (is_deleted = TRUE) under the caller's role fails its own policy.
+  // Scope is kept by the user_id predicate, taken from the verified session.
+  await withServiceTx(async (tx) => {
     const res = (await tx.execute(sql`
       UPDATE hr.emergency_contacts
       SET is_deleted = TRUE, is_active = FALSE, is_primary = FALSE, deleted_at = CLOCK_TIMESTAMP(), deleted_by = ${ctx.user_id}

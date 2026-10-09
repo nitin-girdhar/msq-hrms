@@ -5,7 +5,7 @@ import { can, CAPABILITY } from '@platform/rbac';
 import type { ReactNode } from 'react';
 import type { SessionUser } from '@platform/types';
 import { attendance as attendanceApi } from '../../../lib/api/client';
-import { orgs as orgsApi, Alert, Button, PageSection } from '@platform/ui-kit';
+import { orgs as orgsApi, Alert, Button, InfoTip, PageSection } from '@platform/ui-kit';
 import type { AttendanceRules } from '../../../lib/attendance/types';
 import { canSetOrgLocation, canManageTenantAttendance, todayIso, shiftIso } from '../../../lib/attendance/format';
 import { fieldInputCls, fieldLabelCls, stateBlockCls } from '../../../lib/ui';
@@ -52,10 +52,12 @@ function ToggleRow({
           className="mt-0.5 h-4 w-4 shrink-0 rounded border-outline text-primary focus:ring-2 focus:ring-primary/20"
         />
         <div className="min-w-0">
-          <label htmlFor={id} className="block cursor-pointer text-sm font-medium text-on-surface">
-            {label}
-          </label>
-          <p className="mt-0.5 text-xs text-on-surface-variant">{description}</p>
+          <div className="flex items-center gap-1.5">
+            <label htmlFor={id} className="block cursor-pointer text-sm font-medium text-on-surface">
+              {label}
+            </label>
+            <InfoTip label={`About ${label}`}>{description}</InfoTip>
+          </div>
           {children}
         </div>
       </div>
@@ -170,7 +172,12 @@ export default function RulesEditor({ actor, onNotice }: Props) {
           whether they are editing one org or all of them BEFORE they start
           typing, not when they reach the save button. */}
       {canSetTenantWide && (
-        <PageSection title="Apply to">
+        <PageSection
+          title="Apply to"
+          info={scope === 'tenant'
+            ? 'Saves the tenant-wide default. Organizations that have their own settings keep them; this only changes what the rest inherit.'
+            : 'Saves an override for this organization only, leaving the tenant-wide default untouched.'}
+        >
           <div className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
               <label htmlFor="re-scope" className={fieldLabelCls}>These settings apply to</label>
@@ -184,11 +191,6 @@ export default function RulesEditor({ actor, onNotice }: Props) {
                 <option value="tenant">{`All ${actor.tenant_name} Branches`}</option>
               </select>
             </div>
-            <p className="mt-2 text-xs text-on-surface-variant">
-              {scope === 'tenant'
-                ? 'Saves the tenant-wide default. Organizations that have their own settings keep them — this only changes what the rest inherit.'
-                : 'Saves an override for this organization only, leaving the tenant-wide default untouched.'}
-            </p>
           </div>
         </PageSection>
       )}
@@ -297,15 +299,12 @@ export default function RulesEditor({ actor, onNotice }: Props) {
         </div>
       </PageSection>
 
-      <PageSection title="Day classification">
-        <div className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-4">
-          <p className="text-xs text-on-surface-variant">
-            How much time an employee must actually work for a day to count. Time is
-            the total of every check-in/check-out session, so a break punched out and
-            back in is not counted. Employees on a shift use their shift&apos;s own
-            figures; these apply to everyone without a shift assignment.
-          </p>
-          <div className="mt-3 flex flex-wrap items-end gap-4">
+      <PageSection
+        title="Day classification"
+        info="How much time an employee must actually work for a day to count. Time is the total of every check-in/check-out session, so a break punched out and back in is not counted. Employees on a shift use their shift's own figures; these apply to everyone without a shift assignment."
+      >
+        <div className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-3">
+          <div className="flex flex-wrap items-end gap-4">
             <div className="flex flex-col gap-1.5">
               <label htmlFor="re-half-day" className={fieldLabelCls}>Half day from</label>
               <div className="flex items-center gap-2">
@@ -346,15 +345,36 @@ export default function RulesEditor({ actor, onNotice }: Props) {
         </div>
       </PageSection>
 
-      <PageSection title="Regularization">
+      <PageSection title="Roster">
         <div className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-4">
-          <p className="text-xs text-on-surface-variant">
-            A regularization is an employee&apos;s request to correct what a past day
-            says about their attendance. These settings decide how far back they may
-            reach and who has to sign it off.
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <label htmlFor="ro-rest" className="block text-sm font-medium text-on-surface">
+              Minimum rest between shifts
+            </label>
+            <input
+              id="ro-rest" type="number" min={0} max={24} step={1}
+              value={rules.min_rest_hours}
+              onChange={(e) => setRules({ ...rules, min_rest_hours: Number(e.target.value) })}
+              className={`${inputCls} w-24`}
+            />
+            <span className="text-xs text-on-surface-variant">hours</span>
+            <InfoTip label="About this setting">
+            {rules.min_rest_hours === 0
+              ? 'No rest rule: the planner will not warn about short gaps between shifts.'
+              : `When a roster edit leaves someone with less than ${rules.min_rest_hours} hours between the end of one shift and the start of the next, the planner warns and asks for confirmation before applying it.`}{' '}
+            A shift can set its own minimum in the shift form, which overrides this. Shift swaps between
+            teammates follow this setting and are still refused when it is broken. Set 0 to turn the rule off.
+          </InfoTip>
+          </div>
+        </div>
+      </PageSection>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+      <PageSection
+        title="Regularization"
+        info="A regularization is an employee's request to correct what a past day says about their attendance. These settings decide how far back they may reach and who has to sign it off."
+      >
+        <div className="rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2">
             <label htmlFor="re-backdate" className="block text-sm font-medium text-on-surface">
               Allow requests up to
             </label>
@@ -365,13 +385,13 @@ export default function RulesEditor({ actor, onNotice }: Props) {
               className={`${inputCls} w-24`}
             />
             <span className="text-xs text-on-surface-variant">days old</span>
-          </div>
-          <p className="mt-0.5 text-xs text-on-surface-variant">
+            <InfoTip label="About this setting">
             {rules.regularization_max_backdate_days === 0
               ? 'Employees can only regularize today.'
               : `Employees can regularize today and the previous ${rules.regularization_max_backdate_days} day(s) — on or after ${earliestWorkDate}.`}{' '}
             A date in the future is never accepted.
-          </p>
+          </InfoTip>
+          </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-outline-variant/50 pt-3">
             <label htmlFor="re-levels" className="block text-sm font-medium text-on-surface">
@@ -384,15 +404,15 @@ export default function RulesEditor({ actor, onNotice }: Props) {
               className={`${inputCls} w-24`}
             />
             <span className="text-xs text-on-surface-variant">level(s) of approval</span>
+            <InfoTip label="About this setting">
+            How far up the reporting chain a request travels before it is approved.
+            1 = the direct manager only. Applies to requests filed from now on;
+            requests already awaiting a decision keep the approvers they started with.
+          </InfoTip>
           </div>
           {/* The approver chain is materialized when the request is submitted, so
               a change here can never reshuffle something already under review —
               worth saying, because the opposite is the natural assumption. */}
-          <p className="mt-0.5 text-xs text-on-surface-variant">
-            How far up the reporting chain a request travels before it is approved.
-            1 = the direct manager only. Applies to requests filed from now on;
-            requests already awaiting a decision keep the approvers they started with.
-          </p>
         </div>
       </PageSection>
 
@@ -446,10 +466,10 @@ export default function RulesEditor({ actor, onNotice }: Props) {
                 className={`${inputCls} w-24`}
               />
               <span className="text-xs text-on-surface-variant">days</span>
-            </div>
-            <p className="mt-0.5 text-xs text-on-surface-variant">
+            <InfoTip label="About this setting">
               How long a member must wait before changing their own reference photo. Admins can change it any time from the Team screen.
-            </p>
+            </InfoTip>
+            </div>
           </div>
 
           <div className="py-3">
@@ -464,10 +484,10 @@ export default function RulesEditor({ actor, onNotice }: Props) {
                 className={`${inputCls} w-24`}
               />
               <span className="text-xs text-on-surface-variant">days</span>
-            </div>
-            <p className="mt-0.5 text-xs text-on-surface-variant">
+            <InfoTip label="About this setting">
               Daily check-in/out selfies are deleted by the cleanup job after this many days. The enrolled reference photo is never auto-deleted.
-            </p>
+            </InfoTip>
+            </div>
           </div>
         </div>
       </PageSection>

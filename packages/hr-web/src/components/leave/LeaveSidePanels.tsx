@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { InfoTip } from '@platform/ui-kit';
 import { holidays as holidaysApi, leave as leaveApi } from '../../lib/api/client';
 import type { HolidayView, LeaveRequestView } from '../../lib/leave/types';
 import { formatDateRange } from '../../lib/leave/format';
@@ -11,9 +12,11 @@ const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00
 
 function Card({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm">
-      <h3 className="text-base font-semibold text-on-surface">{title}</h3>
-      {subtitle && <p className="mb-3 text-xs text-on-surface-variant">{subtitle}</p>}
+    <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-3 shadow-sm">
+      <h3 className="mb-2 flex items-center gap-1.5 text-base font-semibold text-on-surface">
+        {title}
+        {subtitle && <InfoTip label={`About ${title}`}>{subtitle}</InfoTip>}
+      </h3>
       {children}
     </section>
   );

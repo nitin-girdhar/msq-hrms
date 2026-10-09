@@ -6,7 +6,7 @@
 
 import { sql } from 'drizzle-orm';
 import type { DrizzleTx } from '@platform/db';
-import { ConflictError } from '../errors.js';
+import { BadRequestError, ConflictError } from '../errors.js';
 
 export interface LineInput {
   kind: 'earning' | 'deduction';
@@ -34,7 +34,7 @@ export function computeTotals(lines: readonly LineInput[]): Totals {
 
 /** 'YYYY-MM' → first day of that month as 'YYYY-MM-01'. */
 export function monthStart(month: string): string {
-  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error(`Invalid month: ${month}`);
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new BadRequestError('Month must be YYYY-MM');
   return `${month}-01`;
 }
 

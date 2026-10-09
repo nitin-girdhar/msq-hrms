@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { InfoTip } from '@platform/ui-kit';
 import { attendance as attendanceApi } from '../../lib/api/client';
 import type { ActiveGeoException, AttendanceRules, PunchResult } from '../../lib/attendance/types';
 import { describePunchError, formatDay } from '../../lib/attendance/format';
@@ -78,8 +79,10 @@ export default function PunchPanel({ mode, rules, geoException, onClose, onSucce
     <section ref={rootRef} aria-label={title} className="flex flex-col gap-3 rounded-xl border border-primary/30 bg-surface-container-low p-4 shadow-sm sm:p-5">
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold text-on-surface">{title}</h2>
-          <p className="text-xs text-on-surface-variant">Take a selfie and confirm where you are. Nothing is recorded until you confirm.</p>
+          <h2 className="flex items-center gap-1.5 text-lg font-semibold text-on-surface">
+            {title}
+            <InfoTip label="About this punch">Take a selfie and confirm where you are. Nothing is recorded until you confirm.</InfoTip>
+          </h2>
         </div>
         <button type="button" onClick={cancel} disabled={submitting} className="rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-xs font-semibold text-on-surface-variant hover:bg-surface-container disabled:opacity-60">Cancel</button>
       </header>

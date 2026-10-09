@@ -123,7 +123,7 @@ export default function EmployeeDashboardShell({ actor }: Props) {
         subtitle={now ? now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : ' '}
       />
 
-      <PageBody>
+      <PageBody dense>
         {(error || today.error) && <Alert tone="error">{error ?? today.error}</Alert>}
         {nothingEnabled && <p className={emptyBlockCls}>Nothing is enabled for your role here yet.</p>}
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, SpeechInputButton, appendDictation } from '@platform/ui-kit';
+import { Alert, Button, InfoTip, SpeechInputButton, appendDictation } from '@platform/ui-kit';
 import { documents, hrEmployees, leave as leaveApi } from '../../lib/api/client';
 import type { HalfDay, HrLookupOption, LeaveBalance, LeavePreview } from '../../lib/leave/types';
 import { DOCUMENT_ACCEPT, DOCUMENT_DEFAULT_BYTES, fileToBase64, formatBytes } from '../../lib/documents/types';
@@ -131,8 +131,10 @@ export default function ApplyLeavePanel({ userId, balances, onApplied }: Props) 
     <section id="apply-leave" className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm sm:p-5">
       <header className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold text-on-surface">Apply for time off</h2>
-          <p className="text-xs text-on-surface-variant">The server checks balance, notice and overlaps when you submit.</p>
+          <h2 className="flex items-center gap-1.5 text-lg font-semibold text-on-surface">
+            Apply for time off
+            <InfoTip label="About applying">The server checks balance, notice and overlaps when you submit.</InfoTip>
+          </h2>
         </div>
         {hasDraft && <button type="button" onClick={resumeDraft} className="text-xs font-semibold text-primary hover:underline">Resume saved draft</button>}
       </header>

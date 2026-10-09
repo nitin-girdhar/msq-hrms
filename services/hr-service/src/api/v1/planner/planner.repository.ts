@@ -11,7 +11,7 @@
 import { sql } from 'drizzle-orm';
 import { withServiceTx, type DrizzleTx, type RoleTxContext } from '@platform/db';
 import { BadRequestError, ConflictError, NotFoundError } from '../../../lib/errors.js';
-import type { ShiftTimes } from '../../../lib/attendance/swap.js';
+import { MIN_REST_HOURS, type ShiftTimes } from '../../../lib/attendance/swap.js';
 import { addDays, eachDate, mondayOf, overlapsOnShift, planRange, rangeFor, restProblems, shiftOnAfter, type Op, type Window } from '../../../lib/attendance/planner.js';
 import type { ApplyShiftsInput, PlannerWeekQuery, ReallocateShiftsInput } from '@hr/validation';
 
@@ -159,21 +159,38 @@ export async function getWeek(ctx: PlannerCtx, query: PlannerWeekQuery): Promise
 // ── Editing ──────────────────────────────────────────────────────────────────
 export interface ApplyResult {
   applied: number;
+  /** Not changed, and confirming would not help (unknown person, ...). */
   skipped: Array<{ user_id: string; full_name: string; reason: string }>;
+  /**
+   * Not changed YET: the edit breaks the minimum-rest policy. Nothing was written for these people;
+   * the caller shows the reason and may re-send with confirm_rest_warnings to apply it anyway.
+   */
+  warnings: Array<{ user_id: string; full_name: string; reason: string }>;
   /** user ids whose assignments changed, for the audit log. */
   changed: string[];
+  /** The subset of `changed` that was applied over a rest warning, for the audit log. */
+  overridden: string[];
 }
 
 interface ShiftCatalog {
   times: Map<string, ShiftTimes>;
+  /** Policy minimum rest (hours) in force for this org; a shift's own setting wins. 0 = rule off. */
+  minRestHours: number;
 }
 
-async function loadCatalog(tx: DrizzleTx, orgId: string): Promise<ShiftCatalog> {
+async function loadCatalog(tx: DrizzleTx, ctx: PlannerCtx): Promise<ShiftCatalog> {
   const rows = (await tx.execute(sql`
-    SELECT id::text AS id, start_time::text AS start, end_time::text AS "end", is_night_shift AS "isNight"
-    FROM hr.shifts WHERE org_id = ${orgId} AND NOT is_deleted
+    SELECT id::text AS id, start_time::text AS start, end_time::text AS "end", is_night_shift AS "isNight",
+           min_rest_hours AS "minRestHours"
+    FROM hr.shifts WHERE org_id = ${ctx.org_id} AND NOT is_deleted
   `)) as unknown as ShiftTimes[];
-  return { times: new Map(rows.map((r) => [r.id, r])) };
+  // Same precedence as attendance rules: the org's own row wins whole, else the tenant default (org_id NULL).
+  const policy = (await tx.execute(sql`
+    SELECT min_rest_hours FROM hr.attendance_rules
+    WHERE tenant_id = ${ctx.tenant_id} AND NOT is_deleted AND (org_id = ${ctx.org_id} OR org_id IS NULL)
+    ORDER BY (org_id IS NULL) LIMIT 1
+  `)) as unknown as Array<{ min_rest_hours: number }>;
+  return { times: new Map(rows.map((r) => [r.id, r])), minRestHours: policy[0]?.min_rest_hours ?? MIN_REST_HOURS };
 }
 
 async function activeShift(tx: DrizzleTx, orgId: string, shiftId: string): Promise<void> {
@@ -193,21 +210,27 @@ async function windowsOf(tx: DrizzleTx, orgId: string, userId: string, lo: strin
 
 /**
  * Make `shiftId` (or no shift) this person's shift for [from, to]: rest-checked first, then the carve
- * applied. Returns a reason when the 11-hour rule would be broken (nothing is written), else null.
+ * applied. When the minimum-rest policy would be broken nothing is written and a warning is returned,
+ * unless `confirm` says the planner has already seen it and wants the edit anyway.
  */
 async function applyForPerson(
   tx: DrizzleTx, ctx: PlannerCtx, catalog: ShiftCatalog, personId: string, from: string, to: string, shiftId: string | null,
-): Promise<{ changed: boolean; skippedReason: string | null }> {
+  confirm: boolean,
+): Promise<{ changed: boolean; warning: string | null; overridden: boolean }> {
   const windows = await windowsOf(tx, ctx.org_id, personId, addDays(from, -2), addDays(to, 2));
   const ops: Op[] = planRange(windows, from, to, shiftId);
-  if (ops.length === 0) return { changed: false, skippedReason: null };
+  if (ops.length === 0) return { changed: false, warning: null, overridden: false };
 
+  let overridden = false;
   if (shiftId) {
     const problems = restProblems((d) => {
       const id = shiftOnAfter(windows, ops, d);
       return id ? catalog.times.get(id) ?? null : null;
-    }, from, to);
-    if (problems.length > 0) return { changed: false, skippedReason: `${problems[0]!.date}: ${problems[0]!.reason}` };
+    }, from, to, catalog.minRestHours);
+    if (problems.length > 0) {
+      if (!confirm) return { changed: false, warning: `${problems[0]!.date}: ${problems[0]!.reason}`, overridden: false };
+      overridden = true;
+    }
   }
   for (const op of ops) {
     if (op.kind === 'shrink') {
@@ -222,7 +245,7 @@ async function applyForPerson(
         VALUES (${personId}, ${ctx.org_id}, ${op.shiftId}, ${op.from}::date, ${op.to}::date, ${ctx.user_id})`);
     }
   }
-  return { changed: true, skippedReason: null };
+  return { changed: true, warning: null, overridden };
 }
 
 async function activePeople(tx: DrizzleTx, orgId: string, ids: string[] | null): Promise<Array<{ user_id: string; full_name: string }>> {
@@ -239,15 +262,18 @@ export async function applyShifts(ctx: PlannerCtx, input: ApplyShiftsInput): Pro
   }
   return withContext(ctx, async (tx) => {
     if (input.shift_id) await activeShift(tx, ctx.org_id, input.shift_id);
-    const catalog = await loadCatalog(tx, ctx.org_id);
+    const catalog = await loadCatalog(tx, ctx);
     const people = await activePeople(tx, ctx.org_id, input.user_ids);
     if (people.length === 0) throw new NotFoundError('None of those people were found');
 
-    const result: ApplyResult = { applied: 0, skipped: [], changed: [] };
+    const result: ApplyResult = { applied: 0, skipped: [], warnings: [], changed: [], overridden: [] };
     for (const person of people) {
-      const r = await applyForPerson(tx, ctx, catalog, person.user_id, input.from, input.to, input.shift_id);
-      if (r.skippedReason) result.skipped.push({ user_id: person.user_id, full_name: person.full_name, reason: r.skippedReason });
-      else if (r.changed) { result.applied += 1; result.changed.push(person.user_id); }
+      const r = await applyForPerson(tx, ctx, catalog, person.user_id, input.from, input.to, input.shift_id, input.confirm_rest_warnings);
+      if (r.warning) result.warnings.push({ user_id: person.user_id, full_name: person.full_name, reason: r.warning });
+      else if (r.changed) {
+        result.applied += 1; result.changed.push(person.user_id);
+        if (r.overridden) result.overridden.push(person.user_id);
+      }
     }
     // Anyone asked for but not found in this org is reported, never silently dropped.
     const found = new Set(people.map((p) => p.user_id));
@@ -264,21 +290,26 @@ export async function reallocate(ctx: PlannerCtx, input: ReallocateShiftsInput):
   return withContext(ctx, async (tx) => {
     await activeShift(tx, ctx.org_id, input.from_shift_id);
     await activeShift(tx, ctx.org_id, input.to_shift_id);
-    const catalog = await loadCatalog(tx, ctx.org_id);
+    const catalog = await loadCatalog(tx, ctx);
     const people = await activePeople(tx, ctx.org_id, input.user_ids ?? null);
-    const result: ApplyResult = { applied: 0, skipped: [], changed: [] };
+    const result: ApplyResult = { applied: 0, skipped: [], warnings: [], changed: [], overridden: [] };
 
     for (const person of people) {
       const windows = await windowsOf(tx, ctx.org_id, person.user_id, input.from, input.to);
       const spans = overlapsOnShift(windows, input.from_shift_id, input.from, input.to);
       if (spans.length === 0) continue;
       let touched = false;
+      let overridden = false;
       for (const span of spans) {
-        const r = await applyForPerson(tx, ctx, catalog, person.user_id, span.from, span.to, input.to_shift_id);
-        if (r.skippedReason) { result.skipped.push({ user_id: person.user_id, full_name: person.full_name, reason: r.skippedReason }); break; }
+        const r = await applyForPerson(tx, ctx, catalog, person.user_id, span.from, span.to, input.to_shift_id, input.confirm_rest_warnings);
+        if (r.warning) { result.warnings.push({ user_id: person.user_id, full_name: person.full_name, reason: r.warning }); break; }
         if (r.changed) touched = true;
+        if (r.overridden) overridden = true;
       }
-      if (touched) { result.applied += 1; result.changed.push(person.user_id); }
+      if (touched) {
+        result.applied += 1; result.changed.push(person.user_id);
+        if (overridden) result.overridden.push(person.user_id);
+      }
     }
     return result;
   });

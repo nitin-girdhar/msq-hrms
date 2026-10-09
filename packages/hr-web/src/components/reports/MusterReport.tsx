@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SessionUser } from '@platform/types';
-import { Alert, PageSection } from '@platform/ui-kit';
+import { Alert, InfoTip, PageSection } from '@platform/ui-kit';
 import { attendanceReportReach } from '@hr/authz';
 import { attendance as attendanceApi } from '../../lib/api/client';
 import type { MusterCode, MusterParams, MusterReport as MusterReportData } from '../../lib/attendance/types';
@@ -242,8 +242,9 @@ export default function MusterReport({ actor }: Props) {
           <Pagination page={safePage} pageSize={pageSize} total={rows.length} onPage={setPage} onPageSize={(n) => { setPageSize(n); setPage(1); }} noun="employees" />
         </div>
       )}
-      <p className="mt-2 text-[0.6875rem] text-outline">
-        Half day counts as 0.5. Total paid = present + weekly offs + paid leave + holidays. The Excel download adds a blank Final Paid Days column for HR.
+      <p className="mt-2 flex items-center gap-1.5 text-[0.6875rem] text-outline">
+        How days are counted
+        <InfoTip label="About day counts">Half day counts as 0.5. Total paid = present + weekly offs + paid leave + holidays. The Excel download adds a blank Final Paid Days column for HR.</InfoTip>
       </p>
     </PageSection>
   );

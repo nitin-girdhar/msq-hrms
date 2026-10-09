@@ -49,11 +49,16 @@ export interface ApplyShiftsBody {
   to: string;
   /** null clears the dates. */
   shift_id: string | null;
+  /** Set only on the re-send after the planner has seen the minimum-rest warning and chose to go ahead. */
+  confirm_rest_warnings?: boolean;
 }
 
 export interface ApplyShiftsOutcome {
   applied: number;
+  /** Not changed and confirming would not help. */
   skipped: Array<{ user_id: string; full_name: string; reason: string }>;
+  /** Not changed YET: the edit breaks the minimum-rest policy. Re-send with confirm_rest_warnings to apply it anyway. */
+  warnings: Array<{ user_id: string; full_name: string; reason: string }>;
 }
 
 // One colour per shift from the fixed categorical hues, so a shift is the same colour for every
@@ -73,6 +78,7 @@ export interface ReallocateBody {
   from: string;
   to: string;
   user_ids?: string[];
+  confirm_rest_warnings?: boolean;
 }
 
 /** One step back or forward in the given view: a day, seven days, or a calendar month. */

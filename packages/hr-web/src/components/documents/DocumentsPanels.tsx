@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Modal } from '@platform/ui-kit';
+import { Button, InfoTip, Modal } from '@platform/ui-kit';
 import { documents } from '../../lib/api/client';
 import {
   DOCUMENT_ACCEPT, DOCUMENT_CATEGORIES, DOCUMENT_CATEGORY_LABEL, DOCUMENT_DEFAULT_BYTES, DOCUMENT_MAX_BYTES, DOCUMENT_MIN_BYTES,
@@ -86,7 +86,10 @@ export function MyDocumentsPanel({ onError, onNotice }: { onError: (m: string) =
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-on-surface-variant">PDF, JPG, PNG or WebP, up to {formatBytes(limit)} each. HR reviews what you upload.</p>
+        <p className="flex items-center gap-1.5 text-xs text-on-surface-variant">
+          Upload limit {formatBytes(limit)}
+          <InfoTip label="About uploads">PDF, JPG, PNG or WebP, up to {formatBytes(limit)} each. HR reviews what you upload.</InfoTip>
+        </p>
         <Button variant="primary" onClick={() => setUploading(true)}>Upload a document</Button>
       </div>
       {items === null ? <div className={stateBlockCls}>Loading…</div> : (
@@ -299,7 +302,10 @@ export function UploadLimitCard({ onError, onNotice }: { onError: (m: string) =>
         <input id="ul-mb" inputMode="decimal" value={mb} onChange={(e) => setMb(e.target.value)} className={`${fieldInputCls} w-32`} disabled={busy} />
       </div>
       <Button variant="secondary" onClick={() => void save()} disabled={busy}>{busy ? 'Saving…' : 'Save limit'}</Button>
-      <p className="text-xs text-on-surface-variant">Between 0.1 and 3.5 MB. Files travel inside the request, so 3.5 MB is the most the platform accepts.</p>
+      <p className="flex items-center gap-1.5 text-xs text-on-surface-variant">
+        0.1 to 3.5 MB
+        <InfoTip label="About the upload limit">Files travel inside the request, so 3.5 MB is the most the platform accepts.</InfoTip>
+      </p>
     </div>
   );
 }

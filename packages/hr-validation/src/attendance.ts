@@ -69,6 +69,10 @@ export const attendanceRulesAdminSchema = z.object({
   // Levels of the reporting chain that must approve. Mirrors the DB CHECK (>= 1);
   // the upper bound is a UI sanity limit, not a DB constraint.
   regularization_approval_levels: z.number().int().min(1).max(5).default(1),
+  // ── Roster policy ──
+  // Minimum rest, in hours, between the end of one shift and the start of the next. The planner warns
+  // (and asks for confirmation) when an edit breaks it. 0 turns the rule off. Mirrors the DB CHECK.
+  min_rest_hours: z.number().int().min(0).max(24).default(11),
   // Which row this writes: the org's own override, or the tenant-wide default
   // that every org without an override falls back to. Same switch as
   // leaveSettingsSchema; 'tenant' additionally requires a tenant_admin platform
@@ -180,6 +184,8 @@ export const createShiftSchema = z.object({
   // window the segments must nest inside.
   is_split: z.boolean().default(false),
   segments: z.array(shiftSegmentSchema).max(12).optional(),
+  // This shift's own minimum rest before it starts; null/absent = follow the attendance policy. 0 = no rule.
+  min_rest_hours: z.number().int().min(0).max(24).nullable().optional(),
 })
   .superRefine(checkThresholdOrder)
   .superRefine(checkSegments);
@@ -194,6 +200,7 @@ export const updateShiftSchema = z.object({
   is_night_shift: z.boolean().optional(),
   is_split: z.boolean().optional(),
   segments: z.array(shiftSegmentSchema).max(12).optional(),
+  min_rest_hours: z.number().int().min(0).max(24).nullable().optional(),
   is_active: z.boolean().optional(),
 })
   .superRefine(checkThresholdOrder)

@@ -11,6 +11,8 @@ export const createShiftSchema = z.object({
   min_full_day_minutes: z.number().int().min(0).optional(),
   is_night_shift: z.boolean().optional(),
   is_split: z.boolean().optional(),
+  // null = follow the attendance policy; 0 = no rest rule for this shift.
+  min_rest_hours: z.number().int().min(0).max(24).nullable().optional(),
 });
 
 export const updateShiftSchema = createShiftSchema.partial().extend({

@@ -154,7 +154,7 @@ export default function TeamRosterShell({ actor }: Props) {
     <div className="flex w-full flex-1 flex-col">
       <PageHeader
         title="My team"
-        subtitle="Who works which shift this week, and shift swaps with teammates."
+        info="Who works which shift this week, and shift swaps with teammates."
         actions={
           <>
             {canOrgChart && <Link href="/org-chart" className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-xs font-semibold text-on-surface-variant shadow-sm hover:border-primary hover:text-primary">Org chart</Link>}
@@ -163,7 +163,7 @@ export default function TeamRosterShell({ actor }: Props) {
           </>
         }
       />
-      <PageBody>
+      <PageBody dense>
         {notice && <Alert tone="success">{notice}</Alert>}
         {error && <Alert tone="error">{error}</Alert>}
 

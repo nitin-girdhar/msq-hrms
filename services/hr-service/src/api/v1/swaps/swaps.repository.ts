@@ -15,6 +15,7 @@ import { resolveApprovers } from '../../../lib/leave/resolve-approvers.js';
 import { addDaysIso } from '../../../lib/leave/comp-off.js';
 import {
   checkSwap,
+  MIN_REST_HOURS,
   planSplit,
   type AssignmentWindow,
   type DayContext,
@@ -40,13 +41,25 @@ interface AssignmentRow extends AssignmentWindow {
   start: string;
   end: string;
   isNight: boolean;
+  minRestHours: number | null;
   shiftName: string;
+}
+
+/** The minimum-rest policy in force for the org (org row wins whole over the tenant default); 0 = rule off. */
+async function policyMinRest(tx: DrizzleTx, tenantId: string, orgId: string): Promise<number> {
+  const rows = (await tx.execute(sql`
+    SELECT min_rest_hours FROM hr.attendance_rules
+    WHERE tenant_id = ${tenantId} AND NOT is_deleted AND (org_id = ${orgId} OR org_id IS NULL)
+    ORDER BY (org_id IS NULL) LIMIT 1
+  `)) as unknown as Array<{ min_rest_hours: number }>;
+  return rows[0]?.min_rest_hours ?? MIN_REST_HOURS;
 }
 
 async function assignmentOn(tx: DrizzleTx, orgId: string, userId: string, date: string): Promise<AssignmentRow | null> {
   const rows = (await tx.execute(sql`
     SELECT a.id::text AS id, a.shift_id::text AS "shiftId", a.effective_from::text AS "from", a.effective_to::text AS "to",
-           s.start_time::text AS start, s.end_time::text AS "end", s.is_night_shift AS "isNight", s.name AS "shiftName"
+           s.start_time::text AS start, s.end_time::text AS "end", s.is_night_shift AS "isNight",
+           s.min_rest_hours AS "minRestHours", s.name AS "shiftName"
     FROM hr.shift_assignments a
     JOIN hr.shifts s ON s.id = a.shift_id
     WHERE a.user_id = ${userId} AND a.org_id = ${orgId} AND NOT a.is_deleted AND a.is_active
@@ -57,7 +70,7 @@ async function assignmentOn(tx: DrizzleTx, orgId: string, userId: string, date: 
 }
 
 const asShift = (a: AssignmentRow | null): ShiftTimes | null =>
-  a ? { id: a.shiftId, start: a.start, end: a.end, isNight: a.isNight } : null;
+  a ? { id: a.shiftId, start: a.start, end: a.end, isNight: a.isNight, minRestHours: a.minRestHours } : null;
 
 async function dayContext(
   tx: DrizzleTx,
@@ -247,7 +260,10 @@ export async function createSwap(ctx: SwapCtx, data: CreateShiftSwapInput): Prom
 
     const mine = await dayContext(tx, ctx.org_id, ctx.user_id, data.swap_date);
     const theirs = await dayContext(tx, ctx.org_id, data.peer_id, data.swap_date);
-    const verdict = checkSwap({ today: todayIso(), swapDate: data.swap_date, requester: mine.ctx, peer: theirs.ctx });
+    const verdict = checkSwap({
+      today: todayIso(), swapDate: data.swap_date, requester: mine.ctx, peer: theirs.ctx,
+      minRestHours: await policyMinRest(tx, ctx.tenant_id, ctx.org_id),
+    });
     if (!verdict.ok) throw new BadRequestError(verdict.reason);
 
     // A person may be in only one open swap per day, as requester OR peer.
@@ -347,7 +363,10 @@ export async function decide(ctx: SwapCtx, id: string, approve: boolean, comment
     // the day arriving): re-check against today's facts before touching anything.
     const a = await dayContext(tx, ctx.org_id, sw.requester_id, sw.swap_date);
     const b = await dayContext(tx, ctx.org_id, sw.peer_id, sw.swap_date);
-    const verdict = checkSwap({ today: todayIso(), swapDate: sw.swap_date, requester: a.ctx, peer: b.ctx });
+    const verdict = checkSwap({
+      today: todayIso(), swapDate: sw.swap_date, requester: a.ctx, peer: b.ctx,
+      minRestHours: await policyMinRest(tx, ctx.tenant_id, ctx.org_id),
+    });
     if (!verdict.ok) throw new ConflictError(`This swap can no longer go ahead: ${verdict.reason}`);
 
     // Carve the day out of each person's assignment and put the OTHER shift in it.

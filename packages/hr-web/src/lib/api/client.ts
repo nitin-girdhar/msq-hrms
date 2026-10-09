@@ -690,6 +690,8 @@ export interface CreateShiftBody {
   // Required when is_split; the outer start_time/end_time is the window these
   // must nest inside, and they may not overlap each other.
   segments?: ShiftSegmentView[];
+  // null = follow the attendance policy; 0 = no rest rule for this shift.
+  min_rest_hours?: number | null;
 }
 
 export const shifts = {

@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { InfoTip } from '@platform/ui-kit';
 import PersonAvatar from '../common/PersonAvatar';
 import type { Completeness } from '../../lib/profile/completeness';
 import type { ChainLink } from '../../lib/profile/types';
@@ -8,11 +9,13 @@ import type { ChainLink } from '../../lib/profile/types';
 /** A titled white card, the unit the Stitch profile screens are built from. */
 export function Card({ title, subtitle, action, children }: { title: string; subtitle?: string | undefined; action?: ReactNode; children: ReactNode }) {
   return (
-    <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-sm sm:p-5">
-      <header className="mb-3 flex items-start justify-between gap-3">
+    <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-3 shadow-sm sm:p-4">
+      <header className="mb-2 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="text-base font-semibold text-on-surface">{title}</h3>
-          {subtitle && <p className="text-xs text-on-surface-variant">{subtitle}</p>}
+          <h3 className="flex items-center gap-1.5 text-base font-semibold text-on-surface">
+            {title}
+            {subtitle && <InfoTip label={`About ${title}`}>{subtitle}</InfoTip>}
+          </h3>
         </div>
         {action}
       </header>
