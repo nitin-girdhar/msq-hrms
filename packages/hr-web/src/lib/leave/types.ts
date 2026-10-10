@@ -194,6 +194,14 @@ export interface EmployeeProfileView {
   shift_start?: string | null;
   shift_end?: string | null;
   on_leave_today?: boolean;
+  /** Other active branches this person works in (the profile itself is home-branch only). */
+  other_branches?: Array<{ id: string; name: string }>;
+  /** Set when a home-branch move could not carry the designation across; cleared when HR picks one. */
+  designation_needs_review?: boolean;
+  is_active?: boolean;
+  exit_reason?: string | null;
+  employment_type_name?: string | null;
+  probation_end_date?: string | null;
 }
 
 export interface HrLookupOption {

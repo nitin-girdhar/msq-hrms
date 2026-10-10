@@ -1,5 +1,5 @@
 import { sql, eq, and, or, isNull } from 'drizzle-orm';
-import { withRoleTx } from '@platform/db';
+import { withRoleTx, sqlUuidArr } from '@platform/db';
 import type { RoleTxContext, DrizzleTx } from '@platform/db';
 import { employeeProfilesTable, departmentsTable, designationsTable, employmentTypesTable } from '@platform/db/schema';
 import { BadRequestError, ConflictError } from '../../../lib/errors.js';
@@ -13,6 +13,8 @@ const SELECT_FIELDS = sql`
   ep.user_id, ep.org_id, ep.employee_code, ep.date_of_joining, ep.date_of_exit,
   ep.probation_end_date, ep.weekly_off_pattern, ep.is_active, ep.created_at, ep.updated_at,
   ep.grade, ep.squad, ep.cost_center, ep.notice_period_days, ep.work_mode, ep.seat_label,
+  COALESCE((ep.metadata->>'designation_needs_review')::boolean, false) AS designation_needs_review,
+  ep.metadata->>'exit_reason' AS exit_reason,
   u.full_name, u.email, u.mobile, ur.name AS role_name,
   et.name AS employment_type_name,
   d.id AS department_id, d.name AS department_name,
@@ -41,6 +43,27 @@ const JOINS = sql`
   ) sh ON TRUE
 `;
 
+// Every other branch each person works in, for the "+N" chip. Display only: the profile (and with it
+// leave, shifts and attendance) belongs to ONE branch, the home one in ep.org_id. Read through
+// iam.fn_user_branches (SECURITY DEFINER, tenant-fenced) because iam.user_org_mapping's app_user
+// policies only expose the current org, so a plain join would count one branch for everyone.
+async function withOtherBranches(tx: DrizzleTx, rows: Array<Record<string, unknown>>) {
+  const userIds = rows.map((r) => String(r['user_id']));
+  const branchRows = userIds.length === 0 ? [] : ((await tx.execute(sql`
+    SELECT user_id, org_id, org_name FROM iam.fn_user_branches(${sqlUuidArr(userIds)}) ORDER BY org_name
+  `)) as Array<{ user_id: string; org_id: string; org_name: string }>);
+  const byUser = new Map<string, Array<{ id: string; name: string }>>();
+  for (const b of branchRows) {
+    const list = byUser.get(b.user_id) ?? [];
+    list.push({ id: b.org_id, name: b.org_name });
+    byUser.set(b.user_id, list);
+  }
+  return rows.map((r) => ({
+    ...r,
+    other_branches: (byUser.get(String(r['user_id'])) ?? []).filter((x) => x.id !== String(r['org_id'])),
+  }));
+}
+
 export async function listEmployees(ctx: RoleTxContext, filters: ListEmployeeProfilesInput) {
   return withRoleTx(ctx, async (tx) => {
     const { page, limit, search, department, status } = filters;
@@ -63,6 +86,8 @@ export async function listEmployees(ctx: RoleTxContext, filters: ListEmployeePro
       ORDER BY u.full_name ASC
       LIMIT ${limit} OFFSET ${offset}
     `)) as Array<Record<string, unknown>>;
+
+    const data = await withOtherBranches(tx, rows);
 
     const countRows = (await tx.execute(sql`
       SELECT COUNT(*)::int AS count ${JOINS} ${base} ${searchClause} ${deptClause} ${statusClause}
@@ -90,7 +115,7 @@ export async function listEmployees(ctx: RoleTxContext, filters: ListEmployeePro
       GROUP BY d.name ORDER BY COUNT(*) DESC, d.name
     `)) as Array<{ name: string; count: number }>;
 
-    return { data: rows, total: countRows[0]?.count ?? 0, page, limit, meta: { ...(meta[0] ?? {}), departments } };
+    return { data, total: countRows[0]?.count ?? 0, page, limit, meta: { ...(meta[0] ?? {}), departments } };
   });
 }
 
@@ -101,7 +126,7 @@ export async function getEmployeeByUserId(ctx: RoleTxContext, userId: string) {
       ${JOINS}
       WHERE ep.user_id = ${userId} AND NOT ep.is_deleted
     `)) as Array<Record<string, unknown>>;
-    return rows[0] ?? null;
+    return (await withOtherBranches(tx, rows))[0] ?? null;
   });
 }
 
@@ -229,6 +254,8 @@ export async function updateEmployee(ctx: RoleTxContext, userId: string, data: U
       updateData['designationId'] = data.designation_name
         ? await resolveDesignationId(tx, ctx.org_id, data.designation_name)
         : null;
+      // HR has now chosen (or cleared) the designation: the "needs review" flag from a branch move is done.
+      updateData['metadata'] = sql`COALESCE(${employeeProfilesTable.metadata}, '{}'::jsonb) - 'designation_needs_review'`;
     }
 
     if (Object.keys(updateData).length === 0) return null;

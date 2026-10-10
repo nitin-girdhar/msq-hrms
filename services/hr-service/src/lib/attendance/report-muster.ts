@@ -34,7 +34,8 @@ export const MUSTER_CODES = {
   P: 'Present',
   HD: 'Half day',
   'HD/L': 'Half day + half paid leave',
-  A: 'Absent / missed punch / not marked',
+  A: 'Absent / not marked',
+  MP: 'Missed punch (regularize to pay)',
   L: 'Paid leave',
   LOP: 'Loss of pay (unpaid leave)',
   WO: 'Weekly off',
@@ -90,7 +91,8 @@ const ABSENT: DayValue = { ...BLANK, code: 'A' };
  *  on_leave, unpaid type         LOP   0
  *  weekly_off                    WO    1 week-off (every week-off inside employment is paid)
  *  holiday (non-optional)        H     1 holiday
- *  absent / missed_punch / a past day never marked   A   0
+ *  missed_punch                  MP    0 — never auto-paid; HR regularizes it (manual override)
+ *  absent / a past day never marked   A   0
  *  not_employed / today not marked yet               ''  0
  */
 export function musterDay(d: MusterDayRow): DayValue {
@@ -116,8 +118,9 @@ export function musterDay(d: MusterDayRow): DayValue {
       return { ...BLANK, code: 'WO', weekoff: 1 };
     case 'holiday':
       return { ...BLANK, code: 'H', holiday: 1 };
-    case 'absent':
     case 'missed_punch':
+      return { ...BLANK, code: 'MP' };
+    case 'absent':
     case 'not_marked':
     case 'unresolved':
       return ABSENT;

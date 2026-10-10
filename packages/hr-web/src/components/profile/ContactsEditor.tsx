@@ -6,15 +6,30 @@ import { profile } from '../../lib/api/client';
 import type { EmergencyContact } from '../../lib/profile/types';
 import { emptyBlockCls, fieldInputCls, fieldLabelCls } from '../../lib/ui';
 
+/** What the editor calls. Defaults to the signed-in person's own contacts (My profile). */
+export interface ContactActions {
+  add: (body: Omit<EmergencyContact, 'id'>) => Promise<unknown>;
+  update: (id: string, body: Partial<Omit<EmergencyContact, 'id'>>) => Promise<unknown>;
+  remove: (id: string) => Promise<unknown>;
+}
+
+const SELF_ACTIONS: ContactActions = {
+  add: (b) => profile.addContact(b),
+  update: (id, b) => profile.updateContact(id, b),
+  remove: (id) => profile.removeContact(id),
+};
+
 interface Props {
   contacts: EmergencyContact[];
+  /** Another person's contacts (HR editing from Team): pass their endpoints. */
+  actions?: ContactActions;
   /** Re-fetch after any change. */
   onChanged: (message: string) => void;
   onError: (message: string) => void;
 }
 
 /** The employee's own emergency contacts: list, add, edit, remove. One may be primary. */
-export default function ContactsEditor({ contacts, onChanged, onError }: Props) {
+export default function ContactsEditor({ contacts, onChanged, onError, actions = SELF_ACTIONS }: Props) {
   // null = closed; 'new' = adding; a contact = editing it.
   const [editing, setEditing] = useState<EmergencyContact | 'new' | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -22,7 +37,7 @@ export default function ContactsEditor({ contacts, onChanged, onError }: Props) 
   const remove = async (c: EmergencyContact) => {
     setRemovingId(c.id);
     try {
-      await profile.removeContact(c.id);
+      await actions.remove(c.id);
       onChanged('Emergency contact removed.');
     } catch (err) {
       onError(err instanceof Error ? err.message : 'Could not remove the contact.');
@@ -70,6 +85,7 @@ export default function ContactsEditor({ contacts, onChanged, onError }: Props) 
       {editing && (
         <ContactModal
           contact={editing === 'new' ? null : editing}
+          actions={actions}
           onClose={() => setEditing(null)}
           onSaved={(message) => { setEditing(null); onChanged(message); }}
         />
@@ -78,8 +94,9 @@ export default function ContactsEditor({ contacts, onChanged, onError }: Props) 
   );
 }
 
-function ContactModal({ contact, onClose, onSaved }: {
+function ContactModal({ contact, actions, onClose, onSaved }: {
   contact: EmergencyContact | null;
+  actions: ContactActions;
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
@@ -99,8 +116,8 @@ function ContactModal({ contact, onClose, onSaved }: {
     setBusy(true);
     try {
       const body = { name: name.trim(), relation: relation.trim(), phone: phone.trim(), is_primary: primary };
-      if (contact) await profile.updateContact(contact.id, body);
-      else await profile.addContact(body);
+      if (contact) await actions.update(contact.id, body);
+      else await actions.add(body);
       onSaved(contact ? 'Emergency contact updated.' : 'Emergency contact added.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save the contact.');

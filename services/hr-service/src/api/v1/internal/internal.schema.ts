@@ -14,6 +14,11 @@ export const syncEmployeeProfileSchema = z.object({
   // Used only when the profile is first created; an existing profile's joining
   // date is HR-owned (Leave Administration → Employees) and never overwritten.
   date_of_joining: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'must be YYYY-MM-DD').optional(),
+  // Exit date, tri-state: a YYYY-MM-DD sets it, null clears it (a reactivation), absent leaves it.
+  date_of_exit: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'must be YYYY-MM-DD').nullable().optional(),
+  // A deactivation that names no date: file today, unless HR already recorded an exit date.
+  exit_if_missing: z.boolean().optional(),
+  exit_reason: z.string().trim().max(100).optional(),
   actor_id: z.string().uuid(),
 });
 export type SyncEmployeeProfileInput = z.infer<typeof syncEmployeeProfileSchema>;

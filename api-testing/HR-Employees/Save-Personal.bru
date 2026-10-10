@@ -1,0 +1,37 @@
+meta {
+  name: Save Personal Details (HR)
+  type: http
+  seq: 121
+}
+
+put {
+  url: {{baseUrl}}/hr/employees/{{userId}}/personal
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: auth_token={{authToken}}
+}
+
+body:json {
+  {
+    "preferred_name": "Adi",
+    "date_of_birth": "1996-08-14",
+    "gender": "male",
+    "marital_status": "single",
+    "blood_group": "B+",
+    "nationality": "Indian",
+    "personal_email": "aditya@example.com",
+    "current_address": "B-14, Sector 62, Noida",
+    "permanent_address": "12 Civil Lines, Meerut"
+  }
+}
+
+docs {
+  Admin -> Team -> Edit (hr.employees.manage). Service transaction after the capability
+  check, fenced to the caller's org: a person outside it is 404, never 403. Editing your
+  own record is 400 (use My profile). The audit row records THAT it changed, never the values.
+
+  204 on success. Full replace: '' clears a field.
+}

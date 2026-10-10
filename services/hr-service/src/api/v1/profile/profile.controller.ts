@@ -45,6 +45,37 @@ export class ProfileController {
     return reply.status(204).send();
   };
 
+  // ── HR editing another person's personal details (userId from the path, never the body) ──
+  getPersonalFor = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { userId } = request.params as { userId: string };
+    const data = await service.getPersonalFor(ctxOf(request), userId);
+    return reply.send({ success: true, data });
+  };
+
+  savePersonalFor = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { userId } = request.params as { userId: string };
+    await service.savePersonalFor(ctxOf(request), userId, request.body as UpsertPersonalInput);
+    return reply.status(204).send();
+  };
+
+  addContactFor = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { userId } = request.params as { userId: string };
+    const result = await service.addContactFor(ctxOf(request), userId, request.body as CreateEmergencyContactInput);
+    return reply.status(201).send({ success: true, data: result });
+  };
+
+  updateContactFor = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { userId, id } = request.params as { userId: string; id: string };
+    await service.updateContactFor(ctxOf(request), userId, id, request.body as UpdateEmergencyContactInput);
+    return reply.status(204).send();
+  };
+
+  removeContactFor = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { userId, id } = request.params as { userId: string; id: string };
+    await service.removeContactFor(ctxOf(request), userId, id);
+    return reply.status(204).send();
+  };
+
   // ── Employee 360 ───────────────────────────────────────────────────────────
   get360 = async (request: FastifyRequest, reply: FastifyReply) => {
     const { userId } = request.params as { userId: string };

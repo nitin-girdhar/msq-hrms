@@ -73,3 +73,28 @@ export async function addNote(ctx: RoleTxContext, userId: string, data: CreateEm
   });
   return result;
 }
+
+// ── HR editing another person's personal details (Admin -> Team -> Edit) ─────────────────────────
+// The audit rows record THAT it changed and who it was about, never the values.
+export const getPersonalFor = (ctx: RoleTxContext, userId: string) => repo.getPersonalFor(ctx, userId);
+
+export async function savePersonalFor(ctx: RoleTxContext, userId: string, data: UpsertPersonalInput) {
+  await repo.upsertPersonalFor(ctx, userId, data);
+  void logActivity({ action_type: 'employee_personal_updated_by_hr', performed_by: ctx.user_id, subject_user_id: userId, org_id: ctx.org_id });
+}
+
+export async function addContactFor(ctx: RoleTxContext, userId: string, data: CreateEmergencyContactInput) {
+  const result = await repo.addContactFor(ctx, userId, data);
+  void logActivity({ action_type: 'emergency_contact_added_by_hr', performed_by: ctx.user_id, subject_user_id: userId, org_id: ctx.org_id });
+  return result;
+}
+
+export async function updateContactFor(ctx: RoleTxContext, userId: string, id: string, data: UpdateEmergencyContactInput) {
+  await repo.updateContactFor(ctx, userId, id, data);
+  void logActivity({ action_type: 'emergency_contact_updated_by_hr', performed_by: ctx.user_id, subject_user_id: userId, org_id: ctx.org_id });
+}
+
+export async function removeContactFor(ctx: RoleTxContext, userId: string, id: string) {
+  await repo.removeContactFor(ctx, userId, id);
+  void logActivity({ action_type: 'emergency_contact_removed_by_hr', performed_by: ctx.user_id, subject_user_id: userId, org_id: ctx.org_id });
+}

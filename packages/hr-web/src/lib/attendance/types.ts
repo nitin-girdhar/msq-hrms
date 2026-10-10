@@ -369,7 +369,7 @@ export interface MonthlySummaryRow {
 // ── Combined attendance (muster) report ──────────────────────────────────────
 // One row per employee, one code per day. Mirrors hr-service
 // lib/attendance/report-muster.ts — '' = not employed yet / day not reached.
-export type MusterCode = 'P' | 'HD' | 'HD/L' | 'A' | 'L' | 'LOP' | 'WO' | 'H' | '';
+export type MusterCode = 'P' | 'HD' | 'HD/L' | 'A' | 'MP' | 'L' | 'LOP' | 'WO' | 'H' | '';
 
 export interface MusterRow {
   sl_no: number;

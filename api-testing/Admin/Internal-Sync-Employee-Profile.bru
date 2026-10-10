@@ -21,6 +21,7 @@ body:json {
     "home_org_id": "{{orgId}}",
     "is_active": true,
     "date_of_joining": "2026-09-27",
+    "date_of_exit": null,
     "actor_id": "{{secondUserId}}"
   }
 }
@@ -36,8 +37,21 @@ docs {
     updated   — org_id moved to home_org_id and/or is_active changed
     unchanged — already in step
     deleted   — HR soft-deleted this profile; it is not resurrected
-  Joining date, code, department, designation and weekly off are never
-  overwritten on an existing profile.
+  Joining date, code, grade and weekly off are never overwritten on an existing
+  profile. A NEW profile starts with the department of the role the user holds
+  in home_org_id.
+
+  Optional exit fields (sent by identity-service on deactivate / reactivate):
+    date_of_exit     "YYYY-MM-DD" sets it, null clears it (reactivation), absent
+                     leaves it alone. 400 if before the joining date.
+    exit_if_missing  deactivation that names no date: file today unless HR
+                     already recorded one.
+    exit_reason      free text (max 100), kept in metadata; dropped when the
+                     exit date is cleared.
+
+  A home-branch move re-points designation_id at the same-named designation in
+  the new branch; with no match it is cleared and metadata
+  .designation_needs_review is set (cleared when HR picks a designation).
 
   400 when home_org_id is not a branch of tenant_id, or the user has no active
   mapping there. 401 without the correct X-Internal-Secret.

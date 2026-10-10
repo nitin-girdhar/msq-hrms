@@ -304,3 +304,110 @@ export async function addEmployeeNote(ctx: RoleTxContext, userId: string, data: 
     return { id: rows[0]!.id };
   });
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// HR EDITING ANOTHER PERSON'S PERSONAL DETAILS (Admin -> Team -> Edit)
+//
+// Same access path as Employee 360 above, on purpose: personal data is the owner's, so the tables keep
+// ONLY a self policy and HR reaches it through the service transaction after the route proved
+// hr.employees.manage. No RLS policy was widened. Every statement is fenced to the gateway-verified org
+// and the target must have a live profile there (otherwise "not found", never "forbidden"). Yourself is
+// refused: your own details are edited under My profile.
+// ═════════════════════════════════════════════════════════════════════════════
+async function openFor(ctx: RoleTxContext, userId: string, tx: DrizzleTx): Promise<void> {
+  if (userId === ctx.user_id) throw new BadRequestError('Edit your own personal details under My profile');
+  await tx.execute(sql`SELECT set_config('app.current_user_id', ${ctx.user_id}, true)`);
+  await tx.execute(sql`SELECT set_config('app.current_org_id', ${ctx.org_id}, true)`);
+  const exists = (await tx.execute(sql`
+    SELECT 1 FROM hr.employee_profiles WHERE user_id = ${userId} AND org_id = ${ctx.org_id} AND NOT is_deleted
+  `)) as unknown as unknown[];
+  if (exists.length === 0) throw new NotFoundError('Employee not found');
+}
+
+export async function getPersonalFor(ctx: RoleTxContext, userId: string): Promise<{ personal: PersonalDetails | null; contacts: EmergencyContact[] }> {
+  return withServiceTx(async (tx) => {
+    await openFor(ctx, userId, tx);
+    const personal = (await tx.execute(sql`
+      SELECT ${PERSONAL_COLUMNS} FROM hr.employee_personal
+      WHERE user_id = ${userId} AND org_id = ${ctx.org_id} AND NOT is_deleted
+    `)) as unknown as PersonalDetails[];
+    const contacts = (await tx.execute(sql`
+      SELECT ${CONTACT_COLUMNS} FROM hr.emergency_contacts
+      WHERE user_id = ${userId} AND org_id = ${ctx.org_id} AND NOT is_deleted
+      ORDER BY is_primary DESC, created_at
+    `)) as unknown as EmergencyContact[];
+    return { personal: personal[0] ?? null, contacts };
+  });
+}
+
+export async function upsertPersonalFor(ctx: RoleTxContext, userId: string, data: UpsertPersonalInput): Promise<void> {
+  await withServiceTx(async (tx) => {
+    await openFor(ctx, userId, tx);
+    await tx.execute(sql`
+      INSERT INTO hr.employee_personal
+        (user_id, org_id, preferred_name, date_of_birth, gender, marital_status, blood_group,
+         nationality, personal_email, current_address, permanent_address, created_by)
+      VALUES
+        (${userId}, ${ctx.org_id}, ${nul(data.preferred_name)}, ${nul(data.date_of_birth)}::date, ${nul(data.gender)},
+         ${nul(data.marital_status)}, ${nul(data.blood_group)}, ${nul(data.nationality)},
+         ${nul(data.personal_email)}, ${nul(data.current_address)}, ${nul(data.permanent_address)}, ${ctx.user_id})
+      ON CONFLICT (user_id) DO UPDATE SET
+        preferred_name = EXCLUDED.preferred_name, date_of_birth = EXCLUDED.date_of_birth,
+        gender = EXCLUDED.gender, marital_status = EXCLUDED.marital_status,
+        blood_group = EXCLUDED.blood_group, nationality = EXCLUDED.nationality,
+        personal_email = EXCLUDED.personal_email, current_address = EXCLUDED.current_address,
+        permanent_address = EXCLUDED.permanent_address, is_deleted = FALSE, is_active = TRUE
+      WHERE hr.employee_personal.org_id = ${ctx.org_id}
+    `);
+  });
+}
+
+export async function addContactFor(ctx: RoleTxContext, userId: string, data: CreateEmergencyContactInput): Promise<{ id: string }> {
+  return withServiceTx(async (tx) => {
+    await openFor(ctx, userId, tx);
+    const existing = (await tx.execute(sql`
+      SELECT count(*)::int AS n FROM hr.emergency_contacts WHERE user_id = ${userId} AND NOT is_deleted
+    `)) as unknown as Array<{ n: number }>;
+    const makePrimary = data.is_primary || (existing[0]?.n ?? 0) === 0;
+    if (makePrimary) await demoteOtherPrimaries(tx, userId, null);
+    const rows = (await tx.execute(sql`
+      INSERT INTO hr.emergency_contacts (user_id, org_id, name, relation, phone, is_primary, created_by)
+      VALUES (${userId}, ${ctx.org_id}, ${data.name}, ${data.relation}, ${data.phone}, ${makePrimary}, ${ctx.user_id})
+      RETURNING id::text
+    `)) as unknown as Array<{ id: string }>;
+    return { id: rows[0]!.id };
+  });
+}
+
+export async function updateContactFor(ctx: RoleTxContext, userId: string, id: string, data: UpdateEmergencyContactInput): Promise<void> {
+  await withServiceTx(async (tx) => {
+    await openFor(ctx, userId, tx);
+    const current = (await tx.execute(sql`
+      SELECT name, relation, phone, is_primary FROM hr.emergency_contacts
+      WHERE id = ${id} AND user_id = ${userId} AND org_id = ${ctx.org_id} AND NOT is_deleted
+    `)) as unknown as Array<{ name: string; relation: string; phone: string; is_primary: boolean }>;
+    const row = current[0];
+    if (!row) throw new NotFoundError('Emergency contact not found');
+    const isPrimary = data.is_primary ?? row.is_primary;
+    if (isPrimary && !row.is_primary) await demoteOtherPrimaries(tx, userId, id);
+    await tx.execute(sql`
+      UPDATE hr.emergency_contacts
+      SET name = ${data.name ?? row.name}, relation = ${data.relation ?? row.relation},
+          phone = ${data.phone ?? row.phone}, is_primary = ${isPrimary}
+      WHERE id = ${id} AND user_id = ${userId} AND org_id = ${ctx.org_id}
+    `);
+  });
+}
+
+export async function removeContactFor(ctx: RoleTxContext, userId: string, id: string): Promise<void> {
+  await withServiceTx(async (tx) => {
+    await openFor(ctx, userId, tx);
+    const res = (await tx.execute(sql`
+      UPDATE hr.emergency_contacts
+      SET is_deleted = TRUE, is_active = FALSE, is_primary = FALSE, deleted_at = CLOCK_TIMESTAMP(), deleted_by = ${ctx.user_id}
+      WHERE id = ${id} AND user_id = ${userId} AND org_id = ${ctx.org_id} AND NOT is_deleted
+      RETURNING id::text
+    `)) as unknown as Row[];
+    if (res.length === 0) throw new NotFoundError('Emergency contact not found');
+  });
+}

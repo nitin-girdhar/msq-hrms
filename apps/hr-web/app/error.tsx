@@ -8,5 +8,5 @@ import { AppErrorBoundary } from '@platform/ui-kit';
 // with no branding and no way back. Also detects an expired session and offers a
 // sign-in link rather than a meaningless "Try again".
 export default function Error({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
-  return <AppErrorBoundary error={error} reset={reset} homeHref="/attendance" homeLabel="Back to attendance" />;
+  return <AppErrorBoundary error={error} reset={reset} homeHref="/dashboard" homeLabel="Back to home" />;
 }

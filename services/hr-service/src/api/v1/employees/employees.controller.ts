@@ -33,6 +33,9 @@ export class EmployeesController {
     const { org_id, user_id, role, tenant_id, rank } = request.auth;
     const { userId } = request.params as { userId: string };
     const data = request.body as UpdateEmployeeProfileInput;
+    // Nobody edits their own employment record (grade, exit date, department...): that would let
+    // an HR manager grant themselves changes no one else reviewed.
+    if (userId === user_id) throw new ForbiddenError('You cannot edit your own employment record');
     await service.updateEmployee({ org_id, user_id, role, tenant_id }, userId, data);
     return reply.status(204).send();
   };

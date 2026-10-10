@@ -1,0 +1,27 @@
+meta {
+  name: Update Emergency Contact (HR)
+  type: http
+  seq: 123
+}
+
+patch {
+  url: {{baseUrl}}/hr/employees/{{userId}}/contacts/{{contactId}}
+  body: json
+  auth: none
+}
+
+headers {
+  Cookie: auth_token={{authToken}}
+}
+
+body:json {
+  {
+    "phone": "+91 98100 99999"
+  }
+}
+
+docs {
+  Admin -> Team -> Edit (hr.employees.manage). Service transaction after the capability
+  check, fenced to the caller's org: a person outside it is 404, never 403. Editing your
+  own record is 400 (use My profile). The audit row records THAT it changed, never the values.
+}

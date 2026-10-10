@@ -494,6 +494,23 @@ export const hrEmployees = {
       body: JSON.stringify(body),
     }),
 
+  /** HR editing another person's personal details (Admin -> Team -> Edit). hr.employees.manage. */
+  personal: {
+    get: (userId: string) =>
+      request<Envelope<{ personal: import('../profile/types').PersonalDetails | null; contacts: EmergencyContact[] }>>(`/hr/employees/${userId}/personal`),
+    save: (userId: string, body: PersonalForm) =>
+      request<void>(`/hr/employees/${userId}/personal`, { method: 'PUT', body: JSON.stringify(body) }),
+  },
+
+  contacts: {
+    add: (userId: string, body: Omit<EmergencyContact, 'id'>) =>
+      request<Envelope<{ id: string }>>(`/hr/employees/${userId}/contacts`, { method: 'POST', body: JSON.stringify(body) }),
+    update: (userId: string, id: string, body: Partial<Omit<EmergencyContact, 'id'>>) =>
+      request<void>(`/hr/employees/${userId}/contacts/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    remove: (userId: string, id: string) =>
+      request<void>(`/hr/employees/${userId}/contacts/${id}`, { method: 'DELETE' }),
+  },
+
   departments: {
     list: () => request<Envelope<HrLookupOption[]>>('/hr/employees/departments'),
     create: (body: { name: string }) =>

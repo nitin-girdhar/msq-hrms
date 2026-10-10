@@ -23,7 +23,7 @@ describe('musterDay', () => {
     expect(musterDay(day('2026-09-01', { status_name: 'wfh' }))).toMatchObject({ code: 'P', present: 1 });
     expect(musterDay(day('2026-09-01', { status_name: 'half_day' }))).toMatchObject({ code: 'HD', present: 0.5 });
     expect(musterDay(day('2026-09-01', { status_name: 'absent' }))).toMatchObject({ code: 'A', present: 0 });
-    expect(musterDay(day('2026-09-01', { status_name: 'missed_punch' }))).toMatchObject({ code: 'A', present: 0 });
+    expect(musterDay(day('2026-09-01', { status_name: 'missed_punch' }))).toMatchObject({ code: 'MP', present: 0, weekoff: 0, paidLeave: 0, holiday: 0 });
     expect(musterDay(day('2026-09-06', { status_name: 'weekly_off' }))).toMatchObject({ code: 'WO', weekoff: 1 });
     expect(musterDay(day('2026-09-01', { status_name: 'holiday' }))).toMatchObject({ code: 'H', holiday: 1 });
   });

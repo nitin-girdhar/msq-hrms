@@ -10,6 +10,7 @@ export { default as AttendanceDashboardShell } from './components/attendance/Att
 export { default as AttendanceTeamShell } from './components/attendance/AttendanceTeamShell';
 export { default as AttendanceAdminShell } from './components/attendance/AttendanceAdminShell';
 export { default as EmployeesShell } from './components/employees/EmployeesShell';
+export { default as EmployeeHrSection, type EmployeeHrSectionKey } from './components/employees/EmployeeHrSection';
 export { default as ReportsShell } from './components/reports/ReportsShell';
 export { default as EmployeeDashboardShell } from './components/dashboard/EmployeeDashboardShell';
 export { default as OrgChartShell } from './components/employees/OrgChartShell';

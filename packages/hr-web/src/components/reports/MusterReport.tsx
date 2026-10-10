@@ -30,6 +30,7 @@ const CODE_CLS: Record<Exclude<MusterCode, ''>, string> = {
   HD: 'bg-status-due-container text-on-status-due-container',
   'HD/L': 'bg-status-due-container text-on-status-due-container',
   A: 'bg-status-overdue-container text-on-status-overdue-container',
+  MP: 'bg-status-due-container text-on-status-due-container',
   L: 'bg-primary-fixed text-on-status-info-container',
   LOP: 'bg-status-overdue-container text-on-status-overdue-container',
   WO: 'bg-surface-container text-on-surface-variant',
@@ -40,7 +41,8 @@ const LEGEND: Array<[Exclude<MusterCode, ''>, string]> = [
   ['P', 'Present'],
   ['HD', 'Half day'],
   ['HD/L', 'Half day + half paid leave'],
-  ['A', 'Absent / missed punch'],
+  ['A', 'Absent / not marked'],
+  ['MP', 'Missed punch — regularize to pay'],
   ['L', 'Paid leave'],
   ['LOP', 'Loss of pay'],
   ['WO', 'Weekly off'],
@@ -110,7 +112,7 @@ export default function MusterReport({ actor }: Props) {
   // Header numbers, counted from the sheet itself (the same rows the totals come from).
   const dim = data?.days_in_month ?? 0;
   const totalPaid = allRows.reduce((n, r) => n + r.total_paid, 0);
-  const attention = allRows.filter((r) => r.days.some((c) => c === 'A' || c === 'LOP')).length;
+  const attention = allRows.filter((r) => r.days.some((c) => c === 'A' || c === 'MP' || c === 'LOP')).length;
   const holidayDays = allRows[0]?.holidays ?? 0;
   const workingPlanned = allRows[0] ? dim - allRows[0].weekoff_paid - holidayDays : 0;
   const dayNumbers = Array.from({ length: data?.days_in_month ?? 0 }, (_, i) => i + 1);

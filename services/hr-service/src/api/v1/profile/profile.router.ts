@@ -24,6 +24,15 @@ export async function profileRouter(app: FastifyInstance) {
   app.patch('/profile/me/contacts/:id', { preHandler: [authenticate, edit, validate({ body: updateEmergencyContactSchema })] }, ctrl.updateContact);
   app.delete('/profile/me/contacts/:id', { preHandler: [authenticate, edit] }, ctrl.removeContact);
 
+  // HR editing another person's personal details from Admin -> Team -> Edit. Service transaction in the
+  // repository (the tables keep only a self policy), org-fenced, capability proved here.
+  const manage = requireCapability(CAPABILITY.HR_EMPLOYEES_MANAGE, 'You do not have permission to edit employee details');
+  app.get('/employees/:userId/personal', { preHandler: [authenticate, manage] }, ctrl.getPersonalFor);
+  app.put('/employees/:userId/personal', { preHandler: [authenticate, manage, validate({ body: upsertPersonalSchema })] }, ctrl.savePersonalFor);
+  app.post('/employees/:userId/contacts', { preHandler: [authenticate, manage, validate({ body: createEmergencyContactSchema })] }, ctrl.addContactFor);
+  app.patch('/employees/:userId/contacts/:id', { preHandler: [authenticate, manage, validate({ body: updateEmergencyContactSchema })] }, ctrl.updateContactFor);
+  app.delete('/employees/:userId/contacts/:id', { preHandler: [authenticate, manage] }, ctrl.removeContactFor);
+
   app.get('/employees/:userId/profile-360', {
     preHandler: [authenticate, requireCapability(CAPABILITY.HR_EMPLOYEES_PROFILE360_VIEW, 'You do not have permission to open employee profiles')],
   }, ctrl.get360);

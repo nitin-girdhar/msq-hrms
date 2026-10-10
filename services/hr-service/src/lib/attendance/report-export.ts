@@ -175,6 +175,7 @@ const MUSTER_HEADER_FILL = 'FFFFFF00'; // the yellow header of the paper sheet
 // Same palette as STATUS_FILL above, keyed by cell code.
 const MUSTER_CELL_FILL: Partial<Record<MusterCode, string>> = {
   A: 'FFFEE2E2',
+  MP: 'FFFED7AA', // = STATUS_FILL.missed_punch
   HD: 'FFFEF9C3',
   'HD/L': 'FFFEF9C3',
   L: 'FFDBEAFE',

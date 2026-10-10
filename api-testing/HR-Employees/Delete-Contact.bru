@@ -1,0 +1,23 @@
+meta {
+  name: Remove Emergency Contact (HR)
+  type: http
+  seq: 124
+}
+
+delete {
+  url: {{baseUrl}}/hr/employees/{{userId}}/contacts/{{contactId}}
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: auth_token={{authToken}}
+}
+
+docs {
+  Admin -> Team -> Edit (hr.employees.manage). Service transaction after the capability
+  check, fenced to the caller's org: a person outside it is 404, never 403. Editing your
+  own record is 400 (use My profile). The audit row records THAT it changed, never the values.
+
+  Soft delete. 204.
+}
