@@ -24,11 +24,20 @@ body:json {
 docs {
   The reference photo is NOT sent here — it is the user's avatar, uploaded first
   via identity-service (POST /users/me/photo or /users/:id/photo). Enroll reads
-  that stored photo and registers it with CompreFace.
+  that stored photo, runs the in-process face engine (YuNet + SFace) and stores
+  an AES-256-GCM-encrypted template in hr.face_templates.
 
   A member may enroll THEMSELVES (user_id === caller); hr_admin/org_admin may
   enroll anyone in-org. `consent` MUST be true (DPDP) — false returns 422
   FACE_CONSENT_REQUIRED. With no avatar on file: 400 FACE_NO_PHOTO. Self-service
   re-enrolment within the org's cooldown: 422 FACE_CHANGE_COOLDOWN (admins bypass).
-  subject id === user UUID; re-enrolling replaces faces.
+
+  Enrolment quality gate (the photo must make a good reference):
+    400 FACE_NO_FACE      no clear face found
+    400 FACE_LOW_QUALITY  details.reason = multiple_faces | face_too_small |
+                          not_frontal | blurry | too_dark | too_bright | low_contrast
+                          (`error` carries a plain-language retake instruction)
+    422 FACE_SERVICE_UNAVAILABLE  engine failure or FACE_TEMPLATE_KEY not set
+  Nothing is written unless a good template exists. face_subject_id in the
+  response is the hr.face_templates row id; re-enrolling replaces that row.
 }

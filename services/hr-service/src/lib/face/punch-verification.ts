@@ -3,9 +3,9 @@
 //
 // This is the heart of the feature and the most important artifact to test: given
 // whether the user is enrolled, the org rule (threshold + flag/block action), and
-// the driver's verdict (or an outage), it decides what to persist on the punch —
+// the engine's verdict (or an outage), it decides what to persist on the punch —
 // WITHOUT any DB or HTTP knowledge, so the full matrix is unit-testable with a
-// mock driver.
+// mock engine.
 //
 // Decision matrix (Prompt: face verification):
 //   not enrolled        + block → FaceBlockedError(FACE_NOT_ENROLLED)
@@ -13,10 +13,15 @@
 //   score >= threshold          → passed=true,  review=NULL
 //   score <  threshold  + block → FaceBlockedError(FACE_MISMATCH, {score,threshold})
 //   score <  threshold  + flag  → passed=false, review='pending', notify manager
-//   driver UNAVAILABLE          → passed=NULL, review='pending'  (NEVER rejects)
+//   engine UNAVAILABLE          → passed=NULL, review='pending'  (NEVER rejects)
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { FaceServiceUnavailableError, type FaceVerificationDriver } from './driver.js';
+import {
+  FaceServiceUnavailableError,
+  type FaceDiagnostics,
+  type FaceEngine,
+  type FaceTemplate,
+} from './driver.js';
 
 export type FaceMatchAction = 'flag' | 'block';
 
@@ -34,6 +39,8 @@ export interface FaceOutcome {
   reviewStatus: 'pending' | null;
   /** true only when a pending review warrants a manager notification (flag mismatch). */
   notifyManager: boolean;
+  /** Engine measurements (similarity, liveness, …) when a verification ran; null otherwise. */
+  diagnostics: FaceDiagnostics | null;
 }
 
 // A deterministic block decision. The repository maps this to a 422 with `code`
@@ -48,49 +55,54 @@ export class FaceBlockedError extends Error {
   }
 }
 
-const NOT_ENROLLED_FLAG: FaceOutcome = { score: null, passed: null, reviewStatus: 'pending', notifyManager: false };
-const UNAVAILABLE: FaceOutcome = { score: null, passed: null, reviewStatus: 'pending', notifyManager: false };
+const NOT_ENROLLED_FLAG: FaceOutcome = { score: null, passed: null, reviewStatus: 'pending', notifyManager: false, diagnostics: null };
+// Exported so a caller that cannot even reach verification (e.g. an undecryptable
+// stored template) records the identical fail-open outcome.
+export const FACE_UNAVAILABLE_OUTCOME: FaceOutcome = { score: null, passed: null, reviewStatus: 'pending', notifyManager: false, diagnostics: null };
 
 export async function resolvePunchFace(opts: {
-  driver: FaceVerificationDriver;
-  subjectId: string | null;
+  engine: FaceEngine;
+  /** The user's decrypted template, or null when not enrolled. */
+  template: FaceTemplate | null;
   photo: Buffer;
   rules: FaceRules;
   log?: (message: string, err?: unknown) => void;
 }): Promise<FaceOutcome> {
-  const { driver, subjectId, photo, rules, log } = opts;
+  const { engine, template, photo, rules, log } = opts;
 
   // ── Not enrolled ──
-  if (!subjectId) {
+  if (!template) {
     if (rules.action === 'block') throw new FaceBlockedError('FACE_NOT_ENROLLED');
     return NOT_ENROLLED_FLAG;
   }
 
-  // ── Verify against the subject; an outage NEVER rejects the punch ──
+  // ── Verify against the template; an outage NEVER rejects the punch ──
   let score: number;
   let matched: boolean;
+  let diagnostics: FaceDiagnostics;
   try {
-    const result = await driver.verify(subjectId, photo, rules.threshold);
+    const result = await engine.verify(template, photo, rules.threshold);
     score = result.score;
     matched = result.matched;
+    diagnostics = result.diagnostics;
   } catch (err) {
-    // Timeout / 5xx / any driver failure → fail open with a pending review.
+    // Model load / inference / template failure → fail open with a pending review.
     if (!(err instanceof FaceServiceUnavailableError)) {
       log?.('[face] verify failed (treated as unavailable)', err);
     } else {
       log?.('[face] service unavailable during punch verification', err);
     }
-    return UNAVAILABLE;
+    return FACE_UNAVAILABLE_OUTCOME;
   }
 
   // ── Passed ──
   if (matched) {
-    return { score, passed: true, reviewStatus: null, notifyManager: false };
+    return { score, passed: true, reviewStatus: null, notifyManager: false, diagnostics };
   }
 
   // ── Mismatch ──
   if (rules.action === 'block') {
     throw new FaceBlockedError('FACE_MISMATCH', { score, threshold: rules.threshold });
   }
-  return { score, passed: false, reviewStatus: 'pending', notifyManager: true };
+  return { score, passed: false, reviewStatus: 'pending', notifyManager: true, diagnostics };
 }

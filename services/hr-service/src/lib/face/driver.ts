@@ -1,42 +1,76 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Face-verification driver contract.
+// Face-engine contract.
 //
-// A vendor-neutral interface so the punch flow, enrollment, and review queue call
-// `getFaceDriver()` without ever naming CompreFace. A cloud driver (AWS Rekognition
-// et al.) can be added later by implementing this interface and wiring it into the
-// factory in ./index.ts — no call site changes.
+// The punch flow, enrollment and the review queue call `getFaceEngine()` and
+// never name a model. The engine is pure computation: it turns a reference photo
+// into a template and scores a probe against a template. Storing the template
+// (encrypted, tenant-scoped) is the repository's job, not the engine's.
 //
-// Scores are normalized to a 0–100 scale at the driver boundary so the rest of the
-// service (and the DB column hr.attendance_events.face_match_score numeric(5,2))
-// never sees a vendor's 0–1 similarity.
+// Scores are normalized to a 0–100 scale at the engine boundary so the rest of
+// the service (and the DB column hr.attendance_events.face_match_score
+// numeric(5,2)) never sees a raw cosine similarity.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** A face embedding plus the model that produced it. Embeddings from different
+ *  models are not comparable, so the version always travels with the vector. */
+export interface FaceTemplate {
+  modelVersion: string;
+  /** L2-normalised embedding (cosine similarity = dot product). */
+  embedding: Float32Array;
+}
+
+/** Numbers recorded with every verification so a reviewer (or support) can see
+ *  WHY a punch scored what it did. Never contains image data or identity. */
+export interface FaceDiagnostics {
+  /** Raw cosine similarity probe↔template, or null when no face was found. */
+  similarity: number | null;
+  /** Anti-spoof "real person" probability 0–1, or null when no face was found. */
+  liveness: number | null;
+  /** Detector confidence of the face that was scored. */
+  det_score: number | null;
+  model_version: string;
+}
+
 export interface FaceVerifyResult {
-  /** Similarity of the probe against the subject, 0–100. */
+  /** Similarity of the probe against the template, 0–100 (0 for no face or a spoof). */
   score: number;
-  /** True when `score >= thresholdPct` (computed by the driver). */
+  /** True when `score >= thresholdPct`. */
   matched: boolean;
+  diagnostics: FaceDiagnostics;
 }
 
-export interface FaceVerificationDriver {
-  /** Enroll (add a reference face to) a subject. Idempotent per call; the caller
-   *  deletes first to fully replace an existing subject's faces. */
-  enrollSubject(subjectId: string, image: Buffer): Promise<void>;
-
-  /** Remove a subject and all its faces. Must resolve (not throw) if the subject
-   *  does not exist, so unenroll is idempotent. */
-  deleteSubject(subjectId: string): Promise<void>;
-
-  /** Verify a probe image against an enrolled subject at the given threshold. */
-  verify(subjectId: string, image: Buffer, thresholdPct: number): Promise<FaceVerifyResult>;
-
-  /** True when the backend is reachable and healthy. */
-  healthCheck(): Promise<boolean>;
+/** Quality measurements taken at enrollment, stored alongside the template. */
+export interface FaceQualityMetrics {
+  det_score: number;
+  face_count: number;
+  inter_eye_px: number;
+  face_short_side_px: number;
+  yaw_deg: number;
+  roll_deg: number;
+  pitch_ratio: number;
+  sharpness: number;
+  luma_mean: number;
+  luma_std: number;
 }
 
-// Timeout, connection failure, or a 5xx from the backend. The punch flow catches
-// this and FAILS OPEN (records the punch with a pending review) — an attendance
-// event must never be lost to a verification-dependency outage.
+export interface FaceEnrollment {
+  template: FaceTemplate;
+  quality: FaceQualityMetrics;
+}
+
+export interface FaceEngine {
+  /** Build a template from a reference photo. Runs the enrollment quality gate
+   *  and throws FaceEnrollmentError(reason) when the photo is not usable. */
+  enroll(image: Buffer): Promise<FaceEnrollment>;
+
+  /** Score a probe image against an enrolled template at the given threshold. */
+  verify(template: FaceTemplate, image: Buffer, thresholdPct: number): Promise<FaceVerifyResult>;
+}
+
+// Model failed to load, inference threw, or the stored template cannot be used
+// (wrong model version, undecryptable). The punch flow catches this and FAILS
+// OPEN (records the punch with a pending review) — an attendance event must never
+// be lost to a verification failure.
 export class FaceServiceUnavailableError extends Error {
   constructor(message: string) {
     super(message);
@@ -44,11 +78,24 @@ export class FaceServiceUnavailableError extends Error {
   }
 }
 
-// A deterministic, client-attributable failure during enrollment (e.g. the
-// reference photo contains no detectable face). Distinct from UNAVAILABLE — this
-// must surface to the caller as a 4xx, never fail open.
+export type FaceEnrollmentRejection =
+  | 'no_face'
+  | 'multiple_faces'
+  | 'face_too_small'
+  | 'not_frontal'
+  | 'blurry'
+  | 'too_dark'
+  | 'too_bright'
+  | 'low_contrast';
+
+// A deterministic, client-attributable failure during enrollment (no face, or a
+// photo that fails the quality gate). Distinct from UNAVAILABLE — this must
+// surface to the caller as a 4xx, never fail open.
 export class FaceEnrollmentError extends Error {
-  constructor(message: string) {
+  constructor(
+    public readonly reason: FaceEnrollmentRejection,
+    message: string,
+  ) {
     super(message);
     this.name = 'FaceEnrollmentError';
   }

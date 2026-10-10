@@ -36,8 +36,11 @@ the home branch and active flag; joining date, code, department, designation and
 weekly off stay HR-owned on Leave Administration → Employees. See
 `docs/Architecture.md` in the platform root.
 
-CompreFace (self-hosted face verification for attendance punches) is owned
-entirely by this repo — it has zero shared/other-product dependencies.
+Face verification for attendance punches runs in-process inside hr-service
+(ONNX models in `services/hr-service/models/`, engine in
+`services/hr-service/src/lib/face/`) — no separate face service. It needs one
+secret, `FACE_TEMPLATE_KEY`, and is documented in `docs/FACE_VERIFICATION.md`
+in the platform root.
 
 ## Local dev (Stage 1 — pnpm workspace, no registry)
 

@@ -48,8 +48,20 @@ import type { ReportDayRow, ReportEventRow } from '../../../lib/attendance/repor
 import type { MusterDayRow } from '../../../lib/attendance/report-muster.js';
 import { blobKeys } from '@platform/blob-storage';
 import { assertOwnKey, getPhotoStorage, detectImageExt } from '../../../lib/storage/photo-storage.js';
-import { getFaceDriver, FaceEnrollmentError } from '../../../lib/face/index.js';
-import { resolvePunchFace, FaceBlockedError, type FaceMatchAction, type FaceOutcome } from '../../../lib/face/punch-verification.js';
+import {
+  getFaceEngine,
+  encryptTemplate,
+  decryptTemplate,
+  FaceEnrollmentError,
+  type FaceTemplate,
+} from '../../../lib/face/index.js';
+import {
+  resolvePunchFace,
+  FaceBlockedError,
+  FACE_UNAVAILABLE_OUTCOME,
+  type FaceMatchAction,
+  type FaceOutcome,
+} from '../../../lib/face/punch-verification.js';
 import { config } from '../../../config/index.js';
 import type {
   CheckInInput,
@@ -379,12 +391,18 @@ export function decodePhoto(photo: string): Buffer {
   return buf;
 }
 
-async function loadFaceSubjectId(tx: DrizzleTx, orgId: string, userId: string): Promise<string | null> {
+// The user's active face template, still encrypted (decrypted outside the tx,
+// next to the verification it feeds). employee_profiles.face_subject_id points at
+// the hr.face_templates row; NULL / no row = not enrolled.
+async function loadFaceTemplateCiphertext(tx: DrizzleTx, orgId: string, userId: string): Promise<string | null> {
   const rows = (await tx.execute(sql`
-    SELECT face_subject_id FROM hr.employee_profiles
-    WHERE user_id = ${userId} AND org_id = ${orgId} AND NOT is_deleted
-  `)) as unknown as Array<{ face_subject_id: string | null }>;
-  return rows[0]?.face_subject_id ?? null;
+    SELECT ft.embedding_enc
+    FROM hr.employee_profiles ep
+    JOIN hr.face_templates ft
+      ON ft.id::text = ep.face_subject_id AND ft.user_id = ep.user_id AND ft.org_id = ep.org_id
+    WHERE ep.user_id = ${userId} AND ep.org_id = ${orgId} AND NOT ep.is_deleted
+  `)) as unknown as Array<{ embedding_enc: string }>;
+  return rows[0]?.embedding_enc ?? null;
 }
 
 // Who to notify about this user's punch: their direct manager in this org.
@@ -427,7 +445,7 @@ export async function punch(
   const rules = await getCachedRules(ctx.org_id);
 
   // ── Phase 1: validate geo/photo, persist the photo, resolve the work date and
-  //    the face subject. All reads/FS — no long-held tx across the network call. ──
+  //    the face template. All reads/FS — no long-held tx across model inference. ──
   const prep = await serviceTxWithContext(ctx, async (tx) => {
     await assertHomeBranch(tx, ctx.user_id, ctx.org_id);
     const org = await loadOrg(tx, ctx.org_id);
@@ -527,25 +545,37 @@ export async function punch(
       );
     }
 
-    // Face subject (only needed when the rule is on AND a photo is present).
-    const faceSubjectId =
-      rules.require_face_match && photoBuf ? await loadFaceSubjectId(tx, ctx.org_id, ctx.user_id) : null;
+    // Face template (only needed when the rule is on AND a photo is present).
+    const faceTemplateEnc =
+      rules.require_face_match && photoBuf ? await loadFaceTemplateCiphertext(tx, ctx.org_id, ctx.user_id) : null;
 
     return {
       org, distance, isWithin, isWfh, geoExceptionType,
       photoKey, photoBuf, workDate, isNight, shiftStartMin, shift,
-      faceSubjectId, isOffSegment, segmentCount: segments.length,
+      faceTemplateEnc, isOffSegment, segmentCount: segments.length,
     };
   });
 
-  // ── Phase 2: face verification OUTSIDE any DB transaction (the CompreFace call
+  // ── Phase 2: face verification OUTSIDE any DB transaction (model inference
   //    happens here; the event is written afterward with the result). ──
-  let face: FaceOutcome = { score: null, passed: null, reviewStatus: null, notifyManager: false };
+  let face: FaceOutcome = { score: null, passed: null, reviewStatus: null, notifyManager: false, diagnostics: null };
   if (rules.require_face_match && prep.photoBuf) {
+    // An enrolled template that cannot be decrypted (key missing/rotated) is an
+    // outage, not "not enrolled": it fails open exactly like an engine failure.
+    let template: FaceTemplate | null = null;
+    let templateUnreadable = false;
+    if (prep.faceTemplateEnc) {
+      try {
+        template = decryptTemplate(prep.faceTemplateEnc, config.faceTemplateKey);
+      } catch (err) {
+        templateUnreadable = true;
+        console.error('[face] stored template unreadable; punch recorded for review', (err as Error).message);
+      }
+    }
     try {
-      face = await resolvePunchFace({
-        driver: getFaceDriver(),
-        subjectId: prep.faceSubjectId,
+      face = templateUnreadable ? FACE_UNAVAILABLE_OUTCOME : await resolvePunchFace({
+        engine: getFaceEngine(),
+        template,
         photo: prep.photoBuf,
         rules: { threshold: rules.face_match_threshold, action: rules.face_match_action as FaceMatchAction },
         log: (message, err) => console.error(message, (err as Error | undefined)?.message ?? err),
@@ -612,7 +642,7 @@ export async function punch(
          ${data.geo_lat ?? null}, ${data.geo_lng ?? null}, ${prep.distance}, ${prep.isWithin},
          ${prep.isWfh}, ${prep.geoExceptionType}, ${prep.photoKey}, ${face.score}, ${face.passed},
          ${face.reviewStatus}, ${prep.isOffSegment}, ${meta.ip},
-         ${sql`${JSON.stringify({ user_agent: meta.userAgent })}::jsonb`})
+         ${sql`${JSON.stringify({ user_agent: meta.userAgent, ...(face.diagnostics ? { face: face.diagnostics } : {}) })}::jsonb`})
       RETURNING id::text
     `)) as unknown as Array<{ id: string }>;
     const eventId = inserted[0]!.id;
@@ -2382,10 +2412,11 @@ export async function reportMuster(ctx: AttendanceCtx, month: string, orgIds: re
 // ═════════════════════════════════════════════════════════════════════════════
 // FACE — enrollment / status / unenroll
 //
-// The CompreFace subject id is the user's UUID. The external driver calls run
-// OUTSIDE the DB transaction; the profile columns are written only after the
-// subject has been (re)created, so a partial enrollment never leaves the profile
-// pointing at a subject that does not exist.
+// The template is computed by the in-process face engine OUTSIDE any DB
+// transaction (model inference is slow-ish), then the encrypted template row and
+// the profile pointer (employee_profiles.face_subject_id = hr.face_templates.id)
+// are written together in ONE transaction, so a profile can never point at a
+// template that does not exist. Re-enrolment replaces the row in place.
 // ═════════════════════════════════════════════════════════════════════════════
 export interface FaceEnrollResult {
   user_id: string;
@@ -2411,7 +2442,7 @@ async function loadAvatarKey(tx: DrizzleTx, userId: string): Promise<string | nu
 
 export async function enrollFace(ctx: AttendanceCtx, userId: string): Promise<FaceEnrollResult> {
   // 1. Confirm the target is an employee of this org, and pull the avatar key
-  //    that will serve as the CompreFace reference. The photo is uploaded first
+  //    that will serve as the face reference. The photo is uploaded first
   //    via identity-service, so the avatar and the biometric reference are the
   //    same image — no second copy is stored here.
   const refKey = await serviceTxWithContext(ctx, async (tx) => {
@@ -2432,33 +2463,58 @@ export async function enrollFace(ctx: AttendanceCtx, userId: string): Promise<Fa
     });
   }
 
-  const subjectId = userId; // subject id === user UUID
-  const driver = getFaceDriver();
-
-  // 2. (Re)create the subject OUTSIDE any tx: replace faces (delete then add).
+  // 2. Build the template OUTSIDE any tx. The engine runs the quality gate: an
+  //    unusable photo is the employee's to fix (400 with a reason), an engine or
+  //    key failure is ours (422 FACE_SERVICE_UNAVAILABLE). Enrollment fails
+  //    CLOSED — nothing is written unless a good template exists.
+  let embeddingEnc: string;
+  let quality: Record<string, number>;
+  let modelVersion: string;
   try {
-    await driver.deleteSubject(subjectId);
-    await driver.enrollSubject(subjectId, photoBuf);
+    const enrollment = await getFaceEngine().enroll(photoBuf);
+    embeddingEnc = encryptTemplate(enrollment.template, config.faceTemplateKey);
+    quality = { ...enrollment.quality };
+    modelVersion = enrollment.template.modelVersion;
   } catch (err) {
     if (err instanceof FaceEnrollmentError) {
-      throw new BadRequestError('No detectable face in the reference photo', { code: 'FACE_NO_FACE' });
+      if (err.reason === 'no_face') {
+        throw new BadRequestError(err.message, { code: 'FACE_NO_FACE' });
+      }
+      throw new BadRequestError(err.message, { code: 'FACE_LOW_QUALITY', reason: err.reason });
     }
+    console.error('[face] enrollment engine failure', (err as Error).message);
     throw new ValidationError('Face verification service is unavailable; try again later', {
       code: 'FACE_SERVICE_UNAVAILABLE',
     });
   }
 
-  // 3. Point the profile at the avatar key + record consent/enrolment time.
+  // 3. One tx: upsert the encrypted template, point the profile at it, record
+  //    consent/enrolment time. The template is replaced in place on re-enrol.
   return serviceTxWithContext(ctx, async (tx) => {
+    const tpl = (await tx.execute(sql`
+      INSERT INTO hr.face_templates (org_id, user_id, model_version, embedding_enc, quality, created_by)
+      VALUES (${ctx.org_id}, ${userId}, ${modelVersion}, ${embeddingEnc},
+              ${sql`${JSON.stringify(quality)}::jsonb`}, ${ctx.user_id})
+      ON CONFLICT (org_id, user_id) DO UPDATE
+        SET model_version = EXCLUDED.model_version,
+            embedding_enc = EXCLUDED.embedding_enc,
+            quality       = EXCLUDED.quality,
+            created_by    = EXCLUDED.created_by,
+            created_at    = CLOCK_TIMESTAMP()
+      RETURNING id::text
+    `)) as unknown as Array<{ id: string }>;
+    const templateId = tpl[0]!.id;
     const rows = (await tx.execute(sql`
       UPDATE hr.employee_profiles
-      SET reference_photo_url = ${refKey}, face_subject_id = ${subjectId},
+      SET reference_photo_url = ${refKey}, face_subject_id = ${templateId},
           face_enrolled_at = CLOCK_TIMESTAMP(), face_consent_at = CLOCK_TIMESTAMP(),
           updated_at = CLOCK_TIMESTAMP()
       WHERE user_id = ${userId} AND org_id = ${ctx.org_id} AND NOT is_deleted
       RETURNING user_id::text, face_subject_id, face_enrolled_at::text
     `)) as unknown as Array<{ user_id: string; face_subject_id: string; face_enrolled_at: string }>;
-    const row = rows[0]!;
+    const row = rows[0];
+    // Profile vanished between step 1 and now: roll the template back with the tx.
+    if (!row) throw new NotFoundError('Employee profile not found in this org');
     return { user_id: row.user_id, face_subject_id: row.face_subject_id, face_enrolled_at: row.face_enrolled_at };
   });
 }
@@ -2567,24 +2623,13 @@ export async function getFaceStatus(ctx: AttendanceCtx, userId: string): Promise
 }
 
 export async function deleteFaceEnrollment(ctx: AttendanceCtx, userId: string): Promise<void> {
-  const subjectId = await serviceTxWithContext(ctx, async (tx) => {
-    await assertEmployeeInOrg(tx, ctx.org_id, userId);
-    return loadFaceSubjectId(tx, ctx.org_id, userId);
-  });
-
-  // Drop the CompreFace subject first (idempotent — driver tolerates 404).
-  if (subjectId) {
-    try {
-      await getFaceDriver().deleteSubject(subjectId);
-    } catch (err) {
-      throw new ValidationError('Face verification service is unavailable; try again later', {
-        code: 'FACE_SERVICE_UNAVAILABLE',
-        detail: (err as Error).message,
-      });
-    }
-  }
-
+  // One tx: HARD-delete the biometric template (DPDP erasure — hr.face_templates
+  // deliberately has no soft-delete trigger) and clear the enrolment columns.
   await serviceTxWithContext(ctx, async (tx) => {
+    await assertEmployeeInOrg(tx, ctx.org_id, userId);
+    await tx.execute(sql`
+      DELETE FROM hr.face_templates WHERE user_id = ${userId} AND org_id = ${ctx.org_id}
+    `);
     await tx.execute(sql`
       UPDATE hr.employee_profiles
       SET reference_photo_url = NULL, face_subject_id = NULL, face_enrolled_at = NULL, face_consent_at = NULL,

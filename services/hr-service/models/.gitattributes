@@ -1,0 +1,2 @@
+# ONNX weights are binary: never line-ending-convert or diff them.
+*.onnx binary

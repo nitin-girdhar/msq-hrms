@@ -234,7 +234,7 @@ export default function TeamDayView({ rows, loading, faceEnabled, canManage, onC
                       {faceEnabled && (
                         <td className="px-4 py-3">
                           {/* The review marker stands on its own rather than being
-                              appended to a score. A not-enrolled punch and a CompreFace
+                              appended to a score. A not-enrolled punch and a face-engine
                               outage are both 'pending' with a NULL score, and those are
                               the cases most worth surfacing — previously they rendered
                               as a grey dash and disappeared. */}

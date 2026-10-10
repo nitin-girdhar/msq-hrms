@@ -334,7 +334,7 @@ export const listRegularizationsSchema = z.object({
 // ── Face verification (enrollment + review queue) ───────────────────────────
 // Enrollment no longer carries the image: the reference photo is the user's
 // avatar (iam.users.photo_key), uploaded first via identity-service. Enroll
-// reads that stored photo and registers it with CompreFace, so the avatar and
+// reads that stored photo and builds the (encrypted) face template from it, so the avatar and
 // the biometric reference are guaranteed to be the same image.
 export const faceEnrollSchema = z.object({
   user_id: z.string().uuid(),

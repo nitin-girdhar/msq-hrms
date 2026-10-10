@@ -49,6 +49,8 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
   const [punchMode, setPunchMode] = useState<'check_in' | 'check_out' | null>(null);
   const [faceCtx, setFaceCtx] = useState<FaceSelfContext | null>(null);
   const [facePhotoOpen, setFacePhotoOpen] = useState(false);
+  // Why the photo modal reopened (the stored photo failed the enrolment quality gate).
+  const [facePhotoNotice, setFacePhotoNotice] = useState<string | null>(null);
   const [gateBusy, setGateBusy] = useState(false);
   const [detailDate, setDetailDate] = useState<string | null>(null);
   const [detailRow, setDetailRow] = useState<AttendanceDayRow | undefined>(undefined);
@@ -148,7 +150,15 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
           setFaceCtx({ ...ctx, enrolled: true });
           setPunchMode(mode);
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Could not enroll your face. Try again.');
+          // The stored photo is not usable as a face reference (dark, blurred,
+          // turned away…): let the employee retake it instead of a dead end.
+          const retake = photoRetakeReason(err);
+          if (retake) {
+            setFacePhotoNotice(retake);
+            setFacePhotoOpen(true);
+          } else {
+            setError(err instanceof Error ? err.message : 'Could not enroll your face. Try again.');
+          }
         } finally {
           setGateBusy(false);
         }
@@ -163,7 +173,14 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
   const handleFacePhotoSubmit = useCallback(
     async (dataUrl: string, consent: boolean) => {
       await usersApi.uploadMyPhoto({ photo: dataUrl, consent });
-      await attendanceApi.face.enroll({ user_id: actor.id, consent });
+      try {
+        await attendanceApi.face.enroll({ user_id: actor.id, consent });
+      } catch (err) {
+        // Surface the quality reason inside the modal so they can retake at once.
+        const retake = photoRetakeReason(err);
+        if (retake) throw new Error(retake);
+        throw err;
+      }
       setFaceCtx((c) => ({
         ...(c ?? {
           user_id: actor.id,
@@ -176,6 +193,7 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
         enrolled: true,
       }));
       setFacePhotoOpen(false);
+      setFacePhotoNotice(null);
       setPunchMode('check_in');
     },
     [actor.id],
@@ -287,8 +305,9 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
 
       <PhotoUploadModal
         open={facePhotoOpen}
-        onClose={() => setFacePhotoOpen(false)}
-        title="Add your photo to check in"
+        onClose={() => { setFacePhotoOpen(false); setFacePhotoNotice(null); }}
+        title={facePhotoNotice ? 'Retake your photo to check in' : 'Add your photo to check in'}
+        notice={facePhotoNotice}
         consentLabel="I consent to my photo being stored and used to verify my attendance."
         onSubmit={handleFacePhotoSubmit}
       />
@@ -304,4 +323,14 @@ export default function AttendanceDashboardShell({ actor, hrRank }: Props) {
       <RegularizationDetailModal regularizationId={viewingRegId} onClose={() => setViewingRegId(null)} />
     </div>
   );
+}
+
+// Enrolment refused the photo itself (FACE_NO_FACE / FACE_LOW_QUALITY): returns the
+// server's plain-language reason, or null for any other failure. The reason is in
+// body.error; the thrown message is built from `details` (the machine codes).
+function photoRetakeReason(err: unknown): string | null {
+  const body = (err as { body?: { error?: unknown; details?: { code?: unknown } } } | null)?.body;
+  const code = body?.details?.code;
+  if (code !== 'FACE_LOW_QUALITY' && code !== 'FACE_NO_FACE') return null;
+  return typeof body?.error === 'string' ? body.error : 'Your photo could not be used. Please retake it.';
 }

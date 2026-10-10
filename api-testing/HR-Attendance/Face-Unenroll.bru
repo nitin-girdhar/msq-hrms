@@ -15,7 +15,8 @@ headers {
 }
 
 docs {
-  hr_admin/org_admin only. Drops the CompreFace subject and clears
-  reference_photo_url / face_subject_id / face_enrolled_at / face_consent_at.
+  hr_admin/org_admin only. HARD-deletes the employee's hr.face_templates row
+  (biometric erasure, DPDP) and clears reference_photo_url / face_subject_id /
+  face_enrolled_at / face_consent_at, in one transaction.
   Run as part of the employee-exit ops checklist (see docs/FACE_VERIFICATION.md).
 }

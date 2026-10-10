@@ -608,7 +608,7 @@ export const attendance = {
     // Self-service enrollment context (own user): drives the check-in gate.
     me: () => request<Envelope<FaceSelfContext>>('/hr/attendance/face/me'),
 
-    // Register the user's stored avatar with CompreFace. Self-enroll (own id) or
+    // Build the face template from the stored avatar. Self-enroll (own id) or
     // admin (any in-org). No image travels — enroll reads the avatar.
     enroll: (body: { user_id: string; consent: boolean }) =>
       request<Envelope<{ user_id: string; face_subject_id: string; face_enrolled_at: string }>>(

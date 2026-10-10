@@ -54,6 +54,11 @@ const start = async () => {
     assertDbEnv();
     // Tier C3: keep the in-memory capability matrix fresh via LISTEN/NOTIFY.
     await startCapabilityCache();
+    // Not fatal (face match is an opt-in per-org rule), but without the key no
+    // one can enrol and every face-required punch goes to review — say so loudly.
+    if (config.nodeEnv === 'production' && !config.faceTemplateKey) {
+      app.log.warn('[hr-service] FACE_TEMPLATE_KEY is not set: face enrolment is disabled and face-required punches will be queued for review');
+    }
     await app.listen({ port: config.port, host: '0.0.0.0' });
   } catch (err) {
     app.log.error(err);

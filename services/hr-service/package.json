@@ -3,7 +3,8 @@
   "version": "0.0.1",
   "private": true,
   "files": [
-    "dist"
+    "dist",
+    "models"
   ],
   "scripts": {
     "build": "tsc",
@@ -32,7 +33,9 @@
     "drizzle-orm": "^0.45.2",
     "exceljs": "^4.4.0",
     "fastify": "^5.2.1",
+    "onnxruntime-node": "1.30.0",
     "pino": "^9.6.0",
+    "sharp": "0.35.4",
     "zod": "^3.22.0"
   },
   "devDependencies": {
